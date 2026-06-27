@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SisContratos HMC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root{
+  --teal:#1D9E75;--teal-d:#0F6E56;--teal-l:#E1F5EE;--teal-m:#5DCAA5;
+  --blue:#178DBB;--blue-d:#0C6690;--blue-l:#E0F4FB;
+  --gray:#F4F6F8;--gray-d:#8A96A3;--gray-b:#DDE3E9;
+  --text:#1C2B35;--text2:#56687A;--text3:#8A96A3;
+  --white:#FFFFFF;
+  --shadow:0 1px 4px rgba(0,0,0,.08),0 0 0 0.5px rgba(0,0,0,.06);
+  --radius:10px;--radius-sm:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#EEF2F6;color:var(--text);font-size:13px;min-height:100vh}
+.sidebar{position:fixed;top:0;left:0;width:224px;height:100vh;background:var(--teal-d);display:flex;flex-direction:column;z-index:100;overflow-y:auto}
+.sidebar-brand{padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,.12)}
+.sidebar-logo{width:128px;margin-bottom:10px;filter:brightness(0) invert(1)}
+.sidebar-sub{font-size:10.5px;color:rgba(255,255,255,.55);line-height:1.5}
+.sidebar-sub strong{display:block;color:#fff;font-size:12px;font-weight:600;margin-bottom:1px}
+.nav-sec{padding:10px 10px 3px;font-size:9.5px;color:rgba(255,255,255,.35);letter-spacing:.08em;text-transform:uppercase;font-weight:700}
+.nav-btn{display:flex;align-items:center;gap:9px;padding:9px 14px;margin:1px 6px;border-radius:6px;cursor:pointer;color:rgba(255,255,255,.72);font-size:12.5px;transition:all .14s;border:none;background:none;width:calc(100% - 12px);text-align:left}
+.nav-btn:hover{background:rgba(255,255,255,.1);color:#fff}
+.nav-btn.active{background:rgba(255,255,255,.18);color:#fff;font-weight:600}
+.nav-btn i{font-size:13px;width:17px;text-align:center}
+.sidebar-foot{margin-top:auto;padding:12px 14px 16px;border-top:1px solid rgba(255,255,255,.1)}
+.user-row{display:flex;align-items:center;gap:9px}
+.user-av{width:34px;height:34px;border-radius:50%;background:var(--teal-m);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
+.user-name{font-size:11.5px;color:#fff;font-weight:600;line-height:1.3}
+.user-role{font-size:10px;color:rgba(255,255,255,.45)}
+.main{margin-left:224px;min-height:100vh;display:flex;flex-direction:column}
+.topbar{background:#fff;border-bottom:1px solid var(--gray-b);padding:12px 22px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.topbar h1{font-size:15.5px;font-weight:700;color:var(--text)}
+.topbar p{font-size:11px;color:var(--text2);margin-top:1px}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.sync-indicator{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);padding:4px 10px;border-radius:20px;background:var(--gray)}
+.sync-indicator.ok{color:#16a34a;background:#dcfce7}
+.sync-indicator.err{color:#b91c1c;background:#fee2e2}
+.sync-indicator.loading{color:var(--blue-d);background:var(--blue-l)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-size:12.5px;font-weight:500;transition:all .14s;white-space:nowrap}
+.btn-primary{background:var(--teal);color:#fff}.btn-primary:hover{background:var(--teal-d)}
+.btn-secondary{background:var(--white);color:var(--text2);border:1px solid var(--gray-b)}.btn-secondary:hover{background:var(--gray)}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-danger{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5}
+.content{padding:20px 22px;flex:1}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:11px;margin-bottom:18px}
+.stat-card{background:#fff;border-radius:var(--radius);padding:15px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%}
+.stat-card.verde::before{background:#22c55e}
+.stat-card.amarelo::before{background:#f59e0b}
+.stat-card.laranja::before{background:#f97316}
+.stat-card.vermelho::before{background:#ef4444}
+.stat-card.azul::before{background:var(--blue)}
+.s-val{font-size:26px;font-weight:700;color:var(--text);line-height:1;margin-bottom:4px}
+.s-label{font-size:11px;color:var(--text2)}
+.s-sub{font-size:10.5px;color:var(--text3);margin-top:2px}
+.panel{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:14px}
+.panel-head{padding:13px 17px;border-bottom:1px solid var(--gray-b);display:flex;align-items:center;justify-content:space-between}
+.panel-head h2{font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:7px;color:var(--text)}
+.panel-head h2 i{color:var(--teal)}
+.panel-body{padding:14px 17px}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:10.5px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;padding:9px 11px;background:var(--gray);border-bottom:1px solid var(--gray-b);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid var(--gray-b);vertical-align:middle;font-size:12.5px;color:var(--text)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#FAFBFD}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:20px;white-space:nowrap}
+.badge::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
+.badge.verde{background:#dcfce7;color:#15803d}
+.badge.amarelo{background:#fef3c7;color:#92400e}
+.badge.laranja{background:#ffedd5;color:#9a3412}
+.badge.vermelho{background:#fee2e2;color:#991b1b}
+.badge.azul{background:var(--blue-l);color:var(--blue-d)}
+.badge.cinza{background:var(--gray);color:var(--text2)}
+.prog-wrap{display:flex;align-items:center;gap:7px}
+.prog-bar{flex:1;height:7px;background:var(--gray-b);border-radius:4px;overflow:hidden;min-width:55px}
+.prog-fill{height:100%;border-radius:4px;transition:width .3s}
+.prog-fill.verde{background:#22c55e}.prog-fill.amarelo{background:#f59e0b}
+.prog-fill.laranja{background:#f97316}.prog-fill.vermelho{background:#ef4444}
+.prog-pct{font-size:11.5px;font-weight:600;min-width:34px;text-align:right}
+.alert-box{display:flex;gap:9px;padding:11px 13px;border-radius:6px;font-size:12px;margin-bottom:7px;align-items:flex-start}
+.alert-box i{font-size:13px;margin-top:1px;flex-shrink:0}
+.alert-box.verde{background:#dcfce7;color:#15803d;border-left:3px solid #22c55e}
+.alert-box.amarelo{background:#fef3c7;color:#92400e;border-left:3px solid #f59e0b}
+.alert-box.laranja{background:#ffedd5;color:#9a3412;border-left:3px solid #f97316}
+.alert-box.vermelho{background:#fee2e2;color:#991b1b;border-left:3px solid #ef4444}
+.deadline-item{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--gray-b)}
+.deadline-item:last-child{border-bottom:none}
+.dl-name{font-size:12.5px;font-weight:600}
+.dl-emp{font-size:11px;color:var(--text2);margin-top:1px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.48);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
+.modal{background:#fff;border-radius:var(--radius);width:min(640px,100%);max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.28)}
+.modal-head{padding:15px 19px;border-bottom:1px solid var(--gray-b);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:1}
+.modal-head h3{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--text)}
+.modal-head h3 i{color:var(--teal)}
+.modal-body{padding:19px}
+.modal-foot{padding:13px 19px;border-top:1px solid var(--gray-b);display:flex;justify-content:flex-end;gap:8px;background:#FAFBFD;position:sticky;bottom:0}
+.close-btn{background:none;border:none;cursor:pointer;color:var(--text2);font-size:17px;padding:4px;border-radius:4px}
+.close-btn:hover{background:var(--gray)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:11px}
+.form-row.cols3{grid-template-columns:1fr 1fr 1fr}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group.full{grid-column:1/-1}
+label{font-size:11px;font-weight:600;color:var(--text2)}
+input,select,textarea{font-size:12.5px;padding:7px 9px;border:1px solid var(--gray-b);border-radius:5px;background:#fff;color:var(--text);width:100%;outline:none;transition:border .14s}
+input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(29,158,117,.12)}
+input[disabled],select[disabled],textarea[disabled]{background:var(--gray);color:var(--text2)}
+textarea{resize:vertical;min-height:68px}
+.sec-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 5px;border-bottom:1px solid var(--gray-b);margin-bottom:9px;grid-column:1/-1}
+.act-btn{background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px;color:var(--text2);font-size:12.5px;transition:all .14s}
+.act-btn:hover{background:var(--gray);color:var(--teal)}
+.act-btn.del:hover{color:#ef4444}
+.empty{text-align:center;padding:32px 20px;color:var(--text2)}
+.empty i{font-size:28px;color:var(--gray-d);margin-bottom:8px;display:block}
+.sel-contract{width:100%;padding:8px 10px;border:1px solid var(--gray-b);border-radius:6px;font-size:13px;margin-bottom:14px;background:#fff;color:var(--text)}
+.cell-m{color:var(--text2);font-size:12px}
+.mono{font-family:'Courier New',monospace;font-size:12px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;padding:10px 17px 13px;border-top:1px solid var(--gray-b)}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
+.leg-dot{width:9px;height:9px;border-radius:50%}
+.spin{display:inline-block;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.config-box{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:28px;max-width:500px;margin:40px auto}
+.config-box h2{font-size:16px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.config-box h2 i{color:var(--teal)}
+.config-box p{color:var(--text2);font-size:12.5px;margin-bottom:18px;line-height:1.6}
+.config-box input{margin-bottom:10px}
+.config-hint{font-size:11px;color:var(--text3);margin-top:12px;padding:10px;background:var(--gray);border-radius:5px;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+const { createClient } = supabase;
+
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const LOGO_B64 = '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';
+const STORAGE_KEYS = { url: 'sc_hmc_url', key: 'sc_hmc_key' };
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const dias = fim => Math.ceil((new Date(fim+'T23:59:59') - new Date()) / 86400000);
+const pct = c => Math.min(Math.round((c.consumo_acum / c.vlr_total) * 100), 100);
+const clsFin = p => p < 70 ? 'verde' : p < 85 ? 'amarelo' : p < 95 ? 'laranja' : 'vermelho';
+const clsPrazo = d => d < 0 ? 'vermelho' : d <= 30 ? 'vermelho' : d <= 60 ? 'laranja' : d <= 90 ? 'amarelo' : 'verde';
+const brl = v => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
+const fmtD = s => { if (!s) return '—'; const [y,m,d] = s.substring(0,10).split('-'); return `${d}/${m}/${y}`; };
+const uid = p => p + Date.now().toString(36).toUpperCase();
+const today = () => new Date().toISOString().substring(0, 10);
+const todayMonth = () => new Date().toISOString().substring(0, 7);
+// Converte DD/MM/AAAA → YYYY-MM-DD (aceita também YYYY-MM-DD direto)
+const toISO = (val) => {
+  if (!val) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  const p = val.split('/');
+  if (p.length === 3 && p[2].length === 4) return p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0');
+  return val;
+};
+// Converte YYYY-MM-DD → DD/MM/AAAA para exibição nos campos
+const fromISO = (val) => {
+  if (!val) return '';
+  if (val.includes('/')) return val;
+  const p = val.substring(0,10).split('-');
+  if (p.length === 3) return p[2]+'/'+p[1]+'/'+p[0];
+  return val;
+};
+
+function Badge({ cls, label }) {
+  return <span className={`badge ${cls}`}>{label}</span>;
+}
+function BadgeStatus({ s }) {
+  const map = { vigente: ['verde','Vigente'], proximo: ['amarelo','Próx. venc.'], vencido: ['vermelho','Vencido'], 'em renovacao': ['azul','Em renovação'] };
+  const [cls, label] = map[s] || ['cinza', s];
+  return <Badge cls={cls} label={label} />;
+}
+function BadgePrazo({ d }) {
+  const cls = clsPrazo(d);
+  const label = d < 0 ? `Vencido ${Math.abs(d)}d` : d === 0 ? 'Vence hoje' : `${d} dias`;
+  return <Badge cls={cls} label={label} />;
+}
+function ProgBar({ p }) {
+  const cls = clsFin(p);
+  return (
+    <div className="prog-wrap">
+      <div className="prog-bar"><div className={`prog-fill ${cls}`} style={{width: p+'%'}} /></div>
+      <span className="prog-pct" style={{color: cls==='verde'?'#16a34a':cls==='amarelo'?'#92400e':cls==='laranja'?'#9a3412':'#991b1b'}}>{p}%</span>
+    </div>
+  );
+}
+function ActBtn({ icon, onClick, title, danger }) {
+  return <button className={`act-btn${danger?' del':''}`} onClick={onClick} title={title}><i className={`fa-solid ${icon}`} /></button>;
+}
+function AlertBox({ cls, icon, children }) {
+  return <div className={`alert-box ${cls}`}><i className={`fa-solid ${icon}`} /><div>{children}</div></div>;
+}
+
+// ─── CONFIG SCREEN ────────────────────────────────────────────────────────────
+function ConfigScreen({ onSave }) {
+  const [url, setUrl] = useState(localStorage.getItem(STORAGE_KEYS.url)||'');
+  const [key, setKey] = useState(localStorage.getItem(STORAGE_KEYS.key)||'');
+  const save = () => {
+    if (!url.trim() || !key.trim()) { alert('Preencha a URL e a chave anon.'); return; }
+    localStorage.setItem(STORAGE_KEYS.url, url.trim());
+    localStorage.setItem(STORAGE_KEYS.key, key.trim());
+    onSave(url.trim(), key.trim());
+  };
+  return (
+    <div style={{padding:'40px 20px'}}>
+      <div className="config-box">
+        <h2><i className="fa-solid fa-database" /> Configurar conexão Supabase</h2>
+        <p>Insira as credenciais do projeto Supabase para conectar o SisContratos HMC ao banco de dados em nuvem.</p>
+        <div className="form-group" style={{marginBottom:10}}>
+          <label>URL do projeto Supabase</label>
+          <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://xxxxxxxxxxx.supabase.co" />
+        </div>
+        <div className="form-group" style={{marginBottom:16}}>
+          <label>Chave anon (public)</label>
+          <input value={key} onChange={e=>setKey(e.target.value)} placeholder="eyJhbGciOiJIUzI1NiIs..." type="password" />
+        </div>
+        <button className="btn btn-primary" style={{width:'100%'}} onClick={save}><i className="fa-solid fa-plug" /> Conectar</button>
+        <div className="config-hint">
+          <strong>Como encontrar:</strong> Supabase → seu projeto → Settings → API<br/>
+          Copie a <em>Project URL</em> e a <em>anon public</em> key.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL ────────────────────────────────────────────────────────────────────
+function Modal({ title, icon, onClose, children, footer }) {
+  return (
+    <div className="modal-overlay" onClick={e => e.target.className.includes('modal-overlay') && onClose()}>
+      <div className="modal">
+        <div className="modal-head">
+          <h3><i className={`fa-solid ${icon}`} /> {title}</h3>
+          <button className="close-btn" onClick={onClose}><i className="fa-solid fa-xmark" /></button>
+        </div>
+        <div className="modal-body">{children}</div>
+        {footer && <div className="modal-foot">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ─── APP ─────────────────────────────────────────────────────────────────────
+function App() {
+  const [sbUrl, setSbUrl] = useState(localStorage.getItem(STORAGE_KEYS.url)||'');
+  const [sbKey, setSbKey] = useState(localStorage.getItem(STORAGE_KEYS.key)||'');
+  const [configured, setConfigured] = useState(!!(sbUrl && sbKey));
+  const sbRef = useRef(null);
+
+  const [section, setSection] = useState('painel');
+  const [syncStatus, setSyncStatus] = useState('ok'); // ok | loading | err
+  const [contratos, setContratos] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [aditivos, setAditivos] = useState([]);
+  const [modal, setModal] = useState(null);
+  const [selFin, setSelFin] = useState('');
+  const [selQtd, setSelQtd] = useState('');
+  const [formData, setFormData] = useState({});
+  const formRef = useRef({});
+  const [saving, setSaving] = useState(false);
+
+  const initSb = (url, key) => {
+    sbRef.current = createClient(url, key);
+  };
+
+  useEffect(() => {
+    if (configured) {
+      initSb(sbUrl, sbKey);
+      loadAll();
+    }
+  }, [configured]);
+
+  const handleConfig = (url, key) => {
+    setSbUrl(url); setSbKey(key);
+    initSb(url, key);
+    setConfigured(true);
+  };
+
+  const sb = () => sbRef.current;
+
+  const loadAll = async () => {
+    setSyncStatus('loading');
+    try {
+      const [c, i, a] = await Promise.all([
+        sb().from('contratos').select('*').order('created_at'),
+        sb().from('itens').select('*').order('created_at'),
+        sb().from('aditivos').select('*').order('created_at', {ascending:false})
+      ]);
+      if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
+      setContratos(c.data || []);
+      setItens(i.data || []);
+      setAditivos(a.data || []);
+      setSyncStatus('ok');
+    } catch(e) {
+      setSyncStatus('err');
+      console.error(e);
+    }
+  };
+
+  // form usa ref para não causar re-render ao digitar
+  const fv = k => formRef.current[k] ?? '';
+  const sf = (k, v) => { formRef.current = {...formRef.current, [k]: v}; };
+  const setForm = (obj) => { 
+    if (typeof obj === 'function') { formRef.current = obj(formRef.current); }
+    else { formRef.current = obj; }
+    setFormData({...formRef.current}); 
+  };
+
+  const openModal = (tipo, id) => {
+    if (tipo === 'novo') {
+      setForm({ fiscal:'Mírian Vicente Dias', gestor:'Carlos Henrique Buzzi da Silva', status:'vigente', tipo:'Serviço continuado', medicao:'Por produção' });
+    } else if (tipo === 'editar' || tipo === 'ver') {
+      const c = contratos.find(x => x.id === id);
+      setForm({ ...c, inicio: c.inicio?.substring(0,10), fim: c.fim?.substring(0,10) });
+    } else if (tipo === 'aditivo') {
+      setForm({ data: today(), status:'Em análise', tipo:'Suplementação de valor' });
+    } else if (tipo === 'item') {
+      setForm({ contrato_id: id, unit:'exame' });
+    } else if (tipo === 'prorrog') {
+      const c = contratos.find(x => x.id === id);
+      setForm({ contrato_id: id, fim_atual: c.fim?.substring(0,10), novo_prazo: c.fim?.substring(0,10) });
+    } else if (tipo === 'execucao') {
+      setForm({ contrato_id: id, mes_referencia: todayMonth() });
+    }
+    setModal({ tipo, id });
+  };
+  const closeModal = () => { setModal(null); setForm({}); };
+
+  // SALVAR CONTRATO
+  const salvarContrato = async () => {
+    if (!fv('numero') || !fv('empresa') || !fv('objeto')) { alert('Preencha Nº, Empresa e Objeto.'); return; }
+    setSaving(true);
+    const data = {
+      id: modal.id || uid('C'), numero: fv('numero'), empresa: fv('empresa'), objeto: fv('objeto'),
+      segmento: fv('segmento'), setor: fv('setor'), fiscal: fv('fiscal'), gestor: fv('gestor'),
+      inicio: toISO(fv('inicio')) || null, fim: toISO(fv('fim')) || null,
+      vlr_mensal: parseFloat(fv('vlr_mensal')) || 0,
+      vlr_total: parseFloat(fv('vlr_total')) || 0,
+      tipo: fv('tipo'), medicao: fv('medicao'), status: fv('status'),
+      consumo_acum: parseFloat(fv('consumo_acum')) || 0,
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await sb().from('contratos').upsert(data);
+    setSaving(false);
+    if (error) { alert('Erro ao salvar: ' + error.message); return; }
+    await loadAll(); closeModal();
+  };
+
+  // SALVAR ADITIVO
+  const salvarAditivo = async () => {
+    if (!fv('contrato_id') || !fv('justificativa')) { alert('Selecione o contrato e informe a justificativa.'); return; }
+    setSaving(true);
+    const data = {
+      id: uid('A'), contrato_id: fv('contrato_id'), tipo: fv('tipo'), data: toISO(fv('data')) || today(),
+      justificativa: fv('justificativa'), vlr_acrescido: parseFloat(fv('vlr_acrescido')) || 0,
+      vlr_suprimido: parseFloat(fv('vlr_suprimido')) || 0,
+      novo_prazo: toISO(fv('novo_prazo')) || null, status: fv('status'), obs: fv('obs') || ''
+    };
+    const { error } = await sb().from('aditivos').insert(data);
+    setSaving(false);
+    if (error) { alert('Erro: ' + error.message); return; }
+    await loadAll(); closeModal();
+  };
+
+  // SALVAR ITEM
+  const salvarItem = async () => {
+    if (!fv('item') || !fv('qtd_mensal')) { alert('Informe o nome e a quantidade mensal.'); return; }
+    setSaving(true);
+    const data = {
+      id: uid('I'), contrato_id: fv('contrato_id'), item: fv('item'),
+      qtd_mensal: parseFloat(fv('qtd_mensal')) || 0, qtd_exec: parseFloat(fv('qtd_exec')) || 0,
+      qtd_acum: parseFloat(fv('qtd_acum')) || 0, unit: fv('unit') || 'un.'
+    };
+    const { error } = await sb().from('itens').insert(data);
+    setSaving(false);
+    if (error) { alert('Erro: ' + error.message); return; }
+    await loadAll(); closeModal();
+  };
+
+  // REGISTRAR EXECUCAO
+  const salvarExecucao = async () => {
+    const vlr = parseFloat(fv('valor')) || 0;
+    if (!vlr) { alert('Informe o valor executado.'); return; }
+    setSaving(true);
+    const cId = fv('contrato_id');
+    const c = contratos.find(x => x.id === cId);
+    const novoAcum = (c.consumo_acum || 0) + vlr;
+    await sb().from('execucoes').insert({ id: uid('E'), contrato_id: cId, mes_referencia: fv('mes_referencia'), valor: vlr, observacao: fv('observacao') });
+    await sb().from('contratos').update({ consumo_acum: novoAcum, updated_at: new Date().toISOString() }).eq('id', cId);
+    setSaving(false);
+    await loadAll(); closeModal();
+  };
+
+  // PRORROGAÇÃO
+  const salvarProrrog = async () => {
+    if (!fv('novo_prazo') || !fv('justificativa')) { alert('Informe o novo prazo e a justificativa.'); return; }
+    setSaving(true);
+    const cId = fv('contrato_id');
+    const novoPrazoISO = toISO(fv('novo_prazo')) || fv('novo_prazo');
+    await sb().from('contratos').update({ fim: novoPrazoISO, status: 'em renovacao', updated_at: new Date().toISOString() }).eq('id', cId);
+    await sb().from('aditivos').insert({
+      id: uid('A'), contrato_id: cId, tipo:'Prorrogação de prazo', data: today(),
+      justificativa: fv('justificativa'), vlr_acrescido:0, vlr_suprimido:0,
+      novo_prazo: novoPrazoISO, status:'Em análise', obs: fv('obs')||''
+    });
+    setSaving(false);
+    await loadAll(); closeModal();
+  };
+
+  // EXCLUIR
+  const excluir = async (tabela, id) => {
+    if (!confirm(`Excluir este registro? Ação irreversível.`)) return;
+    await sb().from(tabela).delete().eq('id', id);
+    await loadAll();
+  };
+
+  // ─── RENDER SECTIONS ───────────────────────────────────────────────────────
+  const renderPainel = () => {
+    const ativos = contratos.filter(c => c.status !== 'vencido').length;
+    const vencidos = contratos.filter(c => c.status === 'vencido').length;
+    const pVenc = contratos.filter(c => { const d = dias(c.fim); return d >= 0 && d <= 90; }).length;
+    const riscoFin = contratos.filter(c => pct(c) >= 85).length;
+    const criticos = contratos.filter(c => pct(c) >= 95).length;
+    const adi = aditivos.filter(a => a.status === 'Em análise').length;
+
+    const alertas = [];
+    contratos.forEach(c => {
+      const p = pct(c), d = dias(c.fim);
+      if (d < 0) alertas.push(<AlertBox key={c.id+'V'} cls="vermelho" icon="fa-ban"><strong>{c.numero}</strong> — Contrato VENCIDO em {fmtD(c.fim)}. Regularizar imediatamente.</AlertBox>);
+      if (p >= 95) alertas.push(<AlertBox key={c.id+'C'} cls="vermelho" icon="fa-circle-exclamation"><strong>{c.numero}</strong> — Saldo crítico: {p}% consumido. Saldo: {brl(c.vlr_total - c.consumo_acum)}</AlertBox>);
+      else if (p >= 85) alertas.push(<AlertBox key={c.id+'R'} cls="laranja" icon="fa-triangle-exclamation"><strong>{c.numero}</strong> — Risco financeiro: {p}% consumido</AlertBox>);
+      else if (p >= 70) alertas.push(<AlertBox key={c.id+'A'} cls="amarelo" icon="fa-circle-info"><strong>{c.numero}</strong> — Atenção: {p}% consumido — monitorar</AlertBox>);
+      if (d >= 0 && d <= 30) alertas.push(<AlertBox key={c.id+'P30'} cls="vermelho" icon="fa-calendar-xmark"><strong>{c.numero}</strong> — Vence em {d} dia(s): verificar prorrogação</AlertBox>);
+      else if (d > 30 && d <= 60) alertas.push(<AlertBox key={c.id+'P60'} cls="laranja" icon="fa-calendar-minus"><strong>{c.numero}</strong> — Vence em {d} dias: iniciar renovação</AlertBox>);
+      else if (d > 60 && d <= 90) alertas.push(<AlertBox key={c.id+'P90'} cls="amarelo" icon="fa-calendar"><strong>{c.numero}</strong> — Vence em {d} dias: planejar renovação</AlertBox>);
+    });
+
+    return (
+      <>
+        <div className="cards-grid">
+          {[
+            {cls:'verde', val:ativos, label:'Contratos ativos', sub:`de ${contratos.length} total`},
+            {cls:pVenc>0?'amarelo':'verde', val:pVenc, label:'Próximos do vencimento', sub:'≤ 90 dias'},
+            {cls:riscoFin>0?'laranja':'verde', val:riscoFin, label:'Risco financeiro', sub:'≥ 85% consumido'},
+            {cls:criticos>0?'vermelho':'verde', val:criticos, label:'Saldo crítico', sub:'≥ 95% consumido'},
+            {cls:vencidos>0?'vermelho':'verde', val:vencidos, label:'Contratos vencidos', sub:'necessitam ação'},
+            {cls:'azul', val:adi, label:'Aditivos em análise', sub:'pendentes'},
+          ].map((card,i) => (
+            <div key={i} className={`stat-card ${card.cls}`}>
+              <div className="s-val">{card.val}</div>
+              <div className="s-label">{card.label}</div>
+              <div className="s-sub">{card.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+          <div className="panel">
+            <div className="panel-head"><h2><i className="fa-solid fa-triangle-exclamation" /> Alertas ativos</h2></div>
+            <div className="panel-body" style={{paddingTop:8}}>
+              {alertas.length ? alertas : <div className="empty"><i className="fa-solid fa-circle-check" style={{color:'#22c55e'}} />Sem alertas no momento</div>}
+            </div>
+          </div>
+          <div className="panel">
+            <div className="panel-head"><h2><i className="fa-solid fa-hourglass-half" /> Prazos críticos</h2></div>
+            <div className="panel-body" style={{paddingTop:4}}>
+              {contratos.slice().sort((a,b) => dias(a.fim) - dias(b.fim)).map(c => (
+                <div key={c.id} className="deadline-item">
+                  <div><div className="dl-name">{c.numero}</div><div className="dl-emp">{c.empresa?.substring(0,32)}</div></div>
+                  <BadgePrazo d={dias(c.fim)} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head"><h2><i className="fa-solid fa-table-list" /> Visão geral</h2></div>
+          <div className="tbl-wrap">
+            <table><thead><tr><th>Nº</th><th>Empresa</th><th>Segmento</th><th>Valor total</th><th>% Consumido</th><th>Saldo</th><th>Prazo</th><th>Status</th></tr></thead>
+            <tbody>{contratos.map(c => (
+              <tr key={c.id}>
+                <td className="mono"><strong>{c.numero}</strong></td>
+                <td style={{maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.empresa}</td>
+                <td className="cell-m">{c.segmento}</td>
+                <td>{brl(c.vlr_total)}</td>
+                <td style={{minWidth:120}}><ProgBar p={pct(c)} /></td>
+                <td>{brl(c.vlr_total - c.consumo_acum)}</td>
+                <td><BadgePrazo d={dias(c.fim)} /></td>
+                <td><BadgeStatus s={c.status} /></td>
+              </tr>
+            ))}</tbody></table>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  const renderContratos = () => (
+    <div className="panel">
+      <div className="panel-head"><h2><i className="fa-solid fa-file-contract" /> Contratos cadastrados</h2>
+        <button className="btn btn-primary btn-sm" onClick={() => openModal('novo')}><i className="fa-solid fa-plus" /> Cadastrar</button>
+      </div>
+      <div className="tbl-wrap">
+        <table><thead><tr><th>Nº</th><th>Empresa</th><th>Objeto</th><th>Setor</th><th>Início</th><th>Vencimento</th><th>Vlr mensal</th><th>Vlr total</th><th>Consumo</th><th>Status</th><th></th></tr></thead>
+        <tbody>{contratos.map(c => (
+          <tr key={c.id}>
+            <td className="mono"><strong>{c.numero}</strong></td>
+            <td style={{maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.empresa}</td>
+            <td className="cell-m" style={{maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.objeto}</td>
+            <td className="cell-m">{c.setor}</td>
+            <td className="cell-m">{fmtD(c.inicio)}</td>
+            <td className="cell-m">{fmtD(c.fim)}</td>
+            <td>{brl(c.vlr_mensal)}</td>
+            <td>{brl(c.vlr_total)}</td>
+            <td style={{minWidth:100}}><ProgBar p={pct(c)} /></td>
+            <td><BadgeStatus s={c.status} /></td>
+            <td>
+              <ActBtn icon="fa-eye" onClick={() => openModal('ver', c.id)} title="Ver" />
+              <ActBtn icon="fa-pen" onClick={() => openModal('editar', c.id)} title="Editar" />
+              <ActBtn icon="fa-trash" onClick={() => excluir('contratos', c.id)} title="Excluir" danger />
+            </td>
+          </tr>
+        ))}</tbody></table>
+      </div>
+    </div>
+  );
+
+  const renderFinanceiro = () => {
+    const c = contratos.find(x => x.id === selFin);
+    if (!c) return null;
+    const p = pct(c), saldo = c.vlr_total - c.consumo_acum;
+    const meses = Math.max(1, Math.round(dias(c.fim) / 30));
+    const proj = c.vlr_mensal * meses, risco = proj > saldo;
+    return (
+      <>
+        <div className="cards-grid">
+          {[
+            {label:'Valor total contratado', val:brl(c.vlr_total), cls:''},
+            {label:'Valor mensal previsto', val:brl(c.vlr_mensal), cls:''},
+            {label:'Valor acumulado executado', val:brl(c.consumo_acum), cls:clsFin(p), sub:`${p}% do total`},
+            {label:'Saldo contratual', val:brl(saldo), cls:saldo<c.vlr_mensal*2?'vermelho':saldo<c.vlr_mensal*4?'laranja':'verde'},
+          ].map((card,i) => (
+            <div key={i} className={`stat-card ${card.cls}`}>
+              <div className="s-label" style={{marginBottom:6}}>{card.label}</div>
+              <div className="s-val" style={{fontSize:17}}>{card.val}</div>
+              {card.sub && <div className="s-sub">{card.sub}</div>}
+            </div>
+          ))}
+        </div>
+        <div className="panel">
+          <div className="panel-head"><h2><i className="fa-solid fa-chart-line" /> Análise financeira — {c.numero}</h2>
+            <button className="btn btn-primary btn-sm" onClick={() => openModal('execucao', c.id)}><i className="fa-solid fa-plus" /> Registrar execução</button>
+          </div>
+          <div className="panel-body">
+            <div style={{marginBottom:14}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:5,fontSize:12.5}}><span style={{color:'var(--text2)'}}>Percentual consumido</span><strong>{p}%</strong></div>
+              <div className="prog-bar" style={{height:11,borderRadius:6}}><div className={`prog-fill ${clsFin(p)}`} style={{width:p+'%'}} /></div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--text3)',marginTop:4}}>
+                <span>0%</span><span style={{color:'#f59e0b'}}>70%</span><span style={{color:'#f97316'}}>85%</span><span style={{color:'#ef4444'}}>95%</span><span>100%</span>
+              </div>
+            </div>
+            <AlertBox cls={risco?'vermelho':'verde'} icon={risco?'fa-triangle-exclamation':'fa-circle-check'}>
+              <strong>Projeção:</strong> {brl(proj)} nos próximos {meses} mês(es) · Saldo: {brl(saldo)}<br/>
+              {risco ? <strong>⚠ Risco de extrapolação — solicitar suplementação</strong> : 'Saldo suficiente para o período restante'}
+            </AlertBox>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  const renderQuantidade = () => {
+    const lista = itens.filter(i => i.contrato_id === selQtd);
+    if (!lista.length) return (
+      <div className="panel">
+        <div className="panel-head">
+          <h2><i className="fa-solid fa-list-check" /> Itens contratados</h2>
+          <button className="btn btn-primary btn-sm" onClick={() => openModal('item', selQtd)}><i className="fa-solid fa-plus" /> Adicionar item</button>
+        </div>
+        <div className="panel-body">
+          <div className="empty">
+            <i className="fa-solid fa-boxes-stacked" />
+            Nenhum item cadastrado para este contrato.<br/>
+            <span style={{fontSize:12,marginTop:6,display:'block'}}>Clique em <strong>"+ Adicionar item"</strong> acima para começar.</span>
+          </div>
+        </div>
+      </div>
+    );
+    return (
+      <div className="panel">
+        <div className="panel-head"><h2><i className="fa-solid fa-list-check" /> Itens contratados</h2>
+          <button className="btn btn-primary btn-sm" onClick={() => openModal('item', selQtd)}><i className="fa-solid fa-plus" /> Adicionar item</button>
+        </div>
+        <div className="tbl-wrap">
+          <table><thead><tr><th>Item / serviço</th><th>Qtd/mês</th><th>Exec. mês</th><th>Acumulado</th><th>Saldo mês</th><th>Média</th><th>% Execução</th><th>Status</th><th></th></tr></thead>
+          <tbody>{lista.map(it => {
+            const p = it.qtd_mensal > 0 ? Math.round((it.qtd_exec / it.qtd_mensal) * 100) : 0;
+            const media = Math.round(it.qtd_acum / Math.max(1, new Date().getMonth()));
+            const cls = p >= 95 ? 'vermelho' : p >= 85 ? 'laranja' : p >= 70 ? 'amarelo' : 'verde';
+            return (
+              <tr key={it.id}>
+                <td>{it.item}</td>
+                <td style={{textAlign:'center'}}>{it.qtd_mensal} <span className="cell-m">{it.unit}</span></td>
+                <td style={{textAlign:'center'}}>{it.qtd_exec}</td>
+                <td style={{textAlign:'center'}}>{it.qtd_acum}</td>
+                <td style={{textAlign:'center'}}>{it.qtd_mensal - it.qtd_exec}</td>
+                <td style={{textAlign:'center'}} className="cell-m">{media}/mês</td>
+                <td style={{minWidth:100}}><ProgBar p={Math.min(p,100)} /></td>
+                <td><Badge cls={cls} label={p>=95?'Crítico':p>=85?'Risco':p>=70?'Atenção':'Regular'} /></td>
+                <td><ActBtn icon="fa-trash" onClick={() => excluir('itens', it.id)} danger /></td>
+              </tr>
+            );
+          })}</tbody></table>
+        </div>
+        <div className="legend">
+          {[['#22c55e','Regular < 70%'],['#f59e0b','Atenção ≥ 70%'],['#f97316','Risco ≥ 85%'],['#ef4444','Crítico ≥ 95%']].map(([color,label]) => (
+            <div key={label} className="leg-item"><div className="leg-dot" style={{background:color}} />{label}</div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPrazo = () => (
+    <div className="panel">
+      <div className="panel-head"><h2><i className="fa-solid fa-calendar-days" /> Monitoramento de prazos</h2></div>
+      <div className="tbl-wrap">
+        <table><thead><tr><th>Nº</th><th>Empresa</th><th>Início</th><th>Vencimento</th><th>Situação</th><th>Alerta</th><th>Status</th><th></th></tr></thead>
+        <tbody>{contratos.slice().sort((a,b) => dias(a.fim) - dias(b.fim)).map(c => {
+          const d = dias(c.fim);
+          const alertas = [];
+          if (d < 0) alertas.push(<Badge key="v" cls="vermelho" label="Vencido" />);
+          else if (d <= 30) alertas.push(<Badge key="30" cls="vermelho" label="Alerta 30 dias" />);
+          else if (d <= 60) alertas.push(<Badge key="60" cls="laranja" label="Alerta 60 dias" />);
+          else if (d <= 90) alertas.push(<Badge key="90" cls="amarelo" label="Alerta 90 dias" />);
+          else alertas.push(<Badge key="ok" cls="verde" label="Dentro do prazo" />);
+          return (
+            <tr key={c.id}>
+              <td className="mono"><strong>{c.numero}</strong></td>
+              <td style={{maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.empresa}</td>
+              <td className="cell-m">{fmtD(c.inicio)}</td>
+              <td className="cell-m">{fmtD(c.fim)}</td>
+              <td><BadgePrazo d={d} /></td>
+              <td>{alertas}</td>
+              <td><BadgeStatus s={c.status} /></td>
+              <td><ActBtn icon="fa-clock-rotate-left" onClick={() => openModal('prorrog', c.id)} title="Solicitar prorrogação" /></td>
+            </tr>
+          );
+        })}</tbody></table>
+      </div>
+    </div>
+  );
+
+  const renderAditivos = () => (
+    <div className="panel">
+      <div className="panel-head"><h2><i className="fa-solid fa-file-pen" /> Aditivos e supressões</h2>
+        <button className="btn btn-primary btn-sm" onClick={() => openModal('aditivo')}><i className="fa-solid fa-plus" /> Registrar</button>
+      </div>
+      <div className="tbl-wrap">
+        <table><thead><tr><th>ID</th><th>Contrato</th><th>Tipo</th><th>Data</th><th>Vlr acrescido</th><th>Vlr suprimido</th><th>Novo prazo</th><th>Status</th><th>Obs.</th><th></th></tr></thead>
+        <tbody>{aditivos.map(a => {
+          const c = contratos.find(x => x.id === a.contrato_id);
+          const cls = {Aprovado:'verde','Em análise':'amarelo',Indeferido:'vermelho',Encerrado:'cinza'}[a.status]||'cinza';
+          return (
+            <tr key={a.id}>
+              <td className="mono">{a.id?.substring(0,8)}</td>
+              <td className="mono">{c?.numero || '—'}</td>
+              <td style={{maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.tipo}</td>
+              <td className="cell-m">{fmtD(a.data)}</td>
+              <td>{a.vlr_acrescido > 0 ? brl(a.vlr_acrescido) : '—'}</td>
+              <td>{a.vlr_suprimido > 0 ? brl(a.vlr_suprimido) : '—'}</td>
+              <td className="cell-m">{a.novo_prazo ? fmtD(a.novo_prazo) : '—'}</td>
+              <td><Badge cls={cls} label={a.status} /></td>
+              <td className="cell-m" style={{maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.obs || '—'}</td>
+              <td><ActBtn icon="fa-trash" onClick={() => excluir('aditivos', a.id)} danger /></td>
+            </tr>
+          );
+        })}</tbody></table>
+      </div>
+    </div>
+  );
+
+  // ─── MODAL CONTENTS ────────────────────────────────────────────────────────
+  const FG = ({ label, children, full }) => <div className={`form-group${full?' full':''}`}><label>{label}</label>{children}</div>;
+  // Inputs não controlados — sem re-render ao digitar, salva no onChange via ref
+  const FI = ({ k, disabled, type, placeholder, style }) => {
+    const r = useRef(null);
+    useEffect(() => { if(r.current && document.activeElement !== r.current) r.current.value = fv(k)||''; });
+    return <input ref={r} defaultValue={fv(k)||''} onBlur={e=>sf(k,e.target.value)} onChange={e=>sf(k,e.target.value)} disabled={disabled} type={type} placeholder={placeholder} style={style} />;
+  };
+  const FS = ({ k, opts, disabled }) => {
+    const r = useRef(null);
+    useEffect(() => { if(r.current) r.current.value = fv(k)||''; });
+    return <select ref={r} defaultValue={fv(k)||''} onChange={e=>sf(k,e.target.value)} disabled={disabled}>{opts.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}</select>;
+  };
+  const FT = ({ k, disabled, placeholder }) => {
+    const r = useRef(null);
+    useEffect(() => { if(r.current && document.activeElement !== r.current) r.current.value = fv(k)||''; });
+    return <textarea ref={r} defaultValue={fv(k)||''} onBlur={e=>sf(k,e.target.value)} onChange={e=>sf(k,e.target.value)} disabled={disabled} placeholder={placeholder} />;
+  };
+
+  // Campo de data não controlado
+  const FD = ({ k, disabled }) => {
+    const r = useRef(null);
+    useEffect(() => { if(r.current && document.activeElement !== r.current) r.current.value = fromISO(fv(k))||''; });
+    return <input ref={r} defaultValue={fromISO(fv(k))||''} onChange={e=>sf(k,e.target.value)} onBlur={e=>sf(k,e.target.value)} placeholder="DD/MM/AAAA" maxLength={10} disabled={disabled} style={{letterSpacing:'0.05em'}} />;
+  };
+
+  const renderModalContent = () => {
+    if (!modal) return null;
+    const { tipo, id } = modal;
+    const ro = tipo === 'ver';
+    const cOpts = contratos.map(c => ({ v: c.id, l: `${c.numero} · ${c.empresa.substring(0,26)}` }));
+
+    if (tipo === 'novo' || tipo === 'editar' || tipo === 'ver') return (
+      <>
+        <div className="form-row"><div className="sec-label">Identificação</div></div>
+        <div className="form-row">
+          <FG label="Nº do contrato *"><FI k="numero" placeholder="000/2025" disabled={ro} /></FG>
+          <FG label="Tipo de contrato"><FS k="tipo" opts={['Serviço continuado','Fornecimento','Gestão','Obra','Serviço','Locação']} disabled={ro} /></FG>
+          <FG label="Empresa contratada *" full><FI k="empresa" placeholder="Razão social" disabled={ro} /></FG>
+          <FG label="Objeto do contrato *" full><FI k="objeto" placeholder="Descrição do objeto" disabled={ro} /></FG>
+          <FG label="Segmento"><FI k="segmento" placeholder="Ex: Diagnóstico por imagem" disabled={ro} /></FG>
+          <FG label="Setor responsável"><FI k="setor" placeholder="Ex: CME, Laboratório" disabled={ro} /></FG>
+        </div>
+        <div className="form-row"><div className="sec-label">Responsáveis</div></div>
+        <div className="form-row">
+          <FG label="Fiscal do contrato"><FI k="fiscal" disabled={ro} /></FG>
+          <FG label="Gestor do contrato"><FI k="gestor" disabled={ro} /></FG>
+        </div>
+        <div className="form-row"><div className="sec-label">Vigência e valores</div></div>
+        <div className="form-row cols3">
+          <FG label="Data de início"><FD k="inicio" disabled={ro} /></FG>
+          <FG label="Data final (vencimento)"><FD k="fim" disabled={ro} /></FG>
+          <FG label="Forma de medição"><FS k="medicao" opts={['Por produção','Por ciclo','Por consumo','Por indicadores','Mensal fixo']} disabled={ro} /></FG>
+          <FG label="Valor mensal (R$)"><FI k="vlr_mensal" type="number" placeholder="0,00" disabled={ro} /></FG>
+          <FG label="Valor total contratado (R$)"><FI k="vlr_total" type="number" placeholder="0,00" disabled={ro} /></FG>
+          <FG label="Status"><FS k="status" opts={[{v:'vigente',l:'Vigente'},{v:'proximo',l:'Próx. vencimento'},{v:'vencido',l:'Vencido'},{v:'em renovacao',l:'Em renovação'}]} disabled={ro} /></FG>
+        </div>
+        {!ro && <><div className="form-row"><div className="sec-label">Controle financeiro</div></div>
+        <div className="form-row">
+          <FG label="Valor acumulado executado (R$)"><FI k="consumo_acum" type="number" placeholder="0,00" /></FG>
+        </div></>}
+      </>
+    );
+
+    if (tipo === 'aditivo') return (
+      <div className="form-row" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11}}>
+        <FG label="Contrato *"><FS k="contrato_id" opts={[{v:'',l:'— Selecionar —'},...cOpts]} /></FG>
+        <FG label="Tipo de aditivo *"><FS k="tipo" opts={['Suplementação de valor','Supressão de item','Prorrogação de prazo','Reequilíbrio econômico','Misto (valor + prazo)']} /></FG>
+        <FG label="Data da solicitação"><FD k="data" /></FG>
+        <FG label="Status"><FS k="status" opts={['Em análise','Aprovado','Indeferido','Encerrado']} /></FG>
+        <FG label="Valor acrescido (R$)"><FI k="vlr_acrescido" type="number" placeholder="0,00" /></FG>
+        <FG label="Valor suprimido (R$)"><FI k="vlr_suprimido" type="number" placeholder="0,00" /></FG>
+        <FG label="Novo prazo final (se aplicável)"><FD k="novo_prazo" /></FG>
+        <FG label="Nº do processo SEI"><FI k="obs" placeholder="Ex: 2026.001234" /></FG>
+        <FG label="Justificativa *" full><FT k="justificativa" placeholder="Fundamento legal e técnico (ex: art. 124, Lei 14.133/2021)..." /></FG>
+      </div>
+    );
+
+    if (tipo === 'item') return (
+      <div className="form-row" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11}}>
+        <FG label="Item / serviço *" full><FI k="item" placeholder="Descrição completa do item" /></FG>
+        <FG label="Quantidade contratada/mês *"><FI k="qtd_mensal" type="number" placeholder="0" /></FG>
+        <FG label="Unidade de medida"><FI k="unit" placeholder="Ex: exame, m³, ciclo" /></FG>
+        <FG label="Qtd executada este mês"><FI k="qtd_exec" type="number" placeholder="0" /></FG>
+        <FG label="Qtd acumulada total"><FI k="qtd_acum" type="number" placeholder="0" /></FG>
+      </div>
+    );
+
+    if (tipo === 'execucao') {
+      const c = contratos.find(x => x.id === id);
+      return (
+        <>
+          {c && <AlertBox cls="azul" icon="fa-circle-info">Contrato <strong>{c.numero}</strong> · Saldo atual: <strong>{brl(c.vlr_total - c.consumo_acum)}</strong></AlertBox>}
+          <div className="form-row" style={{marginTop:12}}>
+            <FG label="Mês de referência"><FI k="mes_referencia" type="month" /></FG>
+            <FG label="Valor executado (R$) *"><FI k="valor" type="number" placeholder="0,00" /></FG>
+            <FG label="Observações" full><FI k="observacao" placeholder="Ex: medição parcial, glosa, ajuste..." /></FG>
+          </div>
+        </>
+      );
+    }
+
+    if (tipo === 'prorrog') {
+      const c = contratos.find(x => x.id === id);
+      const d = c ? dias(c.fim) : 0;
+      return (
+        <>
+          <AlertBox cls={d<0?'vermelho':'amarelo'} icon="fa-calendar-days">
+            Vencimento atual: <strong>{fmtD(c?.fim)}</strong> · {d<0?`Vencido há ${Math.abs(d)} dia(s)`:`${d} dia(s) restantes`}
+          </AlertBox>
+          <div className="form-row" style={{marginTop:12}}>
+            <FG label="Novo prazo final *"><FD k="novo_prazo" /></FG>
+            <FG label="Nº do processo SEI"><FI k="sei" placeholder="2026.XXXXXX" /></FG>
+            <FG label="Justificativa *" full><FT k="justificativa" placeholder="Ex: art. 107 da Lei 14.133/2021 — necessidade de continuidade do serviço..." /></FG>
+            <FG label="Observações" full><FT k="obs" placeholder="Informações adicionais..." /></FG>
+          </div>
+        </>
+      );
+    }
+    return null;
+  };
+
+  const modalConfig = {
+    novo: { title:'Cadastrar novo contrato', icon:'fa-file-contract', onSave: salvarContrato },
+    editar: { title:`Editar contrato`, icon:'fa-pen', onSave: salvarContrato },
+    ver: { title:'Detalhes do contrato', icon:'fa-eye', onSave: null },
+    aditivo: { title:'Registrar aditivo / supressão', icon:'fa-file-pen', onSave: salvarAditivo },
+    item: { title:'Adicionar item contratado', icon:'fa-boxes-stacked', onSave: salvarItem },
+    execucao: { title:'Registrar execução mensal', icon:'fa-circle-dollar-to-slot', onSave: salvarExecucao },
+    prorrog: { title:'Solicitar prorrogação de prazo', icon:'fa-clock-rotate-left', onSave: salvarProrrog },
+  };
+
+
+  // ─── ANÁLISE PREDITIVA ──────────────────────────────────────────────────
+  const renderPreditiva = () => {
+    const hoje = new Date();
+    const analise = [];
+    contratos.forEach(c => {
+      if(!c.inicio||!c.fim) return;
+      const fimC = new Date(c.fim);
+      const inicioC = new Date(c.inicio);
+      const mesesRest = Math.max(0, Math.ceil((fimC-hoje)/(1000*60*60*24*30)));
+      const mesesDec = Math.max(1, Math.ceil((hoje-inicioC)/(1000*60*60*24*30)));
+      const mesesTot = Math.ceil((fimC-inicioC)/(1000*60*60*24*30));
+      itens.filter(i=>i.contrato_id===c.id).forEach(it=>{
+        const media = it.qtd_acum/mesesDec;
+        const proj = Math.round(media*mesesRest);
+        const qtdTot = it.qtd_mensal*mesesTot;
+        const saldo = Math.round(qtdTot-it.qtd_acum);
+        const dif = Math.round(saldo-proj);
+        const pct = qtdTot>0?Math.min(Math.round((it.qtd_acum/qtdTot)*100),100):0;
+        const acao = dif<-1?'ADITIVO':dif>it.qtd_mensal*2?'SUPRESSÃO':'OK';
+        analise.push({contrato:c.numero,item:it.item,qtdMensal:it.qtd_mensal,
+          qtdAcum:it.qtd_acum,qtdTot:Math.round(qtdTot),saldo,
+          media:media.toFixed(1),mesesRest,proj,dif,acao,pct});
+      });
+    });
+    const aditivo = analise.filter(a=>a.acao==='ADITIVO').sort((a,b)=>a.dif-b.dif);
+    const supressao = analise.filter(a=>a.acao==='SUPRESSÃO').sort((a,b)=>b.dif-a.dif);
+    const ok = analise.filter(a=>a.acao==='OK');
+    const Head = () => <thead><tr><th>Contrato</th><th>Item</th><th>Qtd/mês</th><th>Acumulado</th><th>Saldo atual</th><th>Média/mês</th><th>Meses rest.</th><th>Projeção</th><th>Diferença</th><th>% consumido</th><th>Ação</th></tr></thead>;
+    const Row = ({a}) => <tr>
+      <td className="mono"><strong>{a.contrato}</strong></td>
+      <td style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11.5}}>{a.item}</td>
+      <td style={{textAlign:'center'}}>{a.qtdMensal}</td>
+      <td style={{textAlign:'center'}}>{a.qtdAcum}</td>
+      <td style={{textAlign:'center',fontWeight:600,color:a.saldo<0?'#b91c1c':'var(--text)'}}>{a.saldo}</td>
+      <td style={{textAlign:'center'}}>{a.media}</td>
+      <td style={{textAlign:'center'}}>{a.mesesRest}</td>
+      <td style={{textAlign:'center',fontWeight:600}}>{a.proj}</td>
+      <td style={{textAlign:'center',fontWeight:700,color:a.acao==='ADITIVO'?'#b91c1c':a.acao==='SUPRESSÃO'?'#92400e':'#16a34a'}}>{a.dif>0?'+':''}{a.dif}</td>
+      <td style={{minWidth:90}}><ProgBar p={a.pct}/></td>
+      <td>{a.acao==='ADITIVO'&&<span className="badge vermelho">⚠ Aditivo</span>}{a.acao==='SUPRESSÃO'&&<span className="badge amarelo">↓ Supressão</span>}{a.acao==='OK'&&<span className="badge verde">✓ OK</span>}</td>
+    </tr>;
+    return <>
+      <div className="cards-grid">
+        <div className={`stat-card ${aditivo.length>0?'vermelho':'verde'}`}><div className="s-val">{aditivo.length}</div><div className="s-label">Precisam de aditivo</div><div className="s-sub">vai faltar antes do fim</div></div>
+        <div className={`stat-card ${supressao.length>0?'amarelo':'verde'}`}><div className="s-val">{supressao.length}</div><div className="s-label">Indicados para supressão</div><div className="s-sub">vai sobrar ao fim do contrato</div></div>
+        <div className="stat-card verde"><div className="s-val">{ok.length}</div><div className="s-label">Itens equilibrados</div><div className="s-sub">consumo dentro do esperado</div></div>
+        <div className="stat-card azul"><div className="s-val">{analise.length}</div><div className="s-label">Total analisado</div><div className="s-sub">em {contratos.length} contratos</div></div>
+      </div>
+      <div className="panel"><div className="panel-head"><h2><i className="fa-solid fa-circle-info"/>Como a análise funciona</h2></div>
+        <div className="panel-body" style={{fontSize:12.5,color:'var(--text2)',lineHeight:1.8}}>
+          <strong style={{color:'var(--text)'}}>Média real/mês</strong> = quantidade acumulada ÷ meses decorridos desde o início<br/>
+          <strong style={{color:'var(--text)'}}>Projeção</strong> = média real × meses restantes até o fim do contrato<br/>
+          <strong style={{color:'var(--text)'}}>Diferença</strong> = saldo atual − projeção de consumo<br/>
+          <span style={{color:'#b91c1c',fontWeight:600}}>⚠ Aditivo</span>: diferença negativa — vai faltar antes do vencimento<br/>
+          <span style={{color:'#92400e',fontWeight:600}}>↓ Supressão</span>: vai sobrar mais de 2 meses de consumo — pode suprimir e remanejar
+        </div>
+      </div>
+      {aditivo.length>0&&<div className="panel"><div className="panel-head"><h2><i className="fa-solid fa-triangle-exclamation" style={{color:'#ef4444'}}/>Precisam de ADITIVO ({aditivo.length})</h2><button className="btn btn-danger btn-sm" onClick={()=>openModal('aditivo')}><i className="fa-solid fa-plus"/> Registrar aditivo</button></div><div className="tbl-wrap"><table><Head/><tbody>{aditivo.map((a,i)=><Row key={i} a={a}/>)}</tbody></table></div></div>}
+      {supressao.length>0&&<div className="panel"><div className="panel-head"><h2><i className="fa-solid fa-arrow-down" style={{color:'#f59e0b'}}/>Indicados para SUPRESSÃO ({supressao.length})</h2><button className="btn btn-secondary btn-sm" onClick={()=>openModal('aditivo')}><i className="fa-solid fa-plus"/> Registrar supressão</button></div><div className="tbl-wrap"><table><Head/><tbody>{supressao.map((a,i)=><Row key={i} a={a}/>)}</tbody></table></div></div>}
+      {ok.length>0&&<div className="panel"><div className="panel-head"><h2><i className="fa-solid fa-circle-check" style={{color:'#22c55e'}}/>Itens equilibrados ({ok.length})</h2></div><div className="tbl-wrap"><table><Head/><tbody>{ok.map((a,i)=><Row key={i} a={a}/>)}</tbody></table></div></div>}
+    </>;
+  };
+
+  const navItems = [
+    { sec:'painel', icon:'fa-gauge-high', label:'Painel executivo', group:'main' },
+    { sec:'contratos', icon:'fa-file-contract', label:'Contratos', group:'main' },
+    { sec:'financeiro', icon:'fa-circle-dollar-to-slot', label:'Controle financeiro', group:'controles' },
+    { sec:'quantidade', icon:'fa-boxes-stacked', label:'Controle de quantidade', group:'controles' },
+    { sec:'prazo', icon:'fa-calendar-days', label:'Controle de prazo', group:'controles' },
+    { sec:'preditiva', icon:'fa-brain', label:'Análise preditiva', group:'gestao' },
+    { sec:'aditivos', icon:'fa-file-pen', label:'Aditivos e supressões', group:'gestao' },
+  ];
+
+  const sectionTitles = { painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões' };
+
+  if (!configured) return (
+    <div style={{minHeight:'100vh',background:'#EEF2F6'}}>
+      <div style={{background:'var(--teal-d)',padding:'16px 20px',display:'flex',alignItems:'center',gap:10}}>
+        <img src={`data:image/png;base64,${LOGO_B64}`} style={{width:100,filter:'brightness(0) invert(1)'}} alt="Logo" />
+        <div style={{color:'rgba(255,255,255,.7)',fontSize:12}}>SisContratos HMC · Hospital Municipal de Cordeiro</div>
+      </div>
+      <ConfigScreen onSave={handleConfig} />
+    </div>
+  );
+
+  return (
+    <>
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <img src={`data:image/png;base64,${LOGO_B64}`} className="sidebar-logo" alt="Prima Qualitá Saúde" />
+          <div className="sidebar-sub"><strong>SisContratos HMC</strong>Fiscalização de Contratos</div>
+        </div>
+        <div className="nav-sec">Navegação</div>
+        {navItems.filter(n=>n.group==='main').map(n => (
+          <button key={n.sec} className={`nav-btn${section===n.sec?' active':''}`} onClick={() => setSection(n.sec)}>
+            <i className={`fa-solid ${n.icon}`} /> {n.label}
+          </button>
+        ))}
+        <div className="nav-sec">Controles</div>
+        {navItems.filter(n=>n.group==='controles').map(n => (
+          <button key={n.sec} className={`nav-btn${section===n.sec?' active':''}`} onClick={() => setSection(n.sec)}>
+            <i className={`fa-solid ${n.icon}`} /> {n.label}
+          </button>
+        ))}
+        <div className="nav-sec">Gestão</div>
+        {navItems.filter(n=>n.group==='gestao').map(n => (
+          <button key={n.sec} className={`nav-btn${section===n.sec?' active':''}`} onClick={() => setSection(n.sec)}>
+            <i className={`fa-solid ${n.icon}`} /> {n.label}
+          </button>
+        ))}
+        <div className="sidebar-foot">
+          <div className="user-row">
+            <div className="user-av">MD</div>
+            <div>
+              <div className="user-name">Mírian V. Dias</div>
+              <div className="user-role">Diretora Administrativa · Fiscal</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div className="main">
+        <div className="topbar">
+          <div><h1>{sectionTitles[section]}</h1><p>Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2025</p></div>
+          <div className="topbar-right">
+            <div className={`sync-indicator ${syncStatus}`}>
+              {syncStatus==='loading' && <i className="fa-solid fa-rotate spin" />}
+              {syncStatus==='ok' && <i className="fa-solid fa-cloud" />}
+              {syncStatus==='err' && <i className="fa-solid fa-cloud-xmark" />}
+              {syncStatus==='loading'?'Sincronizando...':syncStatus==='ok'?'Sincronizado':'Erro de conexão'}
+            </div>
+            <button className="btn btn-secondary btn-sm" onClick={loadAll}><i className="fa-solid fa-rotate" /> Atualizar</button>
+            <button className="btn btn-primary" onClick={() => openModal('novo')}><i className="fa-solid fa-plus" /> Novo contrato</button>
+          </div>
+        </div>
+
+        <div className="content">
+          {section === 'painel' && renderPainel()}
+          {section === 'contratos' && renderContratos()}
+          {section === 'financeiro' && (
+            <>
+              <select className="sel-contract" value={selFin} onChange={e => setSelFin(e.target.value)}>
+                <option value="">— Selecione um contrato —</option>
+                {contratos.map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa.substring(0,34)}</option>)}
+              </select>
+              {selFin && renderFinanceiro()}
+            </>
+          )}
+          {section === 'quantidade' && (
+            <>
+              <select className="sel-contract" value={selQtd} onChange={e => setSelQtd(e.target.value)}>
+                <option value="">— Selecione um contrato —</option>
+                {contratos.map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa.substring(0,34)}</option>)}
+              </select>
+              {selQtd && renderQuantidade()}
+            </>
+          )}
+          {section === 'prazo' && renderPrazo()}
+          {section === 'preditiva' && renderPreditiva()}
+          {section === 'aditivos' && renderAditivos()}
+        </div>
+      </div>
+
+      {modal && (
+        <Modal
+          title={modal.tipo==='editar'?`Editar — ${contratos.find(x=>x.id===modal.id)?.numero||''}`:modalConfig[modal.tipo]?.title}
+          icon={modalConfig[modal.tipo]?.icon||'fa-file'}
+          onClose={closeModal}
+          footer={
+            <>
+              <button className="btn btn-secondary" onClick={closeModal}>Cancelar</button>
+              {modalConfig[modal.tipo]?.onSave && (
+                <button className="btn btn-primary" onClick={modalConfig[modal.tipo].onSave} disabled={saving}>
+                  {saving ? <><i className="fa-solid fa-rotate spin" /> Salvando...</> : <><i className="fa-solid fa-floppy-disk" /> Salvar</>}
+                </button>
+              )}
+            </>
+          }
+        >
+          {renderModalContent()}
+        </Modal>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
