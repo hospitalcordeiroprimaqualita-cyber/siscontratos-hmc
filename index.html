@@ -376,11 +376,28 @@ function App() {
     await loadAll(); closeModal();
   };
 
+  // Atualiza qtd_semana ou qtd_fds de um profissional de plantão (Radiocom)
+  const atualizarPlantao = async (itemId, campo, valor) => {
+    const qtd = parseFloat(valor) || 0;
+    const { error } = await sb().from('itens').update({ [campo]: qtd }).eq('id', itemId);
+    if (error) { alert('Erro ao salvar: ' + error.message); return; }
+    await loadAll();
+  };
+
   // SALVAR ITEM
   const salvarItem = async () => {
-    if (!fv('item') || !fv('qtd_mensal')) { alert('Informe o nome e a quantidade mensal.'); return; }
+    if (!fv('item')) { alert('Informe o nome.'); return; }
     setSaving(true);
-    const data = {
+    const ehPlantao = !!fv('categoria');
+    const data = ehPlantao ? {
+      id: uid('I'), contrato_id: fv('contrato_id'), item: fv('item'),
+      categoria: fv('categoria'), unit: 'plantão',
+      vlr_unit_semana: parseFloat(fv('vlr_unit_semana')) || 0,
+      vlr_unit_fds: parseFloat(fv('vlr_unit_fds')) || 0,
+      qtd_semana: parseFloat(fv('qtd_semana')) || 0,
+      qtd_fds: parseFloat(fv('qtd_fds')) || 0,
+      qtd_mensal: 0, qtd_exec: 0, qtd_acum: 0
+    } : {
       id: uid('I'), contrato_id: fv('contrato_id'), item: fv('item'),
       qtd_mensal: parseFloat(fv('qtd_mensal')) || 0, qtd_exec: parseFloat(fv('qtd_exec')) || 0,
       qtd_acum: parseFloat(fv('qtd_acum')) || 0, unit: fv('unit') || 'un.'
@@ -429,25 +446,56 @@ function App() {
   };
 
   // ─── RENDER SECTIONS ───────────────────────────────────────────────────────
+  // Calcula análise preditiva de UM item (usado tanto no painel quanto na quantidade)
+  const calcAnaliseItem = (c, it) => {
+    if (!c.inicio || !c.fim) return null;
+    const hoje = new Date();
+    const fimC = new Date(c.fim);
+    const inicioC = new Date(c.inicio);
+    const mesesRest = Math.max(0, Math.ceil((fimC-hoje)/(1000*60*60*24*30)));
+    const mesesDec = Math.max(1, Math.ceil((hoje-inicioC)/(1000*60*60*24*30)));
+    const mesesTot = Math.ceil((fimC-inicioC)/(1000*60*60*24*30));
+    const media = it.qtd_acum/mesesDec;
+    const proj = Math.round(media*mesesRest);
+    const qtdTot = it.qtd_mensal*mesesTot;
+    const saldo = Math.round(qtdTot-it.qtd_acum);
+    const dif = Math.round(saldo-proj);
+    const acao = dif<-1?'ADITIVO':dif>it.qtd_mensal*2?'SUPRESSÃO':'OK';
+    // Dias até o saldo zerar no ritmo atual (para alerta de 30 dias de antecedência)
+    const diasAteZerar = media>0 ? Math.floor((saldo/media)*30) : 9999;
+    return { acao, dif, saldo, proj, media, diasAteZerar };
+  };
+
+  // Contratos que precisam de atenção: financeiro OU quantitativo, com 30+ dias de antecedência
+  const contratosPrecisamAtencao = () => {
+    const setIds = new Set();
+    contratos.forEach(c => {
+      const p = pct(c);
+      const d = dias(c.fim);
+      const saldoRestante = c.vlr_total - c.consumo_acum;
+      const mesesRest = Math.max(0.1, d/30);
+      const consumoMedioMes = c.consumo_acum / Math.max(1, Math.ceil((new Date()-new Date(c.inicio))/(1000*60*60*24*30)));
+      const diasAteZerarFin = consumoMedioMes>0 ? Math.floor((saldoRestante/consumoMedioMes)*30) : 9999;
+      // Risco financeiro: vai zerar o saldo em até 30 dias, ou já está >=85%
+      if (p >= 85 || (diasAteZerarFin <= 30 && diasAteZerarFin >= 0)) setIds.add(c.id);
+      // Risco de prazo contratual
+      if (d <= 30) setIds.add(c.id);
+      // Risco quantitativo: algum item vai precisar de aditivo/supressão em até 30 dias
+      const itensContrato = itens.filter(i => i.contrato_id === c.id);
+      itensContrato.forEach(it => {
+        const a = calcAnaliseItem(c, it);
+        if (a && (a.acao === 'ADITIVO' || (a.acao === 'OK' && a.diasAteZerar <= 30))) setIds.add(c.id);
+      });
+    });
+    return setIds;
+  };
+
   const renderPainel = () => {
     const ativos = contratos.filter(c => c.status !== 'vencido').length;
     const vencidos = contratos.filter(c => c.status === 'vencido').length;
     const pVenc = contratos.filter(c => { const d = dias(c.fim); return d >= 0 && d <= 90; }).length;
-    const riscoFin = contratos.filter(c => pct(c) >= 85).length;
-    const criticos = contratos.filter(c => pct(c) >= 95).length;
+    const precisamAtencao = contratosPrecisamAtencao();
     const adi = aditivos.filter(a => a.status === 'Em análise').length;
-
-    const alertas = [];
-    contratos.forEach(c => {
-      const p = pct(c), d = dias(c.fim);
-      if (d < 0) alertas.push(<AlertBox key={c.id+'V'} cls="vermelho" icon="fa-ban"><strong>{c.numero}</strong> — Contrato VENCIDO em {fmtD(c.fim)}. Regularizar imediatamente.</AlertBox>);
-      if (p >= 95) alertas.push(<AlertBox key={c.id+'C'} cls="vermelho" icon="fa-circle-exclamation"><strong>{c.numero}</strong> — Saldo crítico: {p}% consumido. Saldo: {brl(c.vlr_total - c.consumo_acum)}</AlertBox>);
-      else if (p >= 85) alertas.push(<AlertBox key={c.id+'R'} cls="laranja" icon="fa-triangle-exclamation"><strong>{c.numero}</strong> — Risco financeiro: {p}% consumido</AlertBox>);
-      else if (p >= 70) alertas.push(<AlertBox key={c.id+'A'} cls="amarelo" icon="fa-circle-info"><strong>{c.numero}</strong> — Atenção: {p}% consumido — monitorar</AlertBox>);
-      if (d >= 0 && d <= 30) alertas.push(<AlertBox key={c.id+'P30'} cls="vermelho" icon="fa-calendar-xmark"><strong>{c.numero}</strong> — Vence em {d} dia(s): verificar prorrogação</AlertBox>);
-      else if (d > 30 && d <= 60) alertas.push(<AlertBox key={c.id+'P60'} cls="laranja" icon="fa-calendar-minus"><strong>{c.numero}</strong> — Vence em {d} dias: iniciar renovação</AlertBox>);
-      else if (d > 60 && d <= 90) alertas.push(<AlertBox key={c.id+'P90'} cls="amarelo" icon="fa-calendar"><strong>{c.numero}</strong> — Vence em {d} dias: planejar renovação</AlertBox>);
-    });
 
     return (
       <>
@@ -455,10 +503,9 @@ function App() {
           {[
             {cls:'verde', val:ativos, label:'Contratos ativos', sub:`de ${contratos.length} total`},
             {cls:pVenc>0?'amarelo':'verde', val:pVenc, label:'Próximos do vencimento', sub:'≤ 90 dias'},
-            {cls:riscoFin>0?'laranja':'verde', val:riscoFin, label:'Risco financeiro', sub:'≥ 85% consumido'},
-            {cls:criticos>0?'vermelho':'verde', val:criticos, label:'Saldo crítico', sub:'≥ 95% consumido'},
+            {cls:precisamAtencao.size>0?'laranja':'verde', val:precisamAtencao.size, label:'Precisam de aditivo/supressão', sub:'valor ou quantidade ≤ 30 dias'},
             {cls:vencidos>0?'vermelho':'verde', val:vencidos, label:'Contratos vencidos', sub:'necessitam ação'},
-            {cls:'azul', val:adi, label:'Aditivos em análise', sub:'pendentes'},
+            {cls:'azul', val:adi, label:'Aditivos em análise', sub:'pendentes de aprovação'},
           ].map((card,i) => (
             <div key={i} className={`stat-card ${card.cls}`}>
               <div className="s-val">{card.val}</div>
@@ -468,23 +515,41 @@ function App() {
           ))}
         </div>
 
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+        {precisamAtencao.size > 0 && (
           <div className="panel">
-            <div className="panel-head"><h2><i className="fa-solid fa-triangle-exclamation" /> Alertas ativos</h2></div>
+            <div className="panel-head">
+              <h2><i className="fa-solid fa-triangle-exclamation" style={{color:'#f97316'}}/> Contratos que precisam de atenção</h2>
+              <button className="btn btn-secondary btn-sm" onClick={() => setSection('preditiva')}>Ver análise completa →</button>
+            </div>
             <div className="panel-body" style={{paddingTop:8}}>
-              {alertas.length ? alertas : <div className="empty"><i className="fa-solid fa-circle-check" style={{color:'#22c55e'}} />Sem alertas no momento</div>}
+              {contratos.filter(c => precisamAtencao.has(c.id)).map(c => {
+                const d = dias(c.fim);
+                const p = pct(c);
+                return (
+                  <div key={c.id} className="deadline-item">
+                    <div><div className="dl-name">{c.numero} · {c.empresa?.substring(0,28)}</div>
+                      <div className="dl-emp">
+                        {d<=30 && `Vence em ${d}d`}
+                        {p>=85 && ` · ${p}% consumido`}
+                      </div>
+                    </div>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setSelQtd(c.id); setSection('quantidade'); }}>Ver detalhes</button>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <div className="panel">
-            <div className="panel-head"><h2><i className="fa-solid fa-hourglass-half" /> Prazos críticos</h2></div>
-            <div className="panel-body" style={{paddingTop:4}}>
-              {contratos.slice().sort((a,b) => dias(a.fim) - dias(b.fim)).map(c => (
-                <div key={c.id} className="deadline-item">
-                  <div><div className="dl-name">{c.numero}</div><div className="dl-emp">{c.empresa?.substring(0,32)}</div></div>
-                  <BadgePrazo d={dias(c.fim)} />
-                </div>
-              ))}
-            </div>
+        )}
+
+        <div className="panel">
+          <div className="panel-head"><h2><i className="fa-solid fa-hourglass-half" /> Prazos de todos os contratos</h2></div>
+          <div className="panel-body" style={{paddingTop:4}}>
+            {contratos.slice().sort((a,b) => dias(a.fim) - dias(b.fim)).map(c => (
+              <div key={c.id} className="deadline-item">
+                <div><div className="dl-name">{c.numero}</div><div className="dl-emp">{c.empresa?.substring(0,32)}</div></div>
+                <BadgePrazo d={dias(c.fim)} />
+              </div>
+            ))}
           </div>
         </div>
 
@@ -696,6 +761,81 @@ function App() {
         </div>
       </div>
     );
+
+    // Layout especial para contratos de plantão médico (tem categoria preenchida)
+    const ehPlantaoMedico = lista.some(it => it.categoria);
+    if (ehPlantaoMedico) {
+      const categorias = [...new Set(lista.map(it => it.categoria))];
+      const totalMesContrato = lista.reduce((acc, it) => {
+        const totSemana = (it.qtd_semana||0) * (it.vlr_unit_semana||0);
+        const totFds = (it.qtd_fds||0) * (it.vlr_unit_fds||0);
+        return acc + totSemana + totFds;
+      }, 0);
+      return (
+        <>
+        <div className="cards-grid">
+          <div className="stat-card azul"><div className="s-val">{lista.length}</div><div className="s-label">Profissionais cadastrados</div></div>
+          <div className="stat-card verde"><div className="s-val" style={{fontSize:17}}>{brl(totalMesContrato)}</div><div className="s-label">Total do mês lançado</div></div>
+        </div>
+        {categorias.map(cat => {
+          const profissionais = lista.filter(it => it.categoria === cat);
+          return (
+            <div key={cat} className="panel">
+              <div className="panel-head"><h2><i className="fa-solid fa-user-doctor"/> {cat}</h2>
+                <span className="badge azul">{profissionais.length} profissional(is)</span>
+              </div>
+              <div className="panel-body" style={{paddingTop:8}}>
+                <div style={{fontSize:11,color:'var(--text2)',marginBottom:10,padding:'7px 10px',background:'var(--gray)',borderRadius:5}}>
+                  <i className="fa-solid fa-circle-info"/> Preencha a <strong>quantidade de plantões</strong> realizados em <strong>dia de semana</strong> e em <strong>final de semana</strong> separadamente — os valores são diferentes.
+                </div>
+                <div className="tbl-wrap">
+                  <table>
+                    <thead><tr>
+                      <th>Profissional</th>
+                      <th style={{background:'#E0F4FB'}}>Qtd plantões<br/>Dia de semana</th>
+                      <th style={{background:'#E0F4FB'}}>Valor/plantão<br/>Dia de semana</th>
+                      <th style={{background:'#FFF4E0'}}>Qtd plantões<br/>Final de semana</th>
+                      <th style={{background:'#FFF4E0'}}>Valor/plantão<br/>Final de semana</th>
+                      <th>Total do mês</th>
+                      <th></th>
+                    </tr></thead>
+                    <tbody>{profissionais.map(it => {
+                      const totSemana = (it.qtd_semana||0) * (it.vlr_unit_semana||0);
+                      const totFds = (it.qtd_fds||0) * (it.vlr_unit_fds||0);
+                      const total = totSemana + totFds;
+                      return (
+                        <tr key={it.id}>
+                          <td style={{fontWeight:600}}>{it.item}</td>
+                          <td style={{background:'#F5FBFE'}}>
+                            <input type="number" min="0" defaultValue={it.qtd_semana||0}
+                              onBlur={e => atualizarPlantao(it.id, 'qtd_semana', e.target.value)}
+                              style={{width:60,padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}} />
+                          </td>
+                          <td style={{background:'#F5FBFE',textAlign:'center',fontSize:11.5}} className="cell-m">{brl(it.vlr_unit_semana||0)}</td>
+                          <td style={{background:'#FFFAF0'}}>
+                            <input type="number" min="0" defaultValue={it.qtd_fds||0}
+                              onBlur={e => atualizarPlantao(it.id, 'qtd_fds', e.target.value)}
+                              style={{width:60,padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}} />
+                          </td>
+                          <td style={{background:'#FFFAF0',textAlign:'center',fontSize:11.5}} className="cell-m">{brl(it.vlr_unit_fds||0)}</td>
+                          <td style={{fontWeight:700,color:'var(--teal-d)'}}>{brl(total)}</td>
+                          <td><ActBtn icon="fa-trash" onClick={() => excluir('itens', it.id)} danger /></td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div className="panel"><div className="panel-body" style={{textAlign:'right'}}>
+          <button className="btn btn-primary btn-sm" onClick={() => openModal('item', selQtd)}><i className="fa-solid fa-plus"/> Adicionar profissional</button>
+        </div></div>
+        </>
+      );
+    }
+
     return (
       <>
       <div className="panel">
@@ -780,10 +920,62 @@ function App() {
 
     const contratosComAditivo = contratos.filter(c => aditivos.some(a => a.contrato_id === c.id));
 
+    // Análise automática: itens que precisam de aditivo/supressão, agrupados por contrato
+    const identificadosPorContrato = {};
+    contratos.forEach(c => {
+      const itensContrato = itens.filter(i => i.contrato_id === c.id);
+      const achados = [];
+      itensContrato.forEach(it => {
+        const a = calcAnaliseItem(c, it);
+        if (a && (a.acao === 'ADITIVO' || a.acao === 'SUPRESSÃO')) {
+          achados.push({ item: it.item, ...a });
+        }
+      });
+      if (achados.length) identificadosPorContrato[c.id] = { contrato: c, achados };
+    });
+    const contratosIdentificados = Object.values(identificadosPorContrato);
+
     return (
     <>
+    {contratosIdentificados.length > 0 && (
+      <div className="panel">
+        <div className="panel-head">
+          <h2><i className="fa-solid fa-brain" style={{color:'var(--teal)'}}/> Identificados automaticamente pela análise preditiva</h2>
+        </div>
+        <div className="panel-body" style={{paddingTop:8}}>
+          <div style={{fontSize:11.5,color:'var(--text2)',marginBottom:12}}>
+            Itens calculados com base no consumo médio real — organizados por contrato para facilitar a ação.
+          </div>
+          {contratosIdentificados.map(({contrato, achados}) => (
+            <div key={contrato.id} style={{marginBottom:14,border:'1px solid var(--gray-b)',borderRadius:8,overflow:'hidden'}}>
+              <div style={{padding:'9px 14px',background:'var(--gray)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <strong style={{fontSize:12.5}}>{contrato.numero} · {contrato.empresa?.substring(0,38)}</strong>
+                <div style={{display:'flex',gap:6}}>
+                  {achados.filter(a=>a.acao==='ADITIVO').length>0 && <span className="badge vermelho">{achados.filter(a=>a.acao==='ADITIVO').length} aditivo(s)</span>}
+                  {achados.filter(a=>a.acao==='SUPRESSÃO').length>0 && <span className="badge amarelo">{achados.filter(a=>a.acao==='SUPRESSÃO').length} supressão(ões)</span>}
+                </div>
+              </div>
+              <div style={{padding:'8px 14px'}}>
+                {achados.map((a,i) => (
+                  <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:i<achados.length-1?'1px solid var(--gray-b)':'none'}}>
+                    <div style={{fontSize:12}}>
+                      {a.item?.replace(/^L[12] – Item \d+ – /,'')} —
+                      {a.acao==='ADITIVO' ? <span style={{color:'#b91c1c',fontWeight:600}}> faltam {Math.abs(a.dif)} unidades</span> : <span style={{color:'#92400e',fontWeight:600}}> sobram {a.dif} unidades</span>}
+                    </div>
+                    <button className="btn btn-secondary btn-sm" onClick={() => { setFiltroAditivoContrato(contrato.id); openModal('aditivo'); }}>
+                      <i className="fa-solid fa-plus"/> Registrar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
     <div className="panel">
-      <div className="panel-head"><h2><i className="fa-solid fa-file-pen" /> Aditivos e supressões</h2>
+      <div className="panel-head"><h2><i className="fa-solid fa-file-pen" /> Aditivos e supressões registrados</h2>
         <button className="btn btn-primary btn-sm" onClick={() => openModal('aditivo')}><i className="fa-solid fa-plus" /> Registrar</button>
       </div>
       <div className="panel-body" style={{paddingBottom:8}}>
@@ -909,15 +1101,49 @@ function App() {
       </div>
     );
 
-    if (tipo === 'item') return (
-      <div className="form-row" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11}}>
-        <FG label="Item / serviço *" full><FI k="item" placeholder="Descrição completa do item" /></FG>
-        <FG label="Quantidade contratada/mês *"><FI k="qtd_mensal" type="number" placeholder="0" /></FG>
-        <FG label="Unidade de medida"><FI k="unit" placeholder="Ex: exame, m³, ciclo" /></FG>
-        <FG label="Qtd executada este mês"><FI k="qtd_exec" type="number" placeholder="0" /></FG>
-        <FG label="Qtd acumulada total"><FI k="qtd_acum" type="number" placeholder="0" /></FG>
-      </div>
-    );
+    if (tipo === 'item') {
+      const contratoAtual = contratos.find(c => c.id === id);
+      const ehContratoMedico = contratoAtual?.segmento === 'Recursos humanos médicos' || contratoAtual?.numero?.includes('002/2024');
+
+      if (ehContratoMedico) {
+        return (
+          <div className="form-row" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11}}>
+            <FG label="Nome do profissional médico *" full><FI k="item" placeholder="Ex: Dr. João da Silva" /></FG>
+            <FG label="Categoria / Tipo de plantão *" full>
+              <FS k="categoria" opts={[
+                'Médico Clínico - UE',
+                'Anestesiologista - Sobreaviso',
+                'Cirurgião Obstetra/Geral - Sobreaviso',
+                'Cirurgião Pediatra - Sobreaviso',
+                'Médico Rotina Visitador',
+                'Cirurgia Eletiva',
+                'Ambulatório',
+                'Direção Médica'
+              ]} />
+            </FG>
+            <div className="sec-label" style={{gridColumn:'1/-1',display:'flex',alignItems:'center',gap:8}}>
+              <i className="fa-solid fa-calendar-day" style={{color:'var(--blue)'}}/> Valor do plantão — Dia de semana
+            </div>
+            <FG label="Valor unitário do plantão (R$)"><FI k="vlr_unit_semana" type="number" placeholder="0,00" /></FG>
+            <FG label="Qtd de plantões já realizados (opcional)"><FI k="qtd_semana" type="number" placeholder="0" /></FG>
+            <div className="sec-label" style={{gridColumn:'1/-1',display:'flex',alignItems:'center',gap:8}}>
+              <i className="fa-solid fa-calendar-week" style={{color:'#f97316'}}/> Valor do plantão — Final de semana
+            </div>
+            <FG label="Valor unitário do plantão (R$)"><FI k="vlr_unit_fds" type="number" placeholder="0,00" /></FG>
+            <FG label="Qtd de plantões já realizados (opcional)"><FI k="qtd_fds" type="number" placeholder="0" /></FG>
+          </div>
+        );
+      }
+      return (
+        <div className="form-row" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11}}>
+          <FG label="Item / serviço *" full><FI k="item" placeholder="Descrição completa do item" /></FG>
+          <FG label="Quantidade contratada/mês *"><FI k="qtd_mensal" type="number" placeholder="0" /></FG>
+          <FG label="Unidade de medida"><FI k="unit" placeholder="Ex: exame, m³, ciclo" /></FG>
+          <FG label="Qtd executada este mês"><FI k="qtd_exec" type="number" placeholder="0" /></FG>
+          <FG label="Qtd acumulada total"><FI k="qtd_acum" type="number" placeholder="0" /></FG>
+        </div>
+      );
+    }
 
     if (tipo === 'execucao') {
       const c = contratos.find(x => x.id === id);
