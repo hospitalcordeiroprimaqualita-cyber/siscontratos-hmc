@@ -1223,13 +1223,22 @@ function App() {
     const diasMes = new Date(parseInt(y), parseInt(m), 0).getDate();
     const periodoMes = `01/${m}/${y} À ${diasMes}/${m}/${y}`;
 
-    // Calcula total
+    // Calcula total (suporta contratos de plantão médico com qtd_semana/qtd_fds)
     let totalGeral = 0;
-    itensMes.forEach(it => {
-      const qtd = parseFloat(medicaoItens[it.id] || 0);
-      const vlrUnit = parseFloat(medicaoItens['vu_'+it.id] || it.qtd_mensal || 0);
-      totalGeral += qtd * vlrUnit;
-    });
+    const ehPlantaoMedico = itensMes.some(it => it.categoria);
+    if (ehPlantaoMedico) {
+      itensMes.forEach(it => {
+        const qSem = parseFloat(medicaoItens['sem_'+it.id] || it.qtd_semana || 0);
+        const qFds = parseFloat(medicaoItens['fds_'+it.id] || it.qtd_fds || 0);
+        totalGeral += qSem * (it.vlr_unit_semana||0) + qFds * (it.vlr_unit_fds||0);
+      });
+    } else {
+      itensMes.forEach(it => {
+        const qtd = parseFloat(medicaoItens[it.id] || 0);
+        const vlrUnit = parseFloat(medicaoItens['vu_'+it.id] || 0);
+        totalGeral += qtd * vlrUnit;
+      });
+    }
 
     const logoImg = LOGO_BASE64 ? `<img src="data:image/png;base64,${LOGO_BASE64}" style="height:60px">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
 
@@ -1282,14 +1291,14 @@ function App() {
     `;
 
     const rodape = () => `
-      <div class="assinaturas">
-        <div class="assinatura-box">
-          <div class="linha"></div>
-          <p><strong>${c.empresa}</strong><br/>${c.representante || 'Representante Legal'}</p>
-        </div>
+      <div class="assinaturas" style="margin-top:40px;display:flex;gap:40px;justify-content:center">
         <div class="assinatura-box">
           <div class="linha"></div>
           <p><strong>Camilla Valadares Heringer Quindeler</strong><br/>Assistente Administrativo<br/>Prima Qualitá Saúde</p>
+        </div>
+        <div class="assinatura-box">
+          <div class="linha"></div>
+          <p><strong>Carlos Henrique Buzzi da Silva</strong><br/>Gestor do Contrato<br/>Prima Qualitá Saúde</p>
         </div>
       </div>
     `;
@@ -1404,8 +1413,9 @@ function App() {
       setSaving(true);
       try {
         const itensMesLocal = itens.filter(i => i.contrato_id === medicaoContrato);
+        const isPlantao = itensMesLocal.some(it => it.categoria);
 
-        // 1. Atualizar valor acumulado do contrato (controle financeiro)
+        // 1. Atualizar valor acumulado do contrato (controle financeiro — SOMA ao executado)
         const novoAcum = (c.consumo_acum || 0) + totalGeral;
         await sb().from('contratos').update({
           consumo_acum: novoAcum,
@@ -1422,21 +1432,34 @@ function App() {
         });
 
         // 3. Atualizar quantidade executada e acumulada de cada item
+        // Para contratos com teto quantitativo: qtd_acum soma o realizado (saldo = qtd_total - qtd_acum)
+        // Para contratos de plantão: atualiza qtd_semana e qtd_fds do mês
         const updates = itensMesLocal.map(async it => {
-          const qtdExec = parseFloat(medicaoItens[it.id] || 0);
-          if (qtdExec === 0) return;
-          const novoAcumQtd = (it.qtd_acum || 0) + qtdExec;
-          return sb().from('itens').update({
-            qtd_exec: qtdExec,
-            qtd_acum: novoAcumQtd
-          }).eq('id', it.id);
+          if (isPlantao) {
+            const qSem = parseFloat(medicaoItens['sem_'+it.id] || it.qtd_semana || 0);
+            const qFds = parseFloat(medicaoItens['fds_'+it.id] || it.qtd_fds || 0);
+            const novoAcum = (it.qtd_acum||0) + qSem + qFds;
+            return sb().from('itens').update({
+              qtd_semana: qSem, qtd_fds: qFds,
+              qtd_exec: qSem + qFds,
+              qtd_acum: novoAcum
+            }).eq('id', it.id);
+          } else {
+            const qtdExec = parseFloat(medicaoItens[it.id] || 0);
+            if (qtdExec === 0) return;
+            const novoAcumQtd = (it.qtd_acum || 0) + qtdExec;
+            return sb().from('itens').update({
+              qtd_exec: qtdExec,
+              qtd_acum: novoAcumQtd
+            }).eq('id', it.id);
+          }
         });
         await Promise.all(updates);
 
         // 4. Recarregar dados
         await loadAll();
         setSaving(false);
-        alert('✅ Medição registrada com sucesso!\n\nControle financeiro e quantitativo atualizados automaticamente.');
+        alert('✅ Medição registrada com sucesso!\n\nHistórico de execução salvo.\nSaldo financeiro e quantitativo atualizados.');
       } catch(e) {
         setSaving(false);
         alert('Erro ao registrar medição: ' + e.message);
@@ -1447,7 +1470,121 @@ function App() {
   const renderMedicao = () => {
     const c = contratos.find(x => x.id === medicaoContrato);
     const itensMes = medicaoContrato ? itens.filter(i => i.contrato_id === medicaoContrato) : [];
-    const tipo = c ? tipoContrato(c.numero) : 'fixo';
+    const ehPlantao = itensMes.some(it => it.categoria);
+    const DIAS_SEMANA = ['SEGUNDA','TERÇA','QUARTA','QUINTA','SEXTA'];
+    const DIAS_FDS = ['SÁBADO','DOMINGO'];
+
+    // Total geral calculado em tempo real
+    const totalAtual = itensMes.reduce((acc, it) => {
+      if (ehPlantao) {
+        const qSem = parseFloat(medicaoItens['sem_'+it.id]||0);
+        const qFds = parseFloat(medicaoItens['fds_'+it.id]||0);
+        return acc + qSem*(it.vlr_unit_semana||0) + qFds*(it.vlr_unit_fds||0);
+      }
+      return acc + parseFloat(medicaoItens[it.id]||0)*parseFloat(medicaoItens['vu_'+it.id]||0);
+    }, 0);
+
+    // Layout de lançamento para Radiocom (plantão médico)
+    const renderLancamentoPlantao = () => {
+      const categorias = [...new Set(itensMes.map(it => it.categoria).filter(Boolean))];
+      return (
+        <>
+          <div style={{fontSize:12,color:'var(--text2)',marginBottom:12,padding:'8px 12px',background:'var(--blue-l)',borderRadius:6,borderLeft:'3px solid var(--blue)'}}>
+            <i className="fa-solid fa-circle-info"/> Para cada médico informe a quantidade de plantões realizados separando <strong style={{color:'#0C447C'}}>dias de semana (Seg–Sex)</strong> dos <strong style={{color:'#9a3412'}}>finais de semana (Sáb–Dom)</strong> — os valores de pagamento são diferentes.
+          </div>
+          {categorias.map(cat => {
+            const profs = itensMes.filter(it => it.categoria === cat);
+            const totalCat = profs.reduce((acc,it) => {
+              const qS = parseFloat(medicaoItens['sem_'+it.id]||0);
+              const qF = parseFloat(medicaoItens['fds_'+it.id]||0);
+              return acc + qS*(it.vlr_unit_semana||0) + qF*(it.vlr_unit_fds||0);
+            }, 0);
+            return (
+              <div key={cat} style={{marginBottom:14,border:'1px solid var(--gray-b)',borderRadius:8,overflow:'hidden'}}>
+                <div style={{padding:'8px 14px',background:'var(--gray)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <strong style={{fontSize:12.5}}><i className="fa-solid fa-user-doctor"/> {cat}</strong>
+                  <span style={{fontSize:12,fontWeight:600,color:'var(--teal-d)'}}>{brl(totalCat)}</span>
+                </div>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead>
+                    <tr>
+                      <th style={{textAlign:'left',padding:'7px 12px',fontSize:11,background:'var(--gray)',borderBottom:'1px solid var(--gray-b)'}}>Profissional</th>
+                      <th style={{padding:'7px 8px',fontSize:11,background:'#E0F4FB',borderBottom:'1px solid var(--gray-b)',textAlign:'center'}}>
+                        🗓 Plantões Seg–Sex<br/><span style={{color:'#0C447C',fontWeight:400}}>Valor: {brl(profs[0]?.vlr_unit_semana||0)}/plantão</span>
+                      </th>
+                      <th style={{padding:'7px 8px',fontSize:11,background:'#FFF4E0',borderBottom:'1px solid var(--gray-b)',textAlign:'center'}}>
+                        🏖 Plantões Sáb–Dom<br/><span style={{color:'#9a3412',fontWeight:400}}>Valor: {brl(profs[0]?.vlr_unit_fds||0)}/plantão</span>
+                      </th>
+                      <th style={{padding:'7px 8px',fontSize:11,background:'var(--gray)',borderBottom:'1px solid var(--gray-b)',textAlign:'right'}}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profs.map(it => {
+                      const qSem = parseFloat(medicaoItens['sem_'+it.id]||0);
+                      const qFds = parseFloat(medicaoItens['fds_'+it.id]||0);
+                      const total = qSem*(it.vlr_unit_semana||0) + qFds*(it.vlr_unit_fds||0);
+                      return (
+                        <tr key={it.id} style={{borderBottom:'1px solid var(--gray-b)'}}>
+                          <td style={{padding:'6px 12px',fontSize:12,fontWeight:500}}>{it.item}</td>
+                          <td style={{background:'#F5FBFE',padding:'4px 8px',textAlign:'center'}}>
+                            <input type="number" min="0" defaultValue={medicaoItens['sem_'+it.id]||''}
+                              onChange={e=>setMedicaoItens(prev=>({...prev,['sem_'+it.id]:e.target.value}))}
+                              style={{width:60,padding:'4px 6px',border:'1px solid #178DBB',borderRadius:4,fontSize:12,textAlign:'center'}} />
+                          </td>
+                          <td style={{background:'#FFFAF0',padding:'4px 8px',textAlign:'center'}}>
+                            <input type="number" min="0" defaultValue={medicaoItens['fds_'+it.id]||''}
+                              onChange={e=>setMedicaoItens(prev=>({...prev,['fds_'+it.id]:e.target.value}))}
+                              style={{width:60,padding:'4px 6px',border:'1px solid #f97316',borderRadius:4,fontSize:12,textAlign:'center'}} />
+                          </td>
+                          <td style={{padding:'6px 12px',textAlign:'right',fontWeight:600,color:'var(--teal-d)'}}>
+                            {total>0?brl(total):'—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </>
+      );
+    };
+
+    // Layout genérico para outros contratos
+    const renderLancamentoGenerico = () => (
+      <>
+        <div style={{fontSize:12,color:'var(--text2)',marginBottom:12,padding:'8px 10px',background:'var(--gray)',borderRadius:6}}>
+          Preencha a <strong>quantidade executada no mês</strong> e o <strong>valor unitário</strong> para cada item.
+        </div>
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr><th>Item</th><th>Unidade</th><th>Qtd contratada/mês</th><th>Qtd executada *</th><th>Valor unitário (R$) *</th><th>Total mês</th></tr></thead>
+            <tbody>
+              {itensMes.map(it => {
+                const qtd = parseFloat(medicaoItens[it.id]||0);
+                const vu = parseFloat(medicaoItens['vu_'+it.id]||0);
+                const total = qtd*vu;
+                return (
+                  <tr key={it.id}>
+                    <td style={{fontSize:11.5,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item?.replace(/^L[12] – Item \d+ – /,'')}</td>
+                    <td style={{textAlign:'center'}}>{it.unit||'un.'}</td>
+                    <td style={{textAlign:'center'}}>{it.qtd_mensal}</td>
+                    <td><input type="number" min="0" defaultValue={medicaoItens[it.id]||''}
+                      onChange={e=>setMedicaoItens(prev=>({...prev,[it.id]:e.target.value}))}
+                      style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12}}/></td>
+                    <td><input type="number" min="0" step="0.01" defaultValue={medicaoItens['vu_'+it.id]||''}
+                      onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
+                      style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12}}/></td>
+                    <td style={{textAlign:'right',fontWeight:600}}>{total>0?brl(total):'—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </>
+    );
 
     return (
       <>
@@ -1477,57 +1614,15 @@ function App() {
         {c && itensMes.length > 0 && (
           <div className="panel">
             <div className="panel-head">
-              <h2><i className="fa-solid fa-list-check"/>Lançar quantidades — {mesToPT(medicaoMes)}</h2>
-              <button className="btn btn-primary" onClick={gerarPDF}><i className="fa-solid fa-file-pdf"/> Gerar PDF</button>
+              <h2><i className="fa-solid fa-list-check"/>Lançar {ehPlantao?'plantões':'quantidades'} — {mesToPT(medicaoMes)}</h2>
+              <button className="btn btn-primary" onClick={gerarPDF}><i className="fa-solid fa-file-pdf"/> Gerar PDF e registrar</button>
             </div>
             <div className="panel-body">
-              <div style={{fontSize:12,color:'var(--text2)',marginBottom:12,padding:'8px 10px',background:'var(--gray)',borderRadius:6}}>
-                Preencha a <strong>quantidade executada no mês</strong> e o <strong>valor unitário</strong> para cada item. O PDF será gerado automaticamente com o layout padrão da Prima Qualitá.
-              </div>
-              <div className="tbl-wrap">
-                <table>
-                  <thead><tr><th>Item</th><th>Unidade</th><th>Qtd contratada/mês</th><th>Qtd executada no mês *</th><th>Valor unitário (R$) *</th><th>Total mês</th></tr></thead>
-                  <tbody>
-                    {itensMes.map(it => {
-                      const qtd = parseFloat(medicaoItens[it.id]||0);
-                      const vu = parseFloat(medicaoItens['vu_'+it.id]||0);
-                      const total = qtd*vu;
-                      return (
-                        <tr key={it.id}>
-                          <td style={{fontSize:11.5,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item?.replace(/^L[12] – Item \d+ – /,'')}</td>
-                          <td style={{textAlign:'center'}}>{it.unit||'un.'}</td>
-                          <td style={{textAlign:'center'}}>{it.qtd_mensal}</td>
-                          <td>
-                            <input type="number" min="0"
-                              defaultValue={medicaoItens[it.id]||''}
-                              onChange={e=>setMedicaoItens(prev=>({...prev,[it.id]:e.target.value}))}
-                              style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12}}
-                            />
-                          </td>
-                          <td>
-                            <input type="number" min="0" step="0.01"
-                              defaultValue={medicaoItens['vu_'+it.id]||''}
-                              onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
-                              style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12}}
-                            />
-                          </td>
-                          <td style={{textAlign:'right',fontWeight:600}}>
-                            {total>0?`R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}`:'—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{marginTop:14,padding:'10px 14px',background:'var(--gray)',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div style={{fontSize:12,color:'var(--text2)'}}>Total calculado da medição</div>
-                <div style={{fontSize:18,fontWeight:700,color:'var(--teal)'}}>
-                  R$ {itensMes.reduce((acc,it)=>{
-                    const qtd=parseFloat(medicaoItens[it.id]||0);
-                    const vu=parseFloat(medicaoItens['vu_'+it.id]||0);
-                    return acc+qtd*vu;
-                  },0).toLocaleString('pt-BR',{minimumFractionDigits:2})}
+              {ehPlantao ? renderLancamentoPlantao() : renderLancamentoGenerico()}
+              <div style={{marginTop:14,padding:'10px 14px',background:'var(--teal-l)',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div style={{fontSize:12,color:'var(--teal-d)',fontWeight:500}}>💰 Total calculado da medição</div>
+                <div style={{fontSize:20,fontWeight:700,color:'var(--teal-d)'}}>
+                  {brl(totalAtual)}
                 </div>
               </div>
             </div>
