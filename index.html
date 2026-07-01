@@ -1235,7 +1235,7 @@ function App() {
     } else {
       itensMes.forEach(it => {
         const qtd = parseFloat(medicaoItens[it.id] || 0);
-        const vlrUnit = parseFloat(medicaoItens['vu_'+it.id] || 0);
+        const vlrUnit = parseFloat(medicaoItens['vu_'+it.id] || it.vlr_unitario || 0);
         totalGeral += qtd * vlrUnit;
       });
     }
@@ -1481,7 +1481,7 @@ function App() {
         const qFds = parseFloat(medicaoItens['fds_'+it.id]||0);
         return acc + qSem*(it.vlr_unit_semana||0) + qFds*(it.vlr_unit_fds||0);
       }
-      return acc + parseFloat(medicaoItens[it.id]||0)*parseFloat(medicaoItens['vu_'+it.id]||0);
+      return acc + parseFloat(medicaoItens[it.id]||0)*parseFloat(medicaoItens['vu_'+it.id]||it.vlr_unitario||0);
     }, 0);
 
     // Layout de lançamento para Radiocom (plantão médico)
@@ -1573,9 +1573,10 @@ function App() {
                     <td><input type="number" min="0" defaultValue={medicaoItens[it.id]||''}
                       onChange={e=>setMedicaoItens(prev=>({...prev,[it.id]:e.target.value}))}
                       style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12}}/></td>
-                    <td><input type="number" min="0" step="0.01" defaultValue={medicaoItens['vu_'+it.id]||''}
+                    <td><input type="number" min="0" step="0.01"
+                      defaultValue={medicaoItens['vu_'+it.id] || it.vlr_unitario || ''}
                       onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
-                      style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12}}/></td>
+                      style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,background:it.vlr_unitario?'#f0fff4':'#fff'}}/></td>
                     <td style={{textAlign:'right',fontWeight:600}}>{total>0?brl(total):'—'}</td>
                   </tr>
                 );
