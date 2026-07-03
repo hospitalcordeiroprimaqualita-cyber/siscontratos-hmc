@@ -152,7 +152,7 @@ const dias = fim => Math.ceil((new Date(fim+'T23:59:59') - new Date()) / 8640000
 const pct = c => Math.min(Math.round((c.consumo_acum / c.vlr_total) * 100), 100);
 const clsFin = p => p < 70 ? 'verde' : p < 85 ? 'amarelo' : p < 95 ? 'laranja' : 'vermelho';
 const clsPrazo = d => d < 0 ? 'vermelho' : d <= 30 ? 'vermelho' : d <= 60 ? 'laranja' : d <= 90 ? 'amarelo' : 'verde';
-const brl = v => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
+const brl = v => 'R$ ' + (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD = s => { if (!s) return '—'; const [y,m,d] = s.substring(0,10).split('-'); return `${d}/${m}/${y}`; };
 const uid = p => p + Date.now().toString(36).toUpperCase();
 const today = () => new Date().toISOString().substring(0, 10);
@@ -1577,7 +1577,9 @@ function App() {
                       defaultValue={medicaoItens['vu_'+it.id] || it.vlr_unitario || ''}
                       onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
                       style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,background:it.vlr_unitario?'#f0fff4':'#fff'}}/></td>
-                    <td style={{textAlign:'right',fontWeight:600}}>{total>0?brl(total):'—'}</td>
+                    <td style={{textAlign:'right',fontWeight:600,color:total>0?'var(--teal-d)':'var(--text3)'}}>
+                      {total>0?`R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`:'—'}
+                    </td>
                   </tr>
                 );
               })}
@@ -1623,7 +1625,7 @@ function App() {
               <div style={{marginTop:14,padding:'10px 14px',background:'var(--teal-l)',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{fontSize:12,color:'var(--teal-d)',fontWeight:500}}>💰 Total calculado da medição</div>
                 <div style={{fontSize:20,fontWeight:700,color:'var(--teal-d)'}}>
-                  {brl(totalAtual)}
+                  R$ {(totalAtual||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
                 </div>
               </div>
             </div>
