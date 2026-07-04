@@ -1310,7 +1310,8 @@ function App() {
       let totalMes = 0;
       const linhas = itensMes.map(it => {
         const qtd = parseFloat(medicaoItens[it.id] || 1);
-        const vu = parseFloat(medicaoItens['vu_'+it.id] || 0);
+        const vuState = medicaoItens['vu_'+it.id];
+        const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
         const total = qtd * vu;
         totalMes += total;
         return `<tr>
@@ -1336,7 +1337,8 @@ function App() {
         let totalLote = 0;
         const linhas = lista.map(it => {
           const qtd = parseFloat(medicaoItens[it.id] || 0);
-          const vu = parseFloat(medicaoItens['vu_'+it.id] || 0);
+          const vuState2 = medicaoItens['vu_'+it.id];
+          const vu = parseFloat(vuState2 !== undefined && vuState2 !== '' ? vuState2 : (it.vlr_unitario || 0));
           const qtdContr = it.qtd_mensal || 0;
           const total = qtd * vu;
           totalLote += total;
@@ -1362,7 +1364,8 @@ function App() {
       corpoTabela = renderLote(lote1, 'LOTE - I') + '<br/>' + renderLote(lote2, 'LOTE - II - SOBREAVISO');
       const totalTudo = itensMes.reduce((acc,it) => {
         const qtd = parseFloat(medicaoItens[it.id]||0);
-        const vu = parseFloat(medicaoItens['vu_'+it.id]||0);
+        const vuT = medicaoItens['vu_'+it.id];
+        const vu = parseFloat(vuT !== undefined && vuT !== '' ? vuT : (it.vlr_unitario||0));
         return acc + qtd*vu;
       },0);
       corpoTabela += `<div class="total-geral">TOTAL: R$ ${totalTudo.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`;
@@ -1371,7 +1374,8 @@ function App() {
       let totalMes = 0;
       const linhas = itensMes.map(it => {
         const qtd = parseFloat(medicaoItens[it.id] || 0);
-        const vu = parseFloat(medicaoItens['vu_'+it.id] || 0);
+        const vuStateG = medicaoItens['vu_'+it.id];
+        const vu = parseFloat(vuStateG !== undefined && vuStateG !== '' ? vuStateG : (it.vlr_unitario || 0));
         const total = qtd * vu;
         totalMes += total;
         return `<tr>
