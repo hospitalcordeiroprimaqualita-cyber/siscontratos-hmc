@@ -1563,22 +1563,33 @@ function App() {
             <tbody>
               {itensMes.map(it => {
                 const qtd = parseFloat(medicaoItens[it.id]||0);
-                const vu = parseFloat(medicaoItens['vu_'+it.id]||0);
-                const total = qtd*vu;
+                const vuSalvo = parseFloat(medicaoItens['vu_'+it.id]||0);
+                const vuFallback = parseFloat(it.vlr_unitario||0);
+                const vu = vuSalvo > 0 ? vuSalvo : vuFallback;
+                const total = qtd * vu;
                 return (
-                  <tr key={it.id}>
+                  <tr key={it.id} style={{background:qtd>0?'#f9fffe':'transparent'}}>
                     <td style={{fontSize:11.5,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item?.replace(/^L[12] – Item \d+ – /,'')}</td>
                     <td style={{textAlign:'center'}}>{it.unit||'un.'}</td>
                     <td style={{textAlign:'center'}}>{it.qtd_mensal}</td>
-                    <td><input type="number" min="0" defaultValue={medicaoItens[it.id]||''}
-                      onChange={e=>setMedicaoItens(prev=>({...prev,[it.id]:e.target.value}))}
-                      style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12}}/></td>
-                    <td><input type="number" min="0" step="0.01"
-                      defaultValue={medicaoItens['vu_'+it.id] || it.vlr_unitario || ''}
-                      onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
-                      style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,background:it.vlr_unitario?'#f0fff4':'#fff'}}/></td>
-                    <td style={{textAlign:'right',fontWeight:600,color:total>0?'var(--teal-d)':'var(--text3)'}}>
-                      {total>0?`R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`:'—'}
+                    <td style={{width:80}}>
+                      <input type="number" min="0"
+                        value={medicaoItens[it.id]||''}
+                        onChange={e=>setMedicaoItens(prev=>({...prev,[it.id]:e.target.value}))}
+                        style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}}/>
+                    </td>
+                    <td style={{width:110}}>
+                      <input type="number" min="0" step="0.01"
+                        value={medicaoItens['vu_'+it.id] !== undefined ? medicaoItens['vu_'+it.id] : (it.vlr_unitario||'')}
+                        onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
+                        style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,background:it.vlr_unitario?'#f0fff4':'#fff'}}/>
+                    </td>
+                    <td style={{textAlign:'right',fontWeight:700,fontSize:13,
+                      color:total>0?'var(--teal-d)':'var(--text3)',
+                      minWidth:110,whiteSpace:'nowrap'}}>
+                      {total>0
+                        ? `R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+                        : <span style={{color:'var(--gray-d)',fontWeight:400}}>—</span>}
                     </td>
                   </tr>
                 );
