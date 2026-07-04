@@ -1481,7 +1481,9 @@ function App() {
         const qFds = parseFloat(medicaoItens['fds_'+it.id]||0);
         return acc + qSem*(it.vlr_unit_semana||0) + qFds*(it.vlr_unit_fds||0);
       }
-      return acc + parseFloat(medicaoItens[it.id]||0)*parseFloat(medicaoItens['vu_'+it.id]||it.vlr_unitario||0);
+      const vuT = medicaoItens['vu_'+it.id];
+      const vuVal = parseFloat(vuT !== undefined ? vuT : (it.vlr_unitario||0));
+      return acc + parseFloat(medicaoItens[it.id]||0) * vuVal;
     }, 0);
 
     // Layout de lançamento para Radiocom (plantão médico)
@@ -1563,9 +1565,8 @@ function App() {
             <tbody>
               {itensMes.map(it => {
                 const qtd = parseFloat(medicaoItens[it.id]||0);
-                const vuSalvo = parseFloat(medicaoItens['vu_'+it.id]||0);
-                const vuFallback = parseFloat(it.vlr_unitario||0);
-                const vu = vuSalvo > 0 ? vuSalvo : vuFallback;
+                const vuState = medicaoItens['vu_'+it.id];
+                const vu = parseFloat(vuState !== undefined ? vuState : (it.vlr_unitario||0));
                 const total = qtd * vu;
                 return (
                   <tr key={it.id} style={{background:qtd>0?'#f9fffe':'transparent'}}>
@@ -1608,7 +1609,19 @@ function App() {
             <div className="form-row">
               <div className="form-group">
                 <label>Contrato</label>
-                <select className="sel-contract" style={{margin:0}} value={medicaoContrato} onChange={e=>{setMedicaoContrato(e.target.value);setMedicaoItens({});}}>
+                <select className="sel-contract" style={{margin:0}} value={medicaoContrato} onChange={e=>{
+                  const cId = e.target.value;
+                  setMedicaoContrato(cId);
+                  // Pre-carregar valores unitários do banco
+                  const itensDoCont = itens.filter(i => i.contrato_id === cId);
+                  const preload = {};
+                  itensDoCont.forEach(it => {
+                    if (it.vlr_unitario && it.vlr_unitario > 0) {
+                      preload['vu_'+it.id] = String(it.vlr_unitario);
+                    }
+                  });
+                  setMedicaoItens(preload);
+                }}>
                   <option value="">— Selecione —</option>
                   {contratos.map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
                 </select>
