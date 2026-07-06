@@ -1415,60 +1415,85 @@ function App() {
       if (!confirmar) return;
 
       setSaving(true);
-      try {
-        const itensMesLocal = itens.filter(i => i.contrato_id === medicaoContrato);
-        const isPlantao = itensMesLocal.some(it => it.categoria);
+try {
+  const itensMesLocal = itens.filter(i => i.contrato_id === medicaoContrato);
+  const isPlantao = itensMesLocal.some(it => it.categoria);
 
-        // 1. Atualizar valor acumulado do contrato (controle financeiro — SOMA ao executado)
-        const novoAcum = (c.consumo_acum || 0) + totalGeral;
-        await sb().from('contratos').update({
-          consumo_acum: novoAcum,
-          updated_at: new Date().toISOString()
-        }).eq('id', medicaoContrato);
+  // 1. Upsert de cada item desta medição — substitui o lançamento do mesmo
+  //    item no mesmo mês em vez de somar em cima do que já existia.
+  const upserts = itensMesLocal.map(it => {
+    if (isPlantao) {
+      const qSem = parseFloat(medicaoItens['sem_'+it.id] || 0);
+      const qFds = parseFloat(medicaoItens['fds_'+it.id] || 0);
+      return sb().from('medicoes_itens').upsert({
+        id: `${it.id}_${medicaoMes}`,
+        contrato_id: medicaoContrato,
+        item_id: it.id,
+        mes_referencia: medicaoMes,
+        qtd_semana: qSem,
+        qtd_fds: qFds,
+        vlr_unit_semana: it.vlr_unit_semana || 0,
+        vlr_unit_fds: it.vlr_unit_fds || 0,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'item_id,mes_referencia' });
+    } else {
+      const qtdExec = parseFloat(medicaoItens[it.id] || 0);
+      const vuState = medicaoItens['vu_'+it.id];
+      const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
+      return sb().from('medicoes_itens').upsert({
+        id: `${it.id}_${medicaoMes}`,
+        contrato_id: medicaoContrato,
+        item_id: it.id,
+        mes_referencia: medicaoMes,
+        qtd_executada: qtdExec,
+        vlr_unitario: vu,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'item_id,mes_referencia' });
+    }
+  });
+  await Promise.all(upserts);
 
-        // 2. Registrar execução financeira no histórico
-        await sb().from('execucoes').insert({
-          id: uid('E'),
-          contrato_id: medicaoContrato,
-          mes_referencia: medicaoMes,
-          valor: totalGeral,
-          observacao: `${medicaoNumMedicao}ª Medição — ${mesToPT(medicaoMes)}`
-        });
+  // 2. Upsert do total financeiro do mês — 1 linha por contrato+mês,
+  //    substitui em vez de acumular.
+  await sb().from('execucoes').upsert({
+    id: `${medicaoContrato}_${medicaoMes}`,
+    contrato_id: medicaoContrato,
+    mes_referencia: medicaoMes,
+    valor: totalGeral,
+    observacao: `${medicaoNumMedicao}ª Medição — ${mesToPT(medicaoMes)}`
+  }, { onConflict: 'contrato_id,mes_referencia' });
 
-        // 3. Atualizar quantidade executada e acumulada de cada item
-        // Para contratos com teto quantitativo: qtd_acum soma o realizado (saldo = qtd_total - qtd_acum)
-        // Para contratos de plantão: atualiza qtd_semana e qtd_fds do mês
-        const updates = itensMesLocal.map(async it => {
-          if (isPlantao) {
-            const qSem = parseFloat(medicaoItens['sem_'+it.id] || it.qtd_semana || 0);
-            const qFds = parseFloat(medicaoItens['fds_'+it.id] || it.qtd_fds || 0);
-            const novoAcum = (it.qtd_acum||0) + qSem + qFds;
-            return sb().from('itens').update({
-              qtd_semana: qSem, qtd_fds: qFds,
-              qtd_exec: qSem + qFds,
-              qtd_acum: novoAcum
-            }).eq('id', it.id);
-          } else {
-            const qtdExec = parseFloat(medicaoItens[it.id] || 0);
-            if (qtdExec === 0) return;
-            const novoAcumQtd = (it.qtd_acum || 0) + qtdExec;
-            return sb().from('itens').update({
-              qtd_exec: qtdExec,
-              qtd_acum: novoAcumQtd
-            }).eq('id', it.id);
-          }
-        });
-        await Promise.all(updates);
+  // 3. Recalcula qtd_acum de cada item a partir do HISTÓRICO REAL
+  //    (soma de todas as medições já lançadas para aquele item — nunca
+  //    soma em cima do valor anterior, sempre reconstitui do zero).
+  const recalcItens = itensMesLocal.map(async it => {
+    const { data } = await sb().from('medicoes_itens')
+      .select('qtd_executada,qtd_semana,qtd_fds')
+      .eq('item_id', it.id);
+    const totalAcum = (data || []).reduce(
+      (acc, r) => acc + (r.qtd_executada || 0) + (r.qtd_semana || 0) + (r.qtd_fds || 0), 0
+    );
+    return sb().from('itens').update({ qtd_acum: totalAcum }).eq('id', it.id);
+  });
+  await Promise.all(recalcItens);
 
-        // 4. Recarregar dados
-        await loadAll();
-        setSaving(false);
-        alert('✅ Medição registrada com sucesso!\n\nHistórico de execução salvo.\nSaldo financeiro e quantitativo atualizados.');
-      } catch(e) {
-        setSaving(false);
-        alert('Erro ao registrar medição: ' + e.message);
-      }
-    }, 1200);
+  // 4. Recalcula consumo_acum do contrato a partir do HISTÓRICO REAL de execucoes
+  const { data: execs } = await sb().from('execucoes')
+    .select('valor').eq('contrato_id', medicaoContrato);
+  const totalContrato = (execs || []).reduce((acc, r) => acc + (r.valor || 0), 0);
+  await sb().from('contratos').update({
+    consumo_acum: totalContrato,
+    updated_at: new Date().toISOString()
+  }).eq('id', medicaoContrato);
+
+  // 5. Recarregar dados
+  await loadAll();
+  setSaving(false);
+  alert('✅ Medição registrada com sucesso!\n\nHistórico salvo sem duplicidade.\nSaldo financeiro e quantitativo recalculados a partir do histórico real.');
+} catch(e) {
+  setSaving(false);
+  alert('Erro ao registrar medição: ' + e.message);
+}    }, 1200);
   };
 
   const renderMedicao = () => {
