@@ -1212,6 +1212,15 @@ function App() {
     const nomes = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     return nomes[parseInt(m)] + ' ' + y;
   };
+  
+  // Conta meses de calendário entre duas datas (mais preciso que dias/30)
+const mesesCalendario = (dataInicioStr, dataFimStr) => {
+  const ini = new Date(dataInicioStr);
+  const fim = new Date(dataFimStr);
+  let meses = (fim.getFullYear() - ini.getFullYear()) * 12 + (fim.getMonth() - ini.getMonth());
+  if (fim.getDate() < ini.getDate()) meses -= 1; // ainda não completou o mês corrente
+  return Math.max(0, meses);
+};
 
   const gerarPDF = () => {
     const c = contratos.find(x => x.id === medicaoContrato);
