@@ -452,9 +452,9 @@ function App() {
     const hoje = new Date();
     const fimC = new Date(c.fim);
     const inicioC = new Date(c.inicio);
-    const mesesRest = Math.max(0, Math.ceil((fimC-hoje)/(1000*60*60*24*30)));
-    const mesesDec = Math.max(1, Math.ceil((hoje-inicioC)/(1000*60*60*24*30)));
-    const mesesTot = Math.ceil((fimC-inicioC)/(1000*60*60*24*30));
+   const mesesRest = mesesCalendario(hoje.toISOString(), c.fim);
+    const mesesDec = Math.max(1, mesesCalendario(c.inicio, hoje.toISOString()));
+    const mesesTot = mesesCalendario(c.inicio, c.fim);
     const media = it.qtd_acum/mesesDec;
     const proj = Math.round(media*mesesRest);
     const qtdTot = it.qtd_mensal*mesesTot;
