@@ -659,9 +659,9 @@ function App() {
       const hoje = new Date();
       const fimC = new Date(contrato.fim);
       const inicioC = new Date(contrato.inicio);
-      const mesesRest = Math.max(0, Math.ceil((fimC-hoje)/(1000*60*60*24*30)));
-      const mesesDec = Math.max(1, Math.ceil((hoje-inicioC)/(1000*60*60*24*30)));
-      const mesesTot = Math.ceil((fimC-inicioC)/(1000*60*60*24*30));
+      const mesesRest = mesesCalendario(hoje.toISOString(), contrato.fim);
+      const mesesDec = Math.max(1, mesesCalendario(contrato.inicio, hoje.toISOString()));
+      const mesesTot = mesesCalendario(contrato.inicio, contrato.fim);
       const analise = lista.map(it => {
         const media = it.qtd_acum/mesesDec;
         const proj = Math.round(media*mesesRest);
