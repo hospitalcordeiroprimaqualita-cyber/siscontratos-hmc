@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
 :root{
@@ -241,6 +242,54 @@ function AlertBox({ cls, icon, children }) {
   return <div className={`alert-box ${cls}`}><i className={`fa-solid ${icon}`} /><div>{children}</div></div>;
 }
 
+// ─── GRÁFICOS (Chart.js) ──────────────────────────────────────────────────────
+const CHART_COLORS = ['#1D9E75','#178DBB','#f59e0b','#ef4444','#8B5CF6','#f97316','#0EA5E9','#22c55e'];
+function useChart(canvasRef, config, deps) {
+  const chartRef = useRef(null);
+  useEffect(() => {
+    if (!canvasRef.current || typeof Chart === 'undefined') return;
+    if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
+    chartRef.current = new Chart(canvasRef.current, config);
+    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
+  }, deps);
+}
+function BarChart({ labels, data, label, color, height }) {
+  const canvasRef = useRef(null);
+  useChart(canvasRef, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: label||'', data, backgroundColor: color||'#1D9E75', borderRadius:5, maxBarThickness:38 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, grid:{color:'#EEF2F6'} }, x:{ grid:{display:false} } } }
+  }, [JSON.stringify(labels), JSON.stringify(data), color]);
+  return <div style={{height:height||220}}><canvas ref={canvasRef}></canvas></div>;
+}
+function LineChart({ labels, data, label, color, height }) {
+  const canvasRef = useRef(null);
+  useChart(canvasRef, {
+    type: 'line',
+    data: { labels, datasets: [{ label: label||'', data, borderColor: color||'#178DBB', backgroundColor: (color||'#178DBB')+'22', fill:true, tension:0.3, pointRadius:3 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, grid:{color:'#EEF2F6'} }, x:{ grid:{display:false} } } }
+  }, [JSON.stringify(labels), JSON.stringify(data), color]);
+  return <div style={{height:height||220}}><canvas ref={canvasRef}></canvas></div>;
+}
+function DoughnutChart({ labels, data, colors, height }) {
+  const canvasRef = useRef(null);
+  useChart(canvasRef, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors||CHART_COLORS, borderWidth:2, borderColor:'#fff' }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:11}}}} }
+  }, [JSON.stringify(labels), JSON.stringify(data)]);
+  return <div style={{height:height||220}}><canvas ref={canvasRef}></canvas></div>;
+}
+function HorizontalBarChart({ labels, data, color, height }) {
+  const canvasRef = useRef(null);
+  useChart(canvasRef, {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: color||'#178DBB', borderRadius:4, maxBarThickness:22 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ beginAtZero:true, grid:{color:'#EEF2F6'} }, y:{ grid:{display:false} } } }
+  }, [JSON.stringify(labels), JSON.stringify(data), color]);
+  return <div style={{height:height||Math.max(180,labels.length*32)}}><canvas ref={canvasRef}></canvas></div>;
+}
+
 // ─── CONFIG SCREEN ────────────────────────────────────────────────────────────
 function ConfigScreen({ onSave }) {
   const [url, setUrl] = useState(localStorage.getItem(STORAGE_KEYS.url)||'');
@@ -304,9 +353,13 @@ function App() {
   const [aditivos, setAditivos] = useState([]);
   const [medicos, setMedicos] = useState([]); // cadastro de médicos (roster que cresce), usado no Radiocom
   const [lancamentos, setLancamentos] = useState([]); // medicoes_lancamentos: quem trabalhou, quando, quanto
+  const [execucoes, setExecucoes] = useState([]); // histórico de medições (1 linha por contrato+mês)
+  const [medicoesItensHist, setMedicoesItensHist] = useState([]); // histórico item a item (contratos genéricos)
   const [modal, setModal] = useState(null);
   const [selFin, setSelFin] = useState('');
   const [selQtd, setSelQtd] = useState('');
+  const [historicoContrato, setHistoricoContrato] = useState('');
+  const [mesExpandido, setMesExpandido] = useState(null);
   const [filtroAditivoContrato, setFiltroAditivoContrato] = useState('');
   const [buscaAditivo, setBuscaAditivo] = useState('');
   const [formData, setFormData] = useState({});
@@ -335,12 +388,14 @@ function App() {
   const loadAll = async () => {
     setSyncStatus('loading');
     try {
-      const [c, i, a, m, l] = await Promise.all([
+      const [c, i, a, m, l, ex, mi] = await Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         sb().from('itens').select('*').order('created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
         sb().from('medicos').select('*').order('nome'),
-        sb().from('medicoes_lancamentos').select('*').order('created_at')
+        sb().from('medicoes_lancamentos').select('*').order('created_at'),
+        sb().from('execucoes').select('*').order('mes_referencia'),
+        sb().from('medicoes_itens').select('*').order('mes_referencia')
       ]);
       if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
       setContratos(c.data || []);
@@ -348,6 +403,8 @@ function App() {
       setAditivos(a.data || []);
       setMedicos(m.data || []); // se a tabela ainda não existir, m.error fica setado e usamos []
       setLancamentos(l.data || []);
+      setExecucoes(ex.data || []);
+      setMedicoesItensHist(mi.data || []);
       setSyncStatus('ok');
     } catch(e) {
       setSyncStatus('err');
@@ -615,6 +672,47 @@ function App() {
             </div>
           </div>
         )}
+
+        {(() => {
+          // Consumo mensal agregado (todas as execuções, últimos 12 meses com dado)
+          const porMes = {};
+          execucoes.forEach(e => { porMes[e.mes_referencia] = (porMes[e.mes_referencia]||0) + (e.valor||0); });
+          const mesesOrdenados = Object.keys(porMes).sort().slice(-12);
+          const labelsMesCurtos = mesesOrdenados.map(m => { const [y,mm]=m.split('-'); const nomes=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return nomes[parseInt(mm)-1]+'/'+y.substring(2); });
+          const dataMes = mesesOrdenados.map(m => porMes[m]);
+
+          const statusCounts = {};
+          contratos.forEach(c => { statusCounts[c.status] = (statusCounts[c.status]||0)+1; });
+          const statusLabelMap = { vigente:'Vigente', proximo:'Próx. vencimento', vencido:'Vencido', 'em renovacao':'Em renovação' };
+          const statusLabels = Object.keys(statusCounts).map(s => statusLabelMap[s]||s);
+          const statusData = Object.values(statusCounts);
+          const statusColors = Object.keys(statusCounts).map(s => s==='vigente'?'#22c55e':s==='vencido'?'#ef4444':s==='proximo'?'#f59e0b':'#178DBB');
+
+          const topConsumo = contratos.slice().map(c=>({numero:c.numero,p:pct(c)})).sort((a,b)=>b.p-a.p).slice(0,6);
+
+          return (
+            <div className="cards-grid" style={{gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))'}}>
+              <div className="panel" style={{margin:0}}>
+                <div className="panel-head"><h2><i className="fa-solid fa-chart-line"/> Consumo mensal (todos os contratos)</h2></div>
+                <div className="panel-body">
+                  {dataMes.length ? <LineChart labels={labelsMesCurtos} data={dataMes} color="#1D9E75" /> : <div className="empty" style={{padding:'20px 0'}}><i className="fa-solid fa-chart-line"/>Ainda sem medições registradas</div>}
+                </div>
+              </div>
+              <div className="panel" style={{margin:0}}>
+                <div className="panel-head"><h2><i className="fa-solid fa-chart-pie"/> Contratos por status</h2></div>
+                <div className="panel-body">
+                  {statusLabels.length ? <DoughnutChart labels={statusLabels} data={statusData} colors={statusColors} /> : <div className="empty" style={{padding:'20px 0'}}>Sem contratos</div>}
+                </div>
+              </div>
+              <div className="panel" style={{margin:0}}>
+                <div className="panel-head"><h2><i className="fa-solid fa-chart-bar"/> % consumido por contrato</h2></div>
+                <div className="panel-body">
+                  {topConsumo.length ? <HorizontalBarChart labels={topConsumo.map(t=>t.numero)} data={topConsumo.map(t=>t.p)} color="#178DBB" /> : <div className="empty" style={{padding:'20px 0'}}>Sem contratos</div>}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="panel">
           <div className="panel-head"><h2><i className="fa-solid fa-hourglass-half" /> Prazos de todos os contratos</h2></div>
@@ -1945,6 +2043,133 @@ try {
   };
 
 
+  // ─── HISTÓRICO DE MEDIÇÕES ───────────────────────────────────────────────
+  const renderHistorico = () => {
+    const listaExecucoes = execucoes
+      .filter(e => !historicoContrato || e.contrato_id === historicoContrato)
+      .slice()
+      .sort((a,b) => b.mes_referencia.localeCompare(a.mes_referencia));
+
+    const contratoSel = contratos.find(c => c.id === historicoContrato);
+    const ehMedicoHist = contratoSel && tipoContrato(contratoSel.numero) === 'medicos';
+
+    // Gráfico de evolução mensal do contrato selecionado
+    const trendLabels = listaExecucoes.slice().reverse().map(e => {
+      const [y,m] = e.mes_referencia.split('-'); const nomes=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+      return nomes[parseInt(m)-1]+'/'+y.substring(2);
+    });
+    const trendData = listaExecucoes.slice().reverse().map(e => e.valor||0);
+
+    const extrairNumMedicao = (obs) => { const m = (obs||'').match(/^(\d+)ª/); return m ? m[1] : '—'; };
+
+    const detalheDoMes = (e) => {
+      if (ehMedicoHist) {
+        const lancsDoMes = lancamentos.filter(l => l.contrato_id === e.contrato_id && l.mes_referencia === e.mes_referencia);
+        if (!lancsDoMes.length) return <div className="empty" style={{padding:'14px 0'}}>Sem lançamentos detalhados salvos para este mês.</div>;
+        const itensDoContrato = itens.filter(i => i.contrato_id === e.contrato_id);
+        const porItem = {};
+        lancsDoMes.forEach(l => { (porItem[l.item_id] = porItem[l.item_id]||[]).push(l); });
+        return (
+          <div className="tbl-wrap">
+            <table>
+              <thead><tr><th>Item</th><th>Dia</th><th>Médico</th><th>Qtd</th><th>Valor unit.</th><th>Total</th></tr></thead>
+              <tbody>{Object.entries(porItem).map(([itemId, ls]) => {
+                const it = itensDoContrato.find(i => i.id === itemId);
+                return ls.map((l,idx) => (
+                  <tr key={l.id}>
+                    {idx===0 && <td rowSpan={ls.length} style={{fontWeight:600,verticalAlign:'top'}}>{it?.item||'—'}</td>}
+                    <td className="cell-m" style={{textAlign:'center'}}>{l.dia_semana ? (DIAS_SEMANA_LABEL[l.dia_semana]||l.dia_semana) : '—'}</td>
+                    <td>{l.medico_nome||'—'}</td>
+                    <td style={{textAlign:'center'}}>{l.quantidade}</td>
+                    <td style={{textAlign:'center'}} className="cell-m">{brl(l.valor_unitario||0)}</td>
+                    <td style={{fontWeight:600,color:'var(--teal-d)'}}>{brl((l.quantidade||0)*(l.valor_unitario||0))}</td>
+                  </tr>
+                ));
+              })}</tbody>
+            </table>
+          </div>
+        );
+      }
+      const itensHist = medicoesItensHist.filter(mi => mi.contrato_id === e.contrato_id && mi.mes_referencia === e.mes_referencia);
+      if (!itensHist.length) return <div className="empty" style={{padding:'14px 0'}}>Sem lançamentos detalhados salvos para este mês.</div>;
+      const itensDoContrato = itens.filter(i => i.contrato_id === e.contrato_id);
+      return (
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr><th>Item</th><th>Qtd executada</th><th>Valor unitário</th><th>Total</th></tr></thead>
+            <tbody>{itensHist.map(mi => {
+              const it = itensDoContrato.find(i => i.id === mi.item_id);
+              const total = (mi.qtd_executada||0) * (mi.vlr_unitario||0);
+              return (
+                <tr key={mi.id}>
+                  <td style={{fontWeight:600}}>{it?.item||'—'}</td>
+                  <td style={{textAlign:'center'}}>{mi.qtd_executada}</td>
+                  <td style={{textAlign:'center'}} className="cell-m">{brl(mi.vlr_unitario||0)}</td>
+                  <td style={{fontWeight:600,color:'var(--teal-d)'}}>{brl(total)}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </div>
+      );
+    };
+
+    return (
+      <>
+        <div className="panel">
+          <div className="panel-body">
+            <select className="sel-contract" style={{margin:0}} value={historicoContrato} onChange={e=>{ setHistoricoContrato(e.target.value); setMesExpandido(null); }}>
+              <option value="">— Todos os contratos —</option>
+              {contratos.map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,34)}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {historicoContrato && trendData.length > 0 && (
+          <div className="panel">
+            <div className="panel-head"><h2><i className="fa-solid fa-chart-line"/> Evolução mensal — {contratoSel?.numero}</h2></div>
+            <div className="panel-body"><LineChart labels={trendLabels} data={trendData} color="#1D9E75" /></div>
+          </div>
+        )}
+
+        <div className="panel">
+          <div className="panel-head"><h2><i className="fa-solid fa-clock-rotate-left"/> Medições registradas ({listaExecucoes.length})</h2></div>
+          {listaExecucoes.length === 0 ? (
+            <div className="panel-body"><div className="empty"><i className="fa-solid fa-inbox"/>Nenhuma medição registrada ainda para este filtro.</div></div>
+          ) : (
+            <div className="tbl-wrap">
+              <table>
+                <thead><tr><th>Contrato</th><th>Mês</th><th>Nº medição</th><th>Valor total</th><th></th></tr></thead>
+                <tbody>{listaExecucoes.map(e => {
+                  const c = contratos.find(x => x.id === e.contrato_id);
+                  const chave = e.contrato_id+'_'+e.mes_referencia;
+                  const aberto = mesExpandido === chave;
+                  return (
+                    <React.Fragment key={chave}>
+                      <tr>
+                        <td className="mono"><strong>{c?.numero||'—'}</strong></td>
+                        <td>{mesToPT(e.mes_referencia)}</td>
+                        <td className="cell-m" style={{textAlign:'center'}}>{extrairNumMedicao(e.observacao)}</td>
+                        <td style={{fontWeight:700,color:'var(--teal-d)'}}>{brl(e.valor)}</td>
+                        <td><ActBtn icon={aberto?'fa-chevron-up':'fa-chevron-down'} onClick={()=>setMesExpandido(aberto?null:chave)} title="Ver detalhe" /></td>
+                      </tr>
+                      {aberto && (
+                        <tr><td colSpan={5} style={{padding:0,background:'#FAFBFD'}}>
+                          <div style={{padding:'10px 16px'}}>{detalheDoMes(e)}</div>
+                        </td></tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}</tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
+
   // ─── ANÁLISE PREDITIVA ──────────────────────────────────────────────────
   const renderPreditiva = () => {
     const hoje = new Date();
@@ -2017,9 +2242,10 @@ const mesesTot = mesesCalendario(c.inicio, c.fim);
     { sec:'preditiva', icon:'fa-brain', label:'Análise preditiva', group:'gestao' },
     { sec:'aditivos', icon:'fa-file-pen', label:'Aditivos e supressões', group:'gestao' },
     { sec:'medicao', icon:'fa-file-invoice-dollar', label:'Medições mensais', group:'gestao' },
+    { sec:'historico', icon:'fa-clock-rotate-left', label:'Histórico de medições', group:'gestao' },
   ];
 
-  const sectionTitles = { painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais' };
+  const sectionTitles = { painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais', historico:'Histórico de Medições' };
 
   if (!configured) return (
     <div style={{minHeight:'100vh',background:'#EEF2F6'}}>
@@ -2107,6 +2333,7 @@ const mesesTot = mesesCalendario(c.inicio, c.fim);
           {section === 'preditiva' && renderPreditiva()}
           {section === 'aditivos' && renderAditivos()}
           {section === 'medicao' && renderMedicao()}
+          {section === 'historico' && renderHistorico()}
         </div>
       </div>
 
