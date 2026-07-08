@@ -147,36 +147,42 @@ const { createClient } = supabase;
 const LOGO_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAckAAADMCAYAAAAYhVh2AAAgAElEQVR4nO2dfXxU13nnfwIkgRBCIGN7bCMNAziyabHGjpPYcdBgO06MbZA2aePurnlpJ9usmjUgu2n+aM3itp9Nm2SwaXb64tlF4LTBbrrIxMaxa0eD6pb4dWQ52CSCYSRsjw1IiEG8SIOY/eOeK0ajeTnn3nPvuS/n+/nogzS655xHc4fzu+c5z3meMjgITzjkBaB+Lcr6VSDP5T0Ahsn3p9Sfk23tPYYZaBN8kVgtgCZMfh+95KsQUfLvxHsZD/pd/15KJBJ7UybaAK14wqEAlIncT/5dzrH7ASgTfQ+ALgA9ybb24eJN7IkvEvNCeYhQ38cVnIeY9F7Gg/4o5/4lEonEMGwjkmSV2AKgFfwnchp6oayW9iTb2qMCxucCWSW2AFgJRRzrBZjRDWAPgKhcbUokEitjaZEkwrgZyqQuYjIvRApAJxTB7BRtTCmyhLEVwGrB5uQyAOW93CEFUyKRWA3LiaQnHFIn9M3g60I1igEAHQB2JNvaE2JNmYwvEgsA2ADl/awRaw0VvQC2AeiMB/2OdG9LJBJ7YRmRzFo1roc9JvR87IIillGRRvgisfWwz0NGPlJQHjy2xYP+hFhTJBKJmxEukkQctwJYK9gUnnQD2GK2WBJx3Apruab1sgvAFimWEolEBMJEkrhVtwJ4WJQNJtANYKPRx0p8kVgLgCfhLHHMZTsUsZRuWIlEYhpCRNITDm2CIpB2dauysh3KypLrBE+Ob+yEmGhfEaSgCOUTog2RSCTuwFSR9IRDTVAmdbvulekhBWAdr2hYXyS2FcBjPPqyIb0A1sloWIlEYjSmiaQnHHLzpJ7NXihiqWlV6YvE3Pygkcvj8aB/i2gjJBKJczFcJElgznOQk3o2mlaVvkhsE5QjEpLL9AJYIwN7JBKJERgqkp5wqAXKqscte4+sbE+2tW8sdRFJBrAT1ksEYBVSUNyvlk/sIJFI7IVhIindq9R0A1hTyP0q3av0/NGSujceCdR/XrQdEonEOUzj3aEnHKr1hEM7IQWSlhUA9pOgpkmQjDn7IQWSirIyfC6TyewUbYdEInEO3EUSyqTupMQAZrAcOUJJEgN0Qbqqqfj20jpsXrEQANZKoZRIJLzg5m7NZDK1AHZ29rzd2Hag+3pe/bqMFIDmWRUrmwDsEG2MXcgSyGx2lZWVrRNhj0QicQ5cRJII5IRb8NVDB/FQ18s8unYd06ddO1Qx4/r5ou2wCwUEUsXVQknc9V0cukpBqQcKKIXKewDsoTmnyvE87wCABPk+AeXvitJENbPYEA/6C86JvkhsP7Ql7uiNB/03ce6zqK0saPycbIgH/R08xrc6vNytk4543NW4DE+vvIdT1+5h+jTPBSmQ9JQQSEC6XnlRA2UiXwElwvoxADFfJPYuSYloBvVZNqyF4mk56ovEniOZp8xAa2arYjEFU2IRBNBqUhtbolskySQ05cMjhZINRSAbZ4q2wy5QCKSKFErjWA5gjy8SE/n+roYilusF2lASEqWeD80xBxwfDrQ86AQ4jW15dIkkmXwKBulIoaRDCiQbDAKpsjaTyWwyyh4J1goWSgDYYaRQchCk2jx9BnT26dXZXhVvLYURakz0IghFs0iWEkgVKZTFmVd+7SUpkPRoEEgAwKMvHNlggYncyay1wKS5w0DXq95+VxrQ5xTh1YAet2m+v8lxaBLJTCbDVP9RCmV+FpRfhwtl1xtxDMeRaBXIbd3HsOeTM8uhTOTruRsmUXlStAEwzga9gpSv/SKdffp1tge0uVp5tLUNzBP0X/78ub8JPrvzsXNjo0ztVKFsqChnHdKRLCi/DiNlS6e8/jvX1Ez5+soVswVYaC30COSP+gazX9pRZH9Ioo96C6wmVxu0mtQrSPk+cwGdfeqCvE96EpXUu+H/0gyWiz3hUNOOxNHfP3vpEtC5G9tbHkRVRSV1+7sal2HJlVfiwT3PoH8szWysU5g+7WqMlC3FrTUzcXf9XDRdMxvLrq7GrPLizyzHhkdxZPAcXkukEP3kDI5euGiSxWLZ4K3lJZAqz/kisZtkAWdDaAUgOoduCwCr1RzNJyZenX0GdLbn8UDTisvHgxwJk0gC2Hn20qUqANg3OKRJKBvmL8Du1m+4VijLyqrxyI1fwlc/Mw+NV7KtEBfWVmJhbSUCi+fhkfQlvD5wGs/+6iReOnnWIGvFc09dFdr5CiSgBCrsBLBGh2mS/FhhZcHDDZlLQGf7fFGsWgJmeMLjGEcLAEeXq6N2t5KE5ZOW5vsGh/Bw526wul5VoXSb6/UPvTfivbXrselL1zELZC6zyqchsHgewmuW4oUHlFWp07inrgo/vG8xqsqnM7UrIZAqqy3gGrQSK+NBf1nuFxTB2cXQjx73XSEbVkKpw0qLV4cNhpEdzcohshXQ8XeSykJaz31ms9zEc6pCoBJJklM0b8YKKZSluX1ONV5p/c/Ycu9XML+K/9/beOVs7P6dRvzlzR7ufYvCYIFU2UkmC0kB4kF/TzzoXwcl4w0VvN/TeNAfjQf9axhs4DH55+Ll0Edtge+1omclyvMBMcCxL8tBu5IsGjEmhbIwf9iwCE9/Yx1uvPoqw8d60H8Vol+7AYtmsnrRrYVJAgkoLrCtTIO4lw6Ga41yuYrc++LhGvUX+F4zOh5IeGbMcXT2nZIi6QmH1oPiyWzf4BAeenYX+odOMBngZKF8ZGkjtqxqwazyCtPGXFhbiZ/97o22jYg1USBVHnZDhJ5DECKSHFfGTQW+59UnCzwLuDu6GHxRkfSEQ7VgeNI+cGZECciRQolHljbikbvvFTL2rPJp+OGqxbYTSq0C+dQvP9YqkCpWON8nsS68BC1bbL2c+mSGcS8+ZUCftqLUSnIzGN0M/WNp1wulSIFUUYXSLgE9WgWy6/ApfO/gcb3Dr+AUSCExFruv+LM9crwKqWvJekPrHk2B/jiPY12uBUWSrCI15bt0s1DeV1cnXCBVZpVPw/e/vMjye5R6BDK4v5+XGTJlXXGoVwrxoD/Ke3Di8hQlktzG9UVitRZw79Pey04Aezj3aTuKzZ6boSNDvSqUu1u/gYb5C6jb2fkcpa+yAt+77z+JNmMSC2srscnvwcYDx0SbkheLCCRAssXEg37RB+Ethy8S2wR+K59iNPkisXyvewFsAL1Xq5uXQYR5HPviLZBM/RGPCe28vgdAlPLaGl8k1kRTY9RuFBNJ3VUT9Arln7+yT0laYBO+89lm1M2uFm3GFO6/sQ6v9Z/GP39Mtb1gGhYSSJXNEJ8tRhRdBQSKlV4dbbfxMABKYWieeDn21QS+ossaVETtFlUfGH2RWC/oHpI2ANjIaI/lyetuJRGtmleR2ehxvW5veRCr6uxRg/i2mquwevlviTajIN9pZs9aYySfnVNpNYEE5N4kD6KiDQD/KFgvx77mce6PVSRp3aLZyRtoHxwDbKbYg0J7kpt5DqJVKKsqKm0ilNOx6bavijaiKPOryvE/rr9CtBkAgIbKGfj+PYusJpAqG4wewOF0iTYA9PtotNAKEU2ygwDoRJLWZUztBmesHZn9HtLeU0dm35kikiS7Dvf9B+cK5XSsvvoufMlnVfsu87Xfpnd5G0VD5Qx03L8E9bVsUbcmCSSglNOSWXi0MWCBPd1eA/bFaOfDKMU1XpQ+d54Cf5cxwPYAOHEfSSAW7V6N4wJ48q0kua4is3GeUE7Hsjl34P7PXC3aECoW1lYKPTtpA4FUWW/mYA6C156iHkTuiSVQegVIs5LrAYPLmGGLgPa67jwVcqKUbR1XiDmfSBr6JOAcoVQEMj46Dbd7uWzfmsKqpWLePxsJJCBdrlrojQf9ostTbed9/ITxuMZRKEKplx4Apzj0MwFj7ch87mpal+tqp3liJkW3esKhFnAK2ClG/1gatz3zYzy98h7c1biMup0qlOjcLTjq9bJA3loz05Ck5UZx0zXmR9/aTCABsrcSD/oTIga3Ib0AmgWOnwKwMR70dxjQN8uEnwAfkRwGW/BRE0qv9FgWP35fJJabac3L0L4FbLl+LU3uStLUrAkPdb2MVw8dZGojfkV5WSAB4AtXW+/IRzEW1laamlxAq0C+eSwlSiBVHLe3YhC7ADRzKmBNXWkkZ/wGgwQSYBOHYfAJXOoC254kzZESFu/IWihVn7K/1jK0d5TLNVckTZ8Y7CWUkwUSAJbUzTLZBv18dn6VKeNoFciB4Qv4k/1a5kuuuM3l2gplcnscwHYoe2uFbkIvuWZRPOhfx0kgEQ/6G6BM+K2gDxQJ8Bq/AItoLyQBQzxsGWYMPvIW+yVxf5qRDELFUQ+YE0sKEtUqZHPtoa6X8TRgcdfrVIEEgCVX2CM3ajZL5s8CDE4soEcg1z9/GP2jFw2yjJrlvkis1uAJ2EoMk/28qEgjyPvd6YvEOkG3erFUpqR40N+jNylDlkCmQDcne0v83mzRqvFFYgEj0hOKIHvGF5qg1toryvwCaVeqK4z9OxwgkCoB0Qa4GJZIWcMi8sEQEZr1vZ6sQ9lteR1lETG3OybhefZsGRBlhIoeoWxf2miQVcUFsvFKe5WjMhoHCSTgsL0VO0FWU7Q+d6tlSkroaDtc4PtiFDx3SVytIuo9Osblmj3zi85MD0C7UD56970GCOV0eGZ9wTErSDP4319e5BSBBCzyf8LFdDBca9RqkvYzEM36Xs8KkFc/KgEOfWih3gLVTrgwDQA84ZAXgvYj86FFKAFwF8ols2/G8HgFt/6cTqS5ATdcxbaytrBAAqUzo0iMZQfDtasNSommZV7Usyl5NOt76rOSRQRJpNszIHBsbqhLJMspvmihbJx9Mz5Klz7ecej4Wd1jOYFIcwNWLmErbmBxgQTAfJhcwhFyTpVlfy/3bJ8uGEU3WxgTOobNbsuykix0nlOk29MREeJqdKtfqBUF0BL1CihCCQChvkOaxm2cfTP603M1tbUDI2OXuPbnVIEkNIF/VQkJPdtAv6Jc64vENnKMSPYyXDsxps4I1+zPGsvf4c19wReJsSSH6QV9tY/HKK9zRIS4KpKWfVp+qOtlfD91Gv/lc7cztdMqlKwCefjkBdsF7xweOs+tL4cLJMBwTk5iCJ1gc7tuBrDFIFuKkcj5eQD0FTdUUtmCwii2+T6nLIFn22gTMhDvCm0wkO2z76juVkvn2vvjt1/HD155kbkdq+tVywry8CA/wTGLt4bOcenHBQIJWPgB0g0Q0dhb8sLLbOKYO5RaZPKkMMz9mYZ8HgvaA835/mYWVyvLOVOWUmS2Pwpi2T3JXEJ9hwwVSq0u1l9+MsLcRiTHhkdx9IJ+gdIikOfS43YTSMDiD5AugWUlWQPz9+HyHVWJaugnkec1Wlf/pDmcsXbkXkaXKIugBhiutSSqSFomsrUYRgmlnj3IN1MXMHQuramtCN79WL+oaxXIR144YjeBBPhWkZdogGTTYUkRxSuAh3bxkMjz2tE8r2npR+t+HkvQDFORasbVfQ3ZG7Ut0zzhkK2elHkLJY8gnZd/LbIiCRs/PshWoiwXPQL58iAfN6/JsO4rSYyBZfVS74vE1nMYk3ZuzCdkCQ3j5UuOrmklCbYVnJaUfq5xuU6DDVytufASSl5RrJ2HuZZ+M4xDx8/izdQFze1dKJAS68Ba0JnH8QMv5XVThExj3tJ8Yks7uUx4AxlrR7K6WlVYVvcBDf1bBvNqJnFGjVpVo1hpefTue+G/rh5//eanODzG55jHm6kLiB45hcBiNgExm5//WruYS4G0JT2gDz4x6pjLDnAoH0UiPbWmCdRqwzrK6xIFXmeyt0Dljw6w35thhrETjH0DUFyuvkisGS7Ysy/zhEMB8KmBJoT2pY3MQgnwL+h7a81M7P4do/LH6ufQ8bO472d9mtr+5c0ePOi/iqmNkwQyHvSXibZBIpGIwfZJSbW6XlcumYdIcwM3O95MXcDu2Kfc+uNNx9vabPv20jpXCyTAnHlFIpE4CNuLJGAdoYy8fwLHhke59ceL598fxD9rqB/57aV12LxiIVMbpwkkwfEuJYlEkh9HiCRgDaE8euEi/tf+AZxP8037podjw6PYeOAYczspkJdhrBIvkUgchGNEElCE8pHO3Tg3xraa4ymUL508i7//5cdc+tLL+fQlbHiBfR9SCqREIpEoOEokAeAnySQe1iiUu+/xoaFSf8Dv3/zmJJ74tw9196OH8+lLeGTfEebsOlIgJRKJ5DLToK+siyXZNzikSShvXViDjvuX2F4ojw2P4pF9R/DSSbYyXloEEgAe+/mbUiAlEokjmZZsa0+INsIItAplfe1MPP+NG/B1zxzdNvzNb06i7bk+U/coDx0/iw0v9DEL5HeXXalJIH/wyov4pw8PoKH8NHNbm8Ae8SSRSByD49yt2WgVyqry6firVYvx5G3X6bbhpZNn8cCz7+OtY8bOtefTlxB5PYn7ftbH7GKNNDfgm1+4hnnMH7zy4kRSh0Nn38GSSkeuJmXQjkTiYqYDwJz7vnInAH5nISxE3/nzODxwBHcvvQHl09ncqNcvqMJ//UwdTg1ewPsjY5ptGL54CT89cgrJT8/hurkVuGJ2hea+8hE9cgp/1jWAZ46xreY+O6cS//jAUjRdw75qzhZIleNjn+AzVQtxatxRZ+/7T+39+w7RRkgkEjGoIrkBDhVJQJ9QVlVMx5eXzsfymkp8PHQBH4+Na7bj/TOj+KffDCH56TnUzpyOa+ZWau7rfPoSXvr1EB6LDuBvfz2Ijxmra3x32ZX4szsbNAl2PoFUyODE2IdOE8qdp/b+fVS0ERKJRAxlAOAJh7YCeEywLYazqm4+trc8iKoK7eLUdfgU/u6dT/DWGf1JAxbNnIH762vRdM1sLK6rwsLa4nYdOn4Wh09ewGv9pzUlBwCAr3vm4I9uvxb1tTM1tS8skNlMx7I5dyA+6ghv/uZ40P+EaCMkEokYVJFcD7bCpraFh1ACwJvHUnjpN0PYkdBa7i0/i2bOwGfnV016TasgZvN1zxysv+Vq3HDVbM190AmkimOEcqXGig4SiUQgvkisFsWrXA3TJApRRbIJQIyTbZbn9zwe/LDlQS59DZ5N40D/abzwmyHLHYNoqJyBB+rnYu0tV6NudrmuvtgEUsX+QimTm0sk9sQXie0EsLbIJa2koHdRJiYATziU4WGYXdBaPaQYg2fT6E2O4N/7T+MXyRH0M+4T8qChcgbu9FTjiw1zmUtbFeK5d9/Gf/+Pbo2tbS2UvfGg/ybRRkgkEjZIUYKjRS7ZHg/6N9L0lR3F0g1ghQ67bEWo7xD819XjrsZl3Pqsm12OlUvmYeWSefhTAAPDF9D78Qh6kiN4b/A8l33MfHzdMwdL5s9C07XVuHVhTekGDLyf/EiHQALAOA6eec2uQimPf0gk9uTJIr/rphVIYLJIRuEikQSAP/33Lty0sB5XzNafOCAf9bUzUV87E/ffeAUAJX1b/9AFHBk8j5HRcRweOo8zo+NIjY2XdNV+dk4lvNUVmFM5HUvmz8JVcypw9ZwKXXuMpTg3Noo/2LeHQ0+KUF5T1YxTF23lsLBtnVWJxK34IrEAgNUFfj0AYA1Lf9ki2QUXRLhm0z+Wxndf+H+I/C5tAXJ9VJVPxw1XzTZU2Hjy16/sQ/9YmlNv40iefwPXVn0Og2nbCGVUtAESiYSZrQVeTwFYEw/6maItJ/xfybb2KFyYgmvf4BCee/dt0WZYjtePHsE/9Ce49pnJjOCjc2+grtwWsTAD8aA/IdoIiURCD1lFFvKIbtRS9i53kyjK2oET+N5bB5hT1zmdv/73XxjSr42EsmTUm0QisRw7C7y+PR70d2jpMDf9zB4U9uU6lv6xNMLdv+Ae7WpXnnv3bRw4M2JY/6pQWtz16opzwxKJUyARrR35fhcP+rdo7XfS47wnHKoFcEprZ3and23QsCAeO/G1Hz9lqEiqlJVVW1UoB+JBv2PTNEokEnomuVuTbe3DAHYJskU4HQdeE22CcF49dNAUgQQs7XqVrlaJRAJgqrsVUFyuxbIUOJZQ3yG0rbhTd8o6O/OT3rdMHc+irtdtog0wk6z0XV4Ai4pcehRKkfYe1ghBMk6A8lKqdGG+SKwJQC1Nh6ypBYnrzsvSRmv6Qt7vC8fxEmrwGkMb3iSKBdCZcZ+miGSyrb3TEw4NAKhn6cgp/OsHv8Kam24RbYYQ+odOYN/gkOnjZjIjSKc/ANBo+th56HZDVCuZXDYAaAGwXEP7ASgr7m0M7xftudNuAM0U1z0J+rPdrO6KJ8EYn+GLxBZp/Ozwfl94jfc4AHUvT9SZ4Wwb8qHlPvlZHjYKpUDpYBnUSex67x3RJgjjxYPvCRv707EkqjN9wsbPwvEBO75IbCuUVeFj0CCQhHoADwM46ovEdpLVqCMgf4uWAMYW3rZISqLlPgVYLi4kktvgwjOTAHDgzAj6h06INkMI/9p/ROj4J9IfihbKAa1h4nbAF4nV+iKxd8E/achaAPuJ+9MJaBW7lVytkBTFF4lpvU8bWC7OK5IkgMe1NfT++R1z9+WsQP/QCdMCdoohWCgduxdJVkf7oX3lWIrlAJyyomzV2G61Q/5+u6D1Pi0n2w1UFMs47Xi3UyH+RfCKSgSvHbaEqxOAMKFMwdnbDFthnECqLEfhw9x2IqCjrXS5moee9zpAe2FBkUy2tSegbJq6jv6xtOtcru98PCDahEkIEMotWiI27QB5an7YpOFWC4yE1A1x4ekppSNdriZAPmN67hP1KrRU7SLX7k2KDGIRwU+SSdEmTMFEoRyIB/1O3l4olPDZKePxRKsLT0WuJM1B732iDvgpKpJkb1JzOh8781bymGgTTOP95EeiTSiISUJJXVvObpA9MrPPPa9g2fOxGHpFrsbOK2kbofthhDbwp2QV3GRb+xNQanC5in2DQzh59oxoM0yh7/gnok0oyon0h2goP21U993xoN/JGXZErWxst6Ii0bk8qpbrXeVIikDuE49z/FT3KV/GnXysgwsL0L57bAB3NS4TbYbh9J04LtqEkhw6+w4aZ9+M/vRc3l2bU0xUHCwTdgrKqroze3+WrEZboBzcphWRlbBfhDzT0YAitMB53gmavdYm0EeIbwZAc6A/kec1Xg8hAZqLqEQy2dYe9YRD22He5r8l6DvxqStEMjli2CqNKwYI5eMuyK7DcnaxOV8mEiKYHb5IrAdAjLKvAMO4VoHX6rfeF4k18UghZxVoUrn5IrQfDQBKasOSfRbA1PtU0t2axRa4zO3qln3J/xg8KdoEag6dfYeX67VXT/kcO0BWgLRuqV2lJgvye9oCCDV22pfk6MJTCXDsS0IgnymeR5lKeg+oRZIE8azRZY7NEJHHVAT9Y2nRJjDBQShTcL6bFWBbRdJup+xh6NPLcK1oApz74+W6lUyG9153oNQFLCtJJNvae6D4kl2DlSM/eXBubFS0CZrQKZQbneQKK4KX4Vra9yPB0Ked0tTRihqtN225zL5jCLT7kb2U15XMvsMkksBEtOte1nZ2JXnakefLJ0jYyNWai0ah3OXk/Kw5FCt7NQnahwbGh4t5DNcKg9GFtw30Qmm7CF8rQx46aKu+dIJeKIveJ2aRJKxjMMDWfJKyR1CLWzl09h0snUntLu6NB/1ucLNK2GARs07QF+WWR0H4wnKf9oD+PhWN3NUkkln7k47PxtN38lPRJkhK0Js6AF/lpVKXDYBPLT4JPV7RBlBCm0qul0RD0+7fBjRZIykE7UPHAPF40N6noonpta4k1dyuzXC4UJ6x6Z6duxjHwTOvFRPKFIA1Ts3NWoQA5XWs/4e7Ka/zMvZrOoy1I6M5/5aiRkc5J8lUaO9TJ0B3bCWLgvdJs0gCE4E8jhbKxIg7su7Yn4JCmUKB83+SCdz83rCI2A5g4two7YOCdLlygPFhIzsCmzZ+pqA3QZdIAhNC6bTsEhNYocaihBZFKDOZUfXsjhRISSlYXXgqUcp2ASZrJIWgvU+pnBUkrcvVmJWkSrKtvWP69Bv+b1lZNY/uJBIdjONC+vX545nzxyEFUlKaAOV1uUEgtOdF60miAok+aFeSufcpStmuYGJ6LiLpi8TWV0y/+vc9sz4HKZQS8YxjLP3LK8+PdbnqTK8OWCdxR5z/Y6wdOWlFQh6+aLeZpMtVB4y1Iyc9vJD7RHtkJ+990i2SvkhsPYiv/tTFDK6tkkJpJ270XCvaBCNZ6wmHdoo2QiBRyutYK1/QnilMMPZrNiwuvHzHCaKU7WXwjj6oHzKMuE+0VUDyki2QKoNpRSg/OvcGMhln7Of1D51Aw/wFos2QaGOtJxzqSra1d4g2xIUkcn7uBd+8m3qhFa8aXySW0THOcl8k5nVBMn2joH7I0Hmf6vPdJ80rSbIE3pHvd6pQOmVFuaCaR4k563LbHGfcpyLs8IRD60Ub4QR0Ji0XdQRnSiQqx9qRtARMHMsxGJB4vhRTBFmTSBLDnyt2jSqU08pmahnCUlRVVIo2wVC81XNEm2AGOzzhUEC0ESZzlPZChuASlv1L6vE1omdv1OwE5HJfUhtmv29TPhfMIkkO3z4HiqewwXQGt9Z+EcB01mEkJuKp5l7I2Ko85wmH3BRpmGC4NkB5HW12mnzj064kafNz6nHdmr1PWDSri6QgZt+nKYnptawkd4Jh+dt79hKWzbkDUiiti6fGNSJZA2CnJxxyy2TFcvylZCQwmTzW6xif2h4S76D59zlEc9qa7cJTCQgY07YYUDuSlknCzCSSvkhsE+hTA00QH50mhdLC+Bc2iDbBTJYDeFK0EWZAMsPQhr/X+yKxnYVWO+T1/aDfxxvIkwaQxf36ZCEXMHmd5R7mjivK9al33BUuO3MpKip40n2ijm4lN2eb1lFVoTx45jUA41q7MZ3f83hEm2A43rorRJtgNms94dCeZFs7bZUAO9MD+lXTWgAtvkgsismrvgDoXaAq0QK20FIDIOaLxLpz+moC+1qvEbwAABhQSURBVIN6ri2iJl8e46rvCQs98aDfjlnRRD3MBLJ/YDkCovu8mV2F0ulUVVTitjnVbkvBt9MTDt1EEvU7mT1gE5Uacj2zxyjPuJOIB/09vkgsBbao0hVgF+hsBrJD+gW68ADlKEkThyxQet4PW8BYO5I3Nb5IrEU9c0nlbvVFYlvB6YNlN9frzdeI2Lown9uuvk60CWZTAw4PfjZAxGq50OF7wHx7cscTfbA/X1Qt68rQDYi+TxMBaiVXkuTJ6zGeo9tpRXm1S4Ja/NfVA32HRJthNis84VCLk92u8aB/2BeJ7YLiSjWLJ4r8bg/MtSV3i4jFheenWfWRragYZZ8BhvHdDMt9ai3yUDYB431qASncQbOSNORpOz46DTfPvd2IrrnimeuOQMibFrpjxZwHN0S7bjFxrBSKxC6QyYw2mEgvu3JcrSwuvNyqHwVhzA+6PE9CBtpk6W6C1t1fzGsxCcb7NJGYvqhIkqw6hvmFPzg/A42zbzaqey44PLfpBFfMnuOGzDv5qAHF8Qc7Q4TCrL9xHUVx63Um2JHC1BJ+LC48Vu8Cy/W5djjWk6EFxtqRRt6nVqD0StLwPZv+9FzLCqUbIluz+XLDYtEmiOIxTzjkFW2EkcSD/icA7DJ4mA00T/Wk3t92g21pziPWLC68vCk3OV0/yQ7yEGP0+2EnWO4T6yqc5T61AEVEkhzWNcUHZ1WhdEvQjsqKJZ8RbYJItoo2wGjiQf86AI8b0HUKyr5QB4MtG2GMMKRQeC+R1oVH7WpVYXTlrcg9j0reD6MfYuwC7UqS2tWqosU1XmwlaeqkYUWhdNkhe9zouRYNFeWizRDFWqevJgEgHvRvAeAHsJdDdwNQRLeBdbIitmyEEkXIa49yF7FlisAxuvCiGsfX43JVH2I2g75OpeNgrB2p1U3N0i6QN7qVfKBMX0apQnno7DtmDz2Fhopy1+xHZvO1hsUIuS/KVWUrzNkvEwoRkTVkNdMCRTTVTC6FYhB6oeReTZCvPRzO+6mu1wYSJNEKJfrTi9LzTwpKcoIElILInSX2QmtBf9SC1dWa3Y42I07eYDHiFn+CzMF+8ImGzb1PtO8Da4L6YYa+C90rL0MfZtynRWX5XvVFYvsh8MBqQ/lp4ULZvrQRj959r1AbRNA/dAK3PfNj0WaIZF6yrV1USSeJRGIxpqwkyROd0IwOVlhRrlpmpdqw5tEwf4Ebs+9ksxnmHpmwFCQWId+B9408Vo4Sid3ItydpiXD4/vRcfKHmeiFj3zan2pWuVpW1v22tvWGTWS/aAMEswuVUcNlfjg9skkjyMcXd6ovETsPcit1Fqc704UT6Q1PH/NvbV2DNTbeYOqaVODc2iruefgr9Y2nRpoii1clZeIpBAie6Cvx6AEAHlKwlw7icuisAZY+yWKYdicSWTHK3ks1iywgkAIyULcWCcpgmlA0V5fjyDb9lylhWpaqi0u0BPK1w7wHvYi7VehROURnlb4pEIp5cd2u+vQjhKEJpTgLurzUsRlVFpSljWZn1t93h9uMgTk9VlxcSIcrjeIhE4ghyRVJveRzDMEso1992h+Fj2IErZs/Bt929Nym6CoFINNeNlUicxoRIMh62FYLRQvn9Wz6PK2bPMax/u9HadItb87kCWaVy3AY5u2hEZh6JxHZkryRtMSkYJZS3zalGa5N7g3XyUVVRie988U7RZojC8g+NRkIy80ihlLiebJEMiDKClZGypbiqgm/y8T+/a5Xpe5EffHqW6kskn1+0GP+twSvUBkHUeMIh2qwcjoQI5UrIosASFzMDmKizZqvT81UVN6IsfQaZjP5D74/91k2GnYscPJtGfOg8jpw8j1hyBKmxcbw8eE5TX/fUVaGmYjr8nmpcNacCi6+YhframZwtnsp37l6F957d5cYEA60oHu3peIjrtblE2rgU2FOYSSS2oAyY2I+0XeHPuvIyfHTuDV1CuapuPiK/yzdd55vHUnjt6Gn88pMRvHVmlGvf+fi6Zw78nmrcdE01brhqtiFjuDRd3d5kW/sa0UZIJBJxqOck/UKt0MhgOoNrqz6nWShX1c3H9pYHudiiCuOP+ga59MfCT5Nn8NPkGeAdoKFyBu70VOOLDXPx+YYaVJVP5zJGw/wFeHrlPXio62Uu/dmEgGgDJBKJWNSVpNCE5nrRsqJsqCjH7tZvoGH+As3jnkuPY++vTmJP35ApK0YtbPDWchXMv/u3X+DxX73LwTLbsCjZ1p4QbYREHJ5wqAXF03VGk23trs3363TUlaRXpBF6YV1R6hXIwbNp7Hr7E/xs4DT6Ry9q6sMsdiSGsSMxjIbKGXigfi7W3nI16mZrTxLwrS/diZHRUTdl4/FCKcckcS9PonDprhQA6ZJ3MNMBYN7qb9n+8PD5S8BVM6/DmYsnAIwVvE6PQJ5Lj+Nfek/gu90D+NfjZ3F6/JIOi83l9PglvDF0Hk/96gQujaRx/RVVqKrQtrK83bcUmdPDODB0krOVlmRg5IWXoqKNkIjBEw6tR/Eao1+QngZnM51ErX1LtCE8KCWUegTyg0/PYvPP4/hx/7CtxDEf2WJ50zXVKJ+erxhMcVwklO+OvPDSz0UbITEfkprwGQBzC1yyIdnWLj8bDmcaClTItiuq65UskifQI5BP/fJj3P98n2X3HbXyo75B3P/MB3j+fW1C9+jd96J9aSNnqyyHq89KupzNKOxm3ZVsa+8w0RaJIKbB5vuR+RhMZ3BLbTNUodQqkOfS4/iTfUfwvYPHDbDSGvSPXsTGAx/iT/Ydwbn0OHN7lwilxGWQVeSmAr/uTba18z03JrEs06AUWXUc75/LYNmcO7CwYpZmgXzkhSPK0QoX8NPkGdz/zAeaMvw4XChtG/Ut0cVm5C8bmALQbLItEoGwb0bZiPjoNPz5Ha2aBVJrZhy70j96Efc/34euw6eY2zpcKCUuwhMOeVG4buaaZFv7sInmSAQzo/Ql9iXS3ICVS+YxtXGrQGYT3N+P7548j29+4Rqmdo/efS+qKyvddo5S4jyGkb/gw3Cyrd3VaQrdyAw4LHBHRQqkPr538DhGxsaxecVCpnbf+tKdWLrgKrdl5pE4CLJSjIq2Q2INZsCB0XtSIPmgpthjFcq7GpfhaUAKpQ0hASvqnJCQZwAlbqfM7inpcvnusiuZ3YRSIIvz7aV1zEIJAK8eOugUofQ7yc1G9txaoLgUm1D4mEMuA1CyD/UAiAHo0fu+kHJkTzI225Jsa48yjPEk6BYDPcm29o0U/a0HsIFy+I3Z75EnHNpP2Y6WKIBTUFLj6b0XtVDyFfuhnHrw5rksgcIZqGJQXNWAg1zTM6D8wY4QyW8vrZMCaQBuX1E65T87EcetANZq7KKefE3MF55waADKRL1N4/u0AezzTyvY3KFNGsYoxiKG/nK3s3jPtbn3Ygvr+U3GzwW1/Z5wSP12c7Kt/QkWm6zENDgkL6WW1Y4USHp+1DeI0C/YH4LvalyGp1feY4BFEhbI6uddaBfIQtSTPls1tm8xqY0bqAewwxMOvUtbMNzAz0U2bHtfFsMRR0CkQBpPdaYPP/j1O/jBKy8yt5VCKRYyEe5A/nN/wiATOa2rN5t6WhFwKcsB7C/1HnnCoQAs+LmwGrYXSSmQxlOd6cOJ9IcAgFDfITzSuRvnxthS9EmhFANxpbHu+ZlFQFBbN1ADRSi9Ra7ZaZIttmYalE1fWyIF0niyBVLlJ8kkHpZCaRe2wrorBdrgF95t3UINCggh8S5oWcW7jmlQItVshxRI48knkCr7BofcIpTdog3QColWNHKvSTNkhbNcRxfLyd8nKc4K4lbNJV+yBEkebOlu1XokIdR9TAokJcUEUsVFQmlXrBzgwsM2K/99VmJrnte8ZhthV6bFg/6oaCNY0CqQ27qPYUdCplykgUYgVfQI5Z6vrkZDRbkWE83Elp4WgpWLF/BYyWiNqHUbK/LsTTri2J8ZqLlbU7DuvsUEegRSPesnKQ6LQKrsGxwCOndje8uDqKqopG73+UWLsbv1G3hwzzPoH0uzmmoWdn6yYokAHQDQidJ/rxdTVyFMEy5xk65maVMAHn1YlV1QIk8LsRJKKS/aebsFgG3PKopEFckeWPzJQgqk8WgRSBWtQtkwf4HVhbJLtAE6YNmzazYxBR03N6knHGpJtrV38urPQiRKZBWKesKhLtB/PldCu0g+DmCHW1MUqnuSUZFGlOKeuiopkAajRyBVtLpeVaG0qOs1IdoAExgweQLk6SZ1rcuViGgv5eUBjcN0J9vat7hVIIHLIhkTakUR7qmrwg/vW8zcTgokPTwEUsVhQplyyeRgtks5YNG+7AjtKrqmxJnJQkQ1tHEUqkhaMjhBFciq8ulM7aRA0lONBDeBVHGQUEZFG2ASph2n8IRDLeAb/+D27Dss2wFeo4xwMjMAIB70J3yR2AAsdLhUCqTxNJSfxqGzRw3p2yF7lJZ8eDSIdz3hUAdKT7o9pN6iVmjdoykoDyk0wTkbAJSs3uFQEgzXNsE9D37cmJH1fRQWOXgsBdJ4FIF8x9Ax9g0O4eDTTymrw/kLqNtZSCj3iBycAywBefUAHiNfRfGEQ71Qqn50aLCJNminE8o2EI1IBjTY4QiSbe2JrGobpdCSaPyxAskIAOXzle+BKQYl8MgRD5nZyQQsEcUnBdJ4zBBIlf6xtCJ2QyeY2lnA9ZpywH9yo/Yal4Ox2gQwkdCc1tW6B/T7bcs17rdJ6FhR4OthXH6wyv7aA+vmC2YmWySFh1FLgTQeMwVSxaZCKfz/AweMDsijqjaRBUu+1SgJmhqgvF5m35EYwoRIxoP+YQB7RRmiVSCff/+kFEhKMpdODpstkCo2FEpLeFZ0EjVhjIJJtPNAK2R7s/Y9o5RtZC7S0gREG2BHcnO3CtmD0SqQXYdPYeMBvpGZTuXi+MmhCxffE5oQWo9QvvrQN7Gqbr5BluXF9itJIjRmPPgu94RD+fKDTsBYO3JPge+LsVomPJcYQa5Imj4x6BHI4P5+g6xyFhfHTw6lx98zVWEKoVUoqyoqsb3lQbOEcq/OCE4rsc2kcdaX+H2Aoa/seSjK0I5lDImEikkiSVyuu8waXAqk8VhJIFVsIJTFcmbaCpKVZbsJQ9WTM5CFoN2P7M1+QCHf02aVcW32HUqc8uBnKvlKZZkyQTRUzsBffHmRFEgDsaJAqlhYKAeclgs02da+EeY8/ObdF2SsHZlv/olStpXBO8Wxe7S2EKaIJCmdRRtRpomGyhnouH8J6mazBWNIgaTHygKpYlGh7DCiU9Ek29rXQUlUbSSFolxZxMvvCYe2Zn+BPlF7TZEzfaJIiDZAoo8ZBV7fAoNWlKpA1tfOZGonBZKe8UunT6bH37tCtB00qELJmnBAFUp07lay+/DDrD0800m2tW/xhEM7AGyGsn9Hu7qjpZCYsUSe6k1o0grtUb1enWNPwUG5f1MovhLNTSxgTCovAeQVyXjQ3+GLxLaCc5o6KZDGk8mMDo1dfNcWAqmiCuX/WdWKGz3XUrczQCh3OShgJy9k0p5I4UaiTout1FqhHBqnYYrocqwdSUsLpqaoi4Iu85Bl0nLSwrhy1iJcjyfb2rdoaOcYCq0kAcXtVDJFFS1SII0nkxkdupB+fT4wLtoUZvrH0ri781k8vfIe3NW4jLodZ6F03WRAkVUoSiZiratOs/cJ6z3hkFfrCs4TDtVSPChZKaG6l+HahEE2OJp8gTsq28Bpb1IKpPHYWSCzeajrZbx66CBTG057lLsc5BrjjZ5AJhERp7nCfIqhbYDTNQB9VK4eWFzZWgJ3XH/2tKBIkuMgup+spUAaj1MEUkWQULpuFcmAV0fbACcbWMgVZhZxKJUUYRPo888mGMZlhriyaVfqKY1bCa6PGC7mblX3JjdDo6tFq0AODF+QAkmJ0wRS5aGul/E0oMn1OnffHvwkmWQZbrtTV5Hk+IUXSlWGhMb2tBPlJM+TAbUjaVmR4zZNMLRd7gmH9gPYmO2KJoK0HmyBXUYfuXgS9O9vVOMY9Z5w6DnoC2jT9NmzCkVFkrARGvJY6hHI9c8fZh3OlThVIFW0CuUPWx6E55UXEeo7RNMkBWevIjeAxBbkKanUTdGettQWMFWMRB7ubwE5zkPKSbHUy10BIEber14oLkctQT168v8GiqT6U1eQLDbpSTm6GvqCrx6Hjf+PlRTJeNAf9UViu8AQmq1XIPtHLzK1cyNOF0gVLUIJAI/efS8A0AjlRqdHtBaBRQBpSOT8LNJV14rJZ16j0Ha8RGvAUopkO9KKWo6KF45KkGEmNCtJQFlNUrlOpEAaj1sEUsVAoezWWDhYkp+J0lyMtSN7QT+J00bcB3J+3gNzi8pbSZTyHW3qBf9zso6ESiTjQf+wLxJbB4ol+18110uBNBC3CaSKAUKZArCOh22SCbKFgaV25DbahxWyz0kzudd4wqEWNcVgsq29k9HlqhcruRfz7Sf2QIokFcWOgEwiHvR3okT+x0hzA25dyLZPLwWSHrcKpIqWqFdAEcr2pY25L2+0czCBBenOeT9ZXK0sqy6WTGC5xyPMEi4rHSfaXuAsrBPqpZoCtUgSNqLA2Z9IcwNWLpnH1JkUSHoyGE+5WSBVeAjlwooZr0g3K3cmBIixdmQv454wi6BOEmpyz2mClfQwgKkZf0TRiwIPBuS9MDRHt1NgEklydnIdFFfVBFIgjSZzYTT9To3bBVLloa6X8Y9v/Adzu0fvvhdbf9t//I+W+f/AALPczPacIJUAQ1umHNFkhUZ7SL+eCHY2axjas5ICsMYigWC9AJpL2LIGOXO5ZCqsK0nEg/4eZO3lSIE0msyFC+m3ZmYyI6INsRR//Pbr+MErL7I2S33zjsDn1932JfkEzY/tpBRXNiz7kVoCXFiENZD9AxGNZvBfUXYDaKBI82cG21FaINWUhM2QQlkUZpEEJvYnN3z/1mt7pEAaiRTIYoT6DrEIZQpAc1lZWcI4i6wHSU7dCiWegOfDQS+AlbkCyVg7slfj3h2LsE4R7GRb+3Cyrb2Z/E6vWO6F8j6UFCWDGYAijouSbe3Ux5qIUDZAOcvI++GxF8r7a+uKIGV6GmcymSdBXyFACiQTUiBpaV/aOBHFWgBVIK3wlC8U4n5sArAIyqF0lmTdCSjHPKKFVkwkMw1tn5ozsbBUvyh1XjHL5txAH3WM3PanoESH9rAKo0H1LpntKETO56MYMUwujQUAwxZZSXNFl0gCQCaTWQ8K98e59Dg27PkN3jozqndIFyAFkpUSQrmhrKysw0RzJBKJQ9Dkbs2GTD5F9yDOpcfxyAtHpEBSkTknBZKdIq5XKZASiUQzukUSKC6UqkC+PHiOx1BOJzV28aMNmcyI3EjXQKjvEP7nvj3Hs16SAimRSHTBRSSB/EIpBZKJFIDmD7/1wLMAboI5tegcxz/0J658YNffPQ9gsxRIiUSiF24iCUwWSimQTPQCaCDHa9SzYM2QQqmJt8+ef7WsrOwJ0XZIJBL7w1UkgctCuemFI5ekQFKxF0AzSdQwQdZ5rr1CrLInKQAbkm3tUiAlEgkXdEe3FuL70f5VTx059czFTKbaqDEcwPZ40F8yhZUnHGI6auNSUlAOUDsuBF0ikYjDMJEEAF8kVgvgOfCvW2d3UgDWkaQMVJDqBzshptK71emGddKBSSQSB2GoSKr4IrFNALZCTvAAmdBz3as0kGwmOyEfOrJ5nGSVkUgkEu6YIpIA4IvEvHD3BJ8CsCUe9OveL/OEQ1tBX3zWqfQCWCfdqxKJxEhME0kVl64q90Jxr3JzB7p4VZkC8IRcPUokEjMwXSSBib3KrXB+MEo3lNVj1KgBPOHQeijvpVkV10WyF7JYskQiMREhIqlCXLBbAawVaYcBDEARxw4zBiMJmjcD2ARnrtC7AWwplahaIpFIeCNUJFUcJJa9ALaZJY65OFAspThKJBKhWEIkVYgbdjOA9bCX+3AXgB1GulVZIGLZAvu6YXcB2CHFUSKRiMZSIpmNLxJrgVIstgXWXBX1QikR1sEzIIc3pH7dBlh/lT4AYBuATrnnKJFIrIJlRTKbLMEMQOzKaC+ALgCd8aA/IdAOZrJWl60AVgs2R2UASpX5HfIoh0QisSK2EMlsyP5lAEoV8SYAyw0aKgWl+ngUQJdVXKm8IBl8VkJ5L416D3NJgbyfkCtGiURiA2wnkvnwRWIBALUA/AC85Avk32Irz27y7zAUQTxF/u2xsgvVCIhbtgnAIvKvF/pW7b1Q3tcogBiAHimKEonEbjhCJCXGQZIWeLNeUh9GgMsPFRPIYBuJROIk/j+dBBsmdazsEgAAAABJRU5ErkJggg==';
 const STORAGE_KEYS = { url: 'sc_hmc_url', key: 'sc_hmc_key' };
 
-// ─── QUADROS RADIOCOM (contrato 002/2024) — ordem, tipo de cálculo e metadados ──
-// Só "Urgência e Emergência - Médico Clínico" usa semana/fds (Quadro I, itens 1 e 2).
-// Todos os demais usam quantidade + valor unitário (mesmo modelo de dado, rótulos diferentes por quadro).
-const QUADROS_RADIOCOM = [
-  { v:'Urgência e Emergência - Médico Clínico', ordem:1, semanaFds:true, cargaHoraria:'24x144', profissionaisPorPlantao:2, quadro:'Quadro I: Urgência e Emergência' },
-  { v:'Urgência e Emergência - Anestesiologista Sobreaviso', ordem:3, unitLabel:'Plantão', cargaHoraria:'24h', profissionaisPorPlantao:1, quadro:'Quadro I: Urgência e Emergência' },
-  { v:'Urgência e Emergência - Cirurgião Obstetra Sobreaviso', ordem:4, unitLabel:'Plantão', cargaHoraria:'24h', profissionaisPorPlantao:1, quadro:'Quadro I: Urgência e Emergência' },
-  { v:'Urgência e Emergência - Cirurgião Geral Sobreaviso', ordem:5, unitLabel:'Plantão', cargaHoraria:'24h', profissionaisPorPlantao:1, quadro:'Quadro I: Urgência e Emergência' },
-  { v:'Urgência e Emergência - Cirurgião Pediatra Sobreaviso', ordem:6, unitLabel:'Plantão', cargaHoraria:'24h', profissionaisPorPlantao:1, quadro:'Quadro I: Urgência e Emergência' },
-  { v:'Urgência e Emergência - Parecer Médico', ordem:7, unitLabel:'Parecer', cargaHoraria:'Sobreaviso', profissionaisPorPlantao:20, quadro:'Quadro I: Urgência e Emergência' },
-  { v:'Rotina - Médico Visitador', ordem:8, unitLabel:'Rotina', cargaHoraria:'3h', profissionaisPorPlantao:2, quadro:'Quadro II: Rotina' },
-  { v:'Cirurgia Eletiva - Geral', ordem:9, unitLabel:'Procedimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro III: Cirurgia Eletiva' },
-  { v:'Cirurgia Eletiva - Obstetra', ordem:10, unitLabel:'Procedimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro III: Cirurgia Eletiva' },
-  { v:'Cirurgia Eletiva - Pediatra', ordem:11, unitLabel:'Procedimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro III: Cirurgia Eletiva' },
-  { v:'Cirurgia Eletiva - Vascular', ordem:12, unitLabel:'Procedimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro III: Cirurgia Eletiva' },
-  { v:'Cirurgia Eletiva - Ortopedista', ordem:13, unitLabel:'Procedimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro III: Cirurgia Eletiva' },
-  { v:'Cirurgia Eletiva - Anestesiologista', ordem:14, unitLabel:'Procedimento', cargaHoraria:'—', profissionaisPorPlantao:4, quadro:'Quadro III: Cirurgia Eletiva' },
-  { v:'Ambulatório - Pediatra', ordem:15, unitLabel:'Atendimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro IV: Ambulatório' },
-  { v:'Ambulatório - Ortopedista', ordem:16, unitLabel:'Atendimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro IV: Ambulatório' },
-  { v:'Ambulatório - Vascular', ordem:17, unitLabel:'Atendimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro IV: Ambulatório' },
-  { v:'Ambulatório - Geral', ordem:18, unitLabel:'Atendimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro IV: Ambulatório' },
-  { v:'Ambulatório - Obstetra', ordem:19, unitLabel:'Atendimento', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro IV: Ambulatório' },
-  { v:'Direção Médica - RT', ordem:20, unitLabel:'Mensal', cargaHoraria:'20h', profissionaisPorPlantao:1, quadro:'Quadro V: Direção Médica - RT' },
-  { v:'Teleconsulta', ordem:21, unitLabel:'Consulta', cargaHoraria:'—', profissionaisPorPlantao:1, quadro:'Quadro VI: Teleconsulta' },
+// ─── ITENS FIXOS RADIOCOM (contrato 002/2024) ──────────────────────────────
+// Os 21 itens do Termo Aditivo sao fixos (nao mudam de mes a mes - so os
+// medicos que os executam mudam). Cada item tem um tipo de lancamento:
+//   'dia_semana' -> precisa dizer QUAL dia da semana (Quadro I itens 1-6 e Quadro II item 8)
+//   'lista'      -> so profissional(is) + quantidade no mes, sem dia (itens 7, 9-21)
+const DIAS_SEMANA = ['SEGUNDA','TERCA','QUARTA','QUINTA','SEXTA','SABADO','DOMINGO'];
+const DIAS_SEMANA_LABEL = { SEGUNDA:'Segunda', TERCA:'Terca', QUARTA:'Quarta', QUINTA:'Quinta', SEXTA:'Sexta', SABADO:'Sabado', DOMINGO:'Domingo' };
+const ITENS_FIXOS_RADIOCOM = [
+  { ordem:1, item:'Medico Clinico - Dia de Semana', quadro:'Quadro I: Urgencia e Emergencia', tipoLancamento:'dia_semana', diasAplicaveis:['SEGUNDA','TERCA','QUARTA','QUINTA','SEXTA'], cargaHoraria:'24x144', vaga:2, vlrUnitario:3401.36, qtdMensal:44 },
+  { ordem:2, item:'Medico Clinico - Final de Semana', quadro:'Quadro I: Urgencia e Emergencia', tipoLancamento:'dia_semana', diasAplicaveis:['SABADO','DOMINGO'], cargaHoraria:'24x144', vaga:2, vlrUnitario:3930.46, qtdMensal:18 },
+  { ordem:3, item:'Medico Anestesiologista - Sobreaviso', quadro:'Quadro I: Urgencia e Emergencia', tipoLancamento:'dia_semana', diasAplicaveis:DIAS_SEMANA, cargaHoraria:'24h', vaga:1, vlrUnitario:4200.00, qtdMensal:7 },
+  { ordem:4, item:'Medico Cirurgiao Obstetra - Sobreaviso', quadro:'Quadro I: Urgencia e Emergencia', tipoLancamento:'dia_semana', diasAplicaveis:DIAS_SEMANA, cargaHoraria:'24h', vaga:1, vlrUnitario:1352.67, qtdMensal:7 },
+  { ordem:5, item:'Medico Cirurgiao Geral - Sobreaviso', quadro:'Quadro I: Urgencia e Emergencia', tipoLancamento:'dia_semana', diasAplicaveis:DIAS_SEMANA, cargaHoraria:'24h', vaga:1, vlrUnitario:1352.67, qtdMensal:7 },
+  { ordem:6, item:'Medico Cirurgiao Pediatra - Sobreaviso', quadro:'Quadro I: Urgencia e Emergencia', tipoLancamento:'dia_semana', diasAplicaveis:DIAS_SEMANA, cargaHoraria:'24h', vaga:1, vlrUnitario:3602.67, qtdMensal:7 },
+  { ordem:7, item:'Servico de Parecer Medico', quadro:'Quadro I: Urgencia e Emergencia', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'Sobreaviso', vaga:20, vlrUnitario:350.00, qtdMensal:20 },
+  { ordem:8, item:'Medico Rotina Visitador', quadro:'Quadro II: Rotina', tipoLancamento:'dia_semana', diasAplicaveis:DIAS_SEMANA, cargaHoraria:'3h', vaga:2, vlrUnitario:822.91, qtdMensal:62 },
+  { ordem:9, item:'Medico Cirurgiao Geral - Eletiva', quadro:'Quadro III: Cirurgia Eletiva', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:3300.00, qtdMensal:8 },
+  { ordem:10, item:'Medico Cirurgiao Obstetra - Eletiva', quadro:'Quadro III: Cirurgia Eletiva', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:3300.00, qtdMensal:10 },
+  { ordem:11, item:'Medico Cirurgiao Pediatra - Eletiva', quadro:'Quadro III: Cirurgia Eletiva', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:4080.00, qtdMensal:4 },
+  { ordem:12, item:'Medico Cirurgiao Vascular - Eletiva', quadro:'Quadro III: Cirurgia Eletiva', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:7800.00, qtdMensal:4 },
+  { ordem:13, item:'Medico Cirurgiao Ortopedista - Eletiva', quadro:'Quadro III: Cirurgia Eletiva', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:4500.00, qtdMensal:4 },
+  { ordem:14, item:'Medico Anestesiologista - Eletiva', quadro:'Quadro III: Cirurgia Eletiva', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:4, vlrUnitario:5100.00, qtdMensal:30 },
+  { ordem:15, item:'Medico Pediatra', quadro:'Quadro IV: Ambulatorio', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:4500.00, qtdMensal:40 },
+  { ordem:16, item:'Medico Cirurgiao Ortopedista', quadro:'Quadro IV: Ambulatorio', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:4500.00, qtdMensal:40 },
+  { ordem:17, item:'Medico Cirurgiao Vascular', quadro:'Quadro IV: Ambulatorio', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:3900.00, qtdMensal:16 },
+  { ordem:18, item:'Medico Cirurgiao Geral', quadro:'Quadro IV: Ambulatorio', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:2700.00, qtdMensal:60 },
+  { ordem:19, item:'Medico Cirurgiao Obstetra', quadro:'Quadro IV: Ambulatorio', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'-', vaga:1, vlrUnitario:2700.00, qtdMensal:30 },
+  { ordem:20, item:'Diretor Medico - Responsavel Tecnico', quadro:'Quadro V: Direcao Medica - RT', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'20h', vaga:1, vlrUnitario:15000.00, qtdMensal:1 },
+  { ordem:21, item:'Consultas Medicas (Teleconsulta)', quadro:'Quadro VI: Teleconsulta', tipoLancamento:'lista', diasAplicaveis:null, cargaHoraria:'Consultas', vaga:60, vlrUnitario:200.00, qtdMensal:60 },
 ];
-// Compatibilidade com categorias antigas já gravadas no banco (antes desta correção)
-const CATEGORIAS_ANTIGAS_SEMANA_FDS = ['Médico Clínico - UE'];
-const isSemanaFds = (it) => {
-  if (it.tipo_calculo) return it.tipo_calculo === 'semana_fds';
-  return CATEGORIAS_ANTIGAS_SEMANA_FDS.includes(it.categoria) || it.categoria === 'Urgência e Emergência - Médico Clínico';
+// Um item e "dia_semana" se veio marcado assim no banco (tipo_lancamento) ou,
+// por seguranca, se seu nome bate com um dos itens fixos que sabemos ser desse tipo.
+const isDiaSemanaItem = (it) => {
+  if (it.tipo_lancamento) return it.tipo_lancamento === 'dia_semana';
+  const fixo = ITENS_FIXOS_RADIOCOM.find(f => f.item === it.item);
+  return fixo ? fixo.tipoLancamento === 'dia_semana' : false;
 };
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -296,6 +302,8 @@ function App() {
   const [contratos, setContratos] = useState([]);
   const [itens, setItens] = useState([]);
   const [aditivos, setAditivos] = useState([]);
+  const [medicos, setMedicos] = useState([]); // cadastro de médicos (roster que cresce), usado no Radiocom
+  const [lancamentos, setLancamentos] = useState([]); // medicoes_lancamentos: quem trabalhou, quando, quanto
   const [modal, setModal] = useState(null);
   const [selFin, setSelFin] = useState('');
   const [selQtd, setSelQtd] = useState('');
@@ -327,15 +335,19 @@ function App() {
   const loadAll = async () => {
     setSyncStatus('loading');
     try {
-      const [c, i, a] = await Promise.all([
+      const [c, i, a, m, l] = await Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         sb().from('itens').select('*').order('created_at'),
-        sb().from('aditivos').select('*').order('created_at', {ascending:false})
+        sb().from('aditivos').select('*').order('created_at', {ascending:false}),
+        sb().from('medicos').select('*').order('nome'),
+        sb().from('medicoes_lancamentos').select('*').order('created_at')
       ]);
       if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
       setContratos(c.data || []);
       setItens((i.data || []).slice().sort((a,b) => (a.ordem||999) - (b.ordem||999)));
       setAditivos(a.data || []);
+      setMedicos(m.data || []); // se a tabela ainda não existir, m.error fica setado e usamos []
+      setLancamentos(l.data || []);
       setSyncStatus('ok');
     } catch(e) {
       setSyncStatus('err');
@@ -414,6 +426,22 @@ function App() {
     const { error } = await sb().from('itens').update({ [campo]: qtd }).eq('id', itemId);
     if (error) { alert('Erro ao salvar: ' + error.message); return; }
     await loadAll();
+  };
+
+  // Cadastro de médicos (roster que cresce) — usado nas Medições Mensais do Radiocom
+  const addMedicoSeNaoExiste = async (contratoId, nomeBruto) => {
+    const nome = (nomeBruto || '').trim();
+    if (!nome) return;
+    const jaExiste = medicos.some(m => m.contrato_id === contratoId && m.nome.trim().toLowerCase() === nome.toLowerCase());
+    if (jaExiste) return;
+    const novo = { id: uid('M'), contrato_id: contratoId, nome };
+    const { error } = await sb().from('medicos').insert(novo);
+    if (!error) setMedicos(prev => [...prev, novo]);
+  };
+  const removerMedico = async (medicoId) => {
+    if (!confirm('Remover este médico do cadastro? (não apaga lançamentos já feitos)')) return;
+    await sb().from('medicos').delete().eq('id', medicoId);
+    setMedicos(prev => prev.filter(m => m.id !== medicoId));
   };
 
   // Atualiza qtd_exec de um item de quantidade/valor-unitário (demais categorias Radiocom e outros contratos)
@@ -809,126 +837,45 @@ function App() {
       </div>
     );
 
-    // Layout especial para contratos com itens agrupados por categoria (ex: Radiocom — plantão médico)
-    const temCategorias = lista.some(it => it.categoria);
-    if (temCategorias) {
-      const categorias = [...new Set(lista.map(it => it.categoria))];
-      const totalMesContrato = lista.reduce((acc, it) => {
-        if (isSemanaFds(it)) {
-          const totSemana = (it.qtd_semana||0) * (it.vlr_unit_semana||0);
-          const totFds = (it.qtd_fds||0) * (it.vlr_unit_fds||0);
-          return acc + totSemana + totFds;
-        }
-        return acc + (it.qtd_exec||0) * (it.vlr_unitario||0);
-      }, 0);
+    // Contratos de médicos (Radiocom): os 21 itens são fixos pelo Termo Aditivo.
+    // Quem executa cada um muda todo mês — isso é lançado em "Medições Mensais",
+    // não aqui. Aqui só mostramos referência + saldo/análise preditiva.
+    if (contrato && tipoContrato(contrato.numero) === 'medicos') {
+      const quadrosOrdenados = [...new Set(lista.slice().sort((a,b)=>(a.ordem||0)-(b.ordem||0)).map(it => it.quadro || 'Outros itens'))];
       return (
         <>
         <div className="cards-grid">
-          <div className="stat-card azul"><div className="s-val">{lista.length}</div><div className="s-label">Profissionais / itens cadastrados</div></div>
-          <div className="stat-card verde"><div className="s-val" style={{fontSize:17}}>{brl(totalMesContrato)}</div><div className="s-label">Total do mês lançado</div></div>
+          <div className="stat-card azul"><div className="s-val">{lista.length}</div><div className="s-label">Itens fixos do contrato</div></div>
         </div>
-        {categorias.map(cat => {
-          const grupo = lista.filter(it => it.categoria === cat);
-          const grupoSemanaFds = grupo.some(isSemanaFds);
-          const quadroInfo = QUADROS_RADIOCOM.find(q => q.v === cat);
-
-          // ── Subgrupo semana/fds (só "Médico Clínico") ──
-          if (grupoSemanaFds) {
-            return (
-              <div key={cat} className="panel">
-                <div className="panel-head"><h2><i className="fa-solid fa-user-doctor"/> {cat}</h2>
-                  <span className="badge azul">{grupo.length} profissional(is)</span>
-                </div>
-                <div className="panel-body" style={{paddingTop:8}}>
-                  <div style={{fontSize:11,color:'var(--text2)',marginBottom:10,padding:'7px 10px',background:'var(--gray)',borderRadius:5}}>
-                    <i className="fa-solid fa-circle-info"/> Preencha a <strong>quantidade de plantões</strong> realizados em <strong>dia de semana</strong> e em <strong>final de semana</strong> separadamente — os valores são diferentes.
-                  </div>
-                  <div className="tbl-wrap">
-                    <table>
-                      <thead><tr>
-                        <th>Profissional</th>
-                        <th style={{background:'#E0F4FB'}}>Qtd plantões<br/>Dia de semana</th>
-                        <th style={{background:'#E0F4FB'}}>Valor/plantão<br/>Dia de semana</th>
-                        <th style={{background:'#FFF4E0'}}>Qtd plantões<br/>Final de semana</th>
-                        <th style={{background:'#FFF4E0'}}>Valor/plantão<br/>Final de semana</th>
-                        <th>Total do mês</th>
-                        <th></th>
-                      </tr></thead>
-                      <tbody>{grupo.map(it => {
-                        const totSemana = (it.qtd_semana||0) * (it.vlr_unit_semana||0);
-                        const totFds = (it.qtd_fds||0) * (it.vlr_unit_fds||0);
-                        const total = totSemana + totFds;
-                        return (
-                          <tr key={it.id}>
-                            <td style={{fontWeight:600}}>{it.item}</td>
-                            <td style={{background:'#F5FBFE'}}>
-                              <input type="number" min="0" defaultValue={it.qtd_semana||0}
-                                onBlur={e => atualizarPlantao(it.id, 'qtd_semana', e.target.value)}
-                                style={{width:60,padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}} />
-                            </td>
-                            <td style={{background:'#F5FBFE',textAlign:'center',fontSize:11.5}} className="cell-m">{brl(it.vlr_unit_semana||0)}</td>
-                            <td style={{background:'#FFFAF0'}}>
-                              <input type="number" min="0" defaultValue={it.qtd_fds||0}
-                                onBlur={e => atualizarPlantao(it.id, 'qtd_fds', e.target.value)}
-                                style={{width:60,padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}} />
-                            </td>
-                            <td style={{background:'#FFFAF0',textAlign:'center',fontSize:11.5}} className="cell-m">{brl(it.vlr_unit_fds||0)}</td>
-                            <td style={{fontWeight:700,color:'var(--teal-d)'}}>{brl(total)}</td>
-                            <td><ActBtn icon="fa-trash" onClick={() => excluir('itens', it.id)} danger /></td>
-                          </tr>
-                        );
-                      })}</tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-
-          // ── Subgrupo quantidade + valor unitário (Sobreaviso, Eletiva, Ambulatório, RT, Teleconsulta, Rotina...) ──
-          const unitLabel = quadroInfo?.unitLabel || grupo[0]?.unit || 'Unidade';
+        <div className="panel">
+          <div className="panel-body" style={{fontSize:11.5,color:'var(--text2)'}}>
+            <i className="fa-solid fa-circle-info"/> Estes 21 itens são fixos pelo Termo Aditivo (só os médicos que os executam mudam mês a mês). Para lançar quem trabalhou, use <strong>Medições Mensais</strong>.
+          </div>
+        </div>
+        {quadrosOrdenados.map(quadroNome => {
+          const grupo = lista.filter(it => (it.quadro||'Outros itens') === quadroNome).sort((a,b)=>(a.ordem||0)-(b.ordem||0));
           return (
-            <div key={cat} className="panel">
-              <div className="panel-head"><h2><i className="fa-solid fa-user-doctor"/> {cat}</h2>
-                <span className="badge azul">{grupo.length} profissional(is)</span>
-              </div>
-              <div className="panel-body" style={{paddingTop:8}}>
-                <div className="tbl-wrap">
-                  <table>
-                    <thead><tr>
-                      <th>Profissional</th>
-                      <th>Qtd {unitLabel.toLowerCase()}/mês contratada</th>
-                      <th>Valor unitário</th>
-                      <th>Qtd executada no mês</th>
-                      <th>Total do mês</th>
-                      <th></th>
-                    </tr></thead>
-                    <tbody>{grupo.map(it => {
-                      const total = (it.qtd_exec||0) * (it.vlr_unitario||0);
-                      return (
-                        <tr key={it.id}>
-                          <td style={{fontWeight:600}}>{it.item}</td>
-                          <td style={{textAlign:'center'}}>{it.qtd_mensal||0}</td>
-                          <td style={{textAlign:'center'}} className="cell-m">{brl(it.vlr_unitario||0)}</td>
-                          <td>
-                            <input type="number" min="0" defaultValue={it.qtd_exec||0}
-                              onBlur={e => atualizarQtdExec(it.id, e.target.value)}
-                              style={{width:70,padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}} />
-                          </td>
-                          <td style={{fontWeight:700,color:'var(--teal-d)'}}>{brl(total)}</td>
-                          <td><ActBtn icon="fa-trash" onClick={() => excluir('itens', it.id)} danger /></td>
-                        </tr>
-                      );
-                    })}</tbody>
-                  </table>
-                </div>
+            <div key={quadroNome} className="panel">
+              <div className="panel-head"><h2><i className="fa-solid fa-table-list"/> {quadroNome}</h2></div>
+              <div className="tbl-wrap">
+                <table>
+                  <thead><tr><th>Item</th><th>Carga Horária</th><th>Vaga</th><th>Valor Unitário</th><th>Qtd contratada/mês</th><th>Acumulado (todas medições)</th></tr></thead>
+                  <tbody>{grupo.map(it => (
+                    <tr key={it.id}>
+                      <td style={{fontWeight:600}}>{it.ordem}. {it.item}</td>
+                      <td className="cell-m" style={{textAlign:'center'}}>{it.carga_horaria||'—'}</td>
+                      <td className="cell-m" style={{textAlign:'center'}}>{it.vaga||'—'}</td>
+                      <td style={{textAlign:'center'}}>{brl(it.vlr_unitario||0)}</td>
+                      <td style={{textAlign:'center'}}>{it.qtd_mensal||0}</td>
+                      <td style={{textAlign:'center',fontWeight:600}}>{it.qtd_acum||0}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
               </div>
             </div>
           );
         })}
-        <div className="panel"><div className="panel-body" style={{textAlign:'right'}}>
-          <button className="btn btn-primary btn-sm" onClick={() => openModal('item', selQtd)}><i className="fa-solid fa-plus"/> Adicionar profissional</button>
-        </div></div>
+        {analiseContrato()}
         </>
       );
     }
@@ -1203,59 +1150,11 @@ function App() {
       const ehContratoMedico = contratoAtual?.segmento === 'Recursos humanos médicos' || contratoAtual?.numero?.includes('002/2024');
 
       if (ehContratoMedico) {
-        const catAtual = fv('categoria') || '';
-        const catInfo = QUADROS_RADIOCOM.find(q => q.v === catAtual);
-        const ehSemanaFds = catInfo?.semanaFds === true;
-        const onChangeCategoria = (e) => {
-          const v = e.target.value;
-          const info = QUADROS_RADIOCOM.find(q => q.v === v);
-          sf('categoria', v);
-          sf('ordem', info ? String(info.ordem) : '');
-          sf('tipo_calculo', info?.semanaFds ? 'semana_fds' : 'quantidade_unitario');
-          setForm({...formRef.current}); // força re-render para trocar os campos abaixo
-        };
         return (
-          <div className="form-row" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11}}>
-            <FG label="Nome do profissional médico *" full><FI k="item" placeholder="Ex: Dr. João da Silva" /></FG>
-            <FG label="Categoria / Quadro do contrato *" full>
-              <select defaultValue={catAtual} onChange={onChangeCategoria}>
-                <option value="">— Selecionar —</option>
-                {QUADROS_RADIOCOM.map(q => <option key={q.v} value={q.v}>{q.quadro} — {q.v}</option>)}
-              </select>
-            </FG>
-
-            {!catAtual && (
-              <div className="cell-m" style={{gridColumn:'1/-1',fontSize:11.5,padding:'6px 2px'}}>
-                Selecione a categoria acima para exibir os campos de valor correspondentes.
-              </div>
-            )}
-
-            {catAtual && ehSemanaFds && (
-              <>
-                <div className="sec-label" style={{gridColumn:'1/-1',display:'flex',alignItems:'center',gap:8}}>
-                  <i className="fa-solid fa-calendar-day" style={{color:'var(--blue)'}}/> Valor do plantão — Dia de semana
-                </div>
-                <FG label="Valor unitário do plantão (R$)"><FI k="vlr_unit_semana" type="number" placeholder="0,00" /></FG>
-                <FG label="Qtd de plantões já realizados (opcional)"><FI k="qtd_semana" type="number" placeholder="0" /></FG>
-                <div className="sec-label" style={{gridColumn:'1/-1',display:'flex',alignItems:'center',gap:8}}>
-                  <i className="fa-solid fa-calendar-week" style={{color:'#f97316'}}/> Valor do plantão — Final de semana
-                </div>
-                <FG label="Valor unitário do plantão (R$)"><FI k="vlr_unit_fds" type="number" placeholder="0,00" /></FG>
-                <FG label="Qtd de plantões já realizados (opcional)"><FI k="qtd_fds" type="number" placeholder="0" /></FG>
-              </>
-            )}
-
-            {catAtual && !ehSemanaFds && (
-              <>
-                <div className="sec-label" style={{gridColumn:'1/-1'}}>
-                  Valores — {catInfo?.unitLabel || 'Unidade'} ({catInfo?.quadro})
-                </div>
-                <FG label={`Valor unitário por ${(catInfo?.unitLabel||'unidade').toLowerCase()} (R$)`}><FI k="vlr_unitario" type="number" placeholder="0,00" /></FG>
-                <FG label={`Qtd de ${(catInfo?.unitLabel||'unidades').toLowerCase()} contratada/mês`}><FI k="qtd_mensal" type="number" placeholder="0" /></FG>
-                <FG label="Qtd já executada (opcional)"><FI k="qtd_exec" type="number" placeholder="0" /></FG>
-                <FG label="Qtd acumulada (opcional)"><FI k="qtd_acum" type="number" placeholder="0" /></FG>
-              </>
-            )}
+          <div className="empty">
+            <i className="fa-solid fa-circle-info" />
+            Os 21 itens deste contrato são fixos pelo Termo Aditivo (Quadros I a VI) e já estão cadastrados.<br/>
+            <span style={{fontSize:12,marginTop:6,display:'block'}}>Para lançar quem trabalhou em cada item todo mês, use <strong>Medições Mensais</strong> — lá você escolhe o médico (de uma lista que cresce conforme você digita) e a quantidade, sem precisar cadastrar item novo.</span>
           </div>
         );
       }
@@ -1320,6 +1219,30 @@ function App() {
   const [medicaoMes, setMedicaoMes] = React.useState(todayMonth());
   const [medicaoItens, setMedicaoItens] = React.useState({});
   const [medicaoNumMedicao, setMedicaoNumMedicao] = React.useState('');
+  const [radiocomRows, setRadiocomRows] = React.useState({}); // { [item_id]: [{uid, dia_semana, medico_nome, quantidade}] }
+
+  useEffect(() => {
+    if (!medicaoContrato || !medicaoMes) { setRadiocomRows({}); return; }
+    const c = contratos.find(x => x.id === medicaoContrato);
+    if (!c || tipoContrato(c.numero) !== 'medicos') return;
+    const itensDoContrato = itens.filter(i => i.contrato_id === medicaoContrato);
+    const rows = {};
+    itensDoContrato.forEach(it => {
+      const existentes = lancamentos.filter(l => l.item_id === it.id && l.mes_referencia === medicaoMes);
+      rows[it.id] = existentes.map(l => ({ uid: l.id, dia_semana: l.dia_semana||null, medico_nome: l.medico_nome||'', quantidade: l.quantidade||0 }));
+    });
+    setRadiocomRows(rows);
+  }, [medicaoContrato, medicaoMes, itens, lancamentos]);
+
+  const addRadiocomRow = (itemId, diaSemanaDefault) => {
+    setRadiocomRows(prev => ({ ...prev, [itemId]: [...(prev[itemId]||[]), { uid: uid('L'), dia_semana: diaSemanaDefault||null, medico_nome:'', quantidade:0 }] }));
+  };
+  const updateRadiocomRow = (itemId, rowUid, campo, valor) => {
+    setRadiocomRows(prev => ({ ...prev, [itemId]: (prev[itemId]||[]).map(r => r.uid===rowUid ? {...r, [campo]: valor} : r) }));
+  };
+  const removeRadiocomRow = (itemId, rowUid) => {
+    setRadiocomRows(prev => ({ ...prev, [itemId]: (prev[itemId]||[]).filter(r => r.uid !== rowUid) }));
+  };
 
   const tipoContrato = (numero) => {
     if(['019/2024'].includes(numero)) return 'exames_lote';
@@ -1354,28 +1277,13 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const diasMes = new Date(parseInt(y), parseInt(m), 0).getDate();
     const periodoMes = `01/${m}/${y} À ${diasMes}/${m}/${y}`;
 
-    // Calcula total geral — suporta contratos mistos (semana/fds + quantidade/valor unitário)
+    // Calcula total geral (contratos genéricos - fixo/exames_lote)
     let totalGeral = 0;
-    const temCategorias = itensMes.some(it => it.categoria);
-    if (temCategorias) {
-      itensMes.forEach(it => {
-        if (isSemanaFds(it)) {
-          const qSem = parseFloat(medicaoItens['sem_'+it.id] ?? it.qtd_semana ?? 0);
-          const qFds = parseFloat(medicaoItens['fds_'+it.id] ?? it.qtd_fds ?? 0);
-          totalGeral += qSem * (it.vlr_unit_semana||0) + qFds * (it.vlr_unit_fds||0);
-        } else {
-          const qtd = parseFloat(medicaoItens[it.id] ?? it.qtd_exec ?? 0);
-          const vu = parseFloat(medicaoItens['vu_'+it.id] !== undefined ? medicaoItens['vu_'+it.id] : (it.vlr_unitario||0));
-          totalGeral += qtd * vu;
-        }
-      });
-    } else {
-      itensMes.forEach(it => {
-        const qtd = parseFloat(medicaoItens[it.id] || 0);
-        const vlrUnit = parseFloat(medicaoItens['vu_'+it.id] || it.vlr_unitario || 0);
-        totalGeral += qtd * vlrUnit;
-      });
-    }
+    itensMes.forEach(it => {
+      const qtd = parseFloat(medicaoItens[it.id] || 0);
+      const vlrUnit = parseFloat(medicaoItens['vu_'+it.id] || it.vlr_unitario || 0);
+      totalGeral += qtd * vlrUnit;
+    });
 
     const logoImg = LOGO_B64 ? `<img src="data:image/png;base64,${LOGO_B64}" style="height:60px">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
 
@@ -1442,70 +1350,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     let corpoTabela = '';
 
-    if(tipo === 'medicos') {
-      // Modelo Radiocom 002/2024 — agrupado por Quadro do contrato.
-      // Só "Médico Clínico" usa colunas de Plantão (semana/fds, 2 linhas por profissional);
-      // os demais quadros (Sobreaviso, Rotina, Cirurgia Eletiva, Ambulatório, RT, Teleconsulta)
-      // usam quantidade + valor unitário — exatamente como no Termo Aditivo original.
-      const grupos = {};
-      itensMes.slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999)).forEach(it => {
-        const info = QUADROS_RADIOCOM.find(q => q.v === it.categoria);
-        const quadroNome = info?.quadro || it.categoria || 'Outros itens';
-        if (!grupos[quadroNome]) grupos[quadroNome] = [];
-        grupos[quadroNome].push(it);
-      });
-      let totalContrato = 0;
-      const blocos = Object.entries(grupos).map(([quadroNome, itensGrupo]) => {
-        let totalQuadro = 0;
-        const ehGrupoSemanaFds = itensGrupo.some(isSemanaFds);
-        const linhas = itensGrupo.map(it => {
-          const info = QUADROS_RADIOCOM.find(q => q.v === it.categoria);
-          if (isSemanaFds(it)) {
-            const qSem = parseFloat(medicaoItens['sem_'+it.id] ?? it.qtd_semana ?? 0);
-            const qFds = parseFloat(medicaoItens['fds_'+it.id] ?? it.qtd_fds ?? 0);
-            const totSem = qSem * (it.vlr_unit_semana||0);
-            const totFds = qFds * (it.vlr_unit_fds||0);
-            totalQuadro += totSem + totFds;
-            return `<tr>
-                <td class="num">1</td><td class="desc">${it.item} — Dia de Semana</td><td class="num">${info?.cargaHoraria||'—'}</td><td class="num">${info?.profissionaisPorPlantao||''}</td>
-                <td class="num">${qSem}</td><td class="val">R$ ${(it.vlr_unit_semana||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-                <td class="val">R$ ${totSem.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-              </tr>
-              <tr>
-                <td class="num">2</td><td class="desc">${it.item} — Final de Semana</td><td class="num">${info?.cargaHoraria||'—'}</td><td class="num">${info?.profissionaisPorPlantao||''}</td>
-                <td class="num">${qFds}</td><td class="val">R$ ${(it.vlr_unit_fds||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-                <td class="val">R$ ${totFds.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-              </tr>`;
-          }
-          const qtd = parseFloat(medicaoItens[it.id] ?? it.qtd_exec ?? 0);
-          const vu = parseFloat(medicaoItens['vu_'+it.id] !== undefined ? medicaoItens['vu_'+it.id] : (it.vlr_unitario||0));
-          const total = qtd * vu;
-          totalQuadro += total;
-          if (ehGrupoSemanaFds) {
-            // quadro misto (não deve ocorrer no Radiocom, mas mantém alinhamento de colunas)
-            return `<tr>
-              <td class="num">—</td><td class="desc">${it.item}</td><td class="num">${info?.cargaHoraria||'—'}</td><td class="num">${info?.profissionaisPorPlantao||1}</td>
-              <td class="num">${qtd}</td><td class="val">R$ ${vu.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-              <td class="val">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-            </tr>`;
-          }
-          return `<tr>
-            <td class="desc">${it.item}</td><td class="num">${info?.cargaHoraria||'—'}</td><td class="num">${info?.profissionaisPorPlantao||1}</td>
-            <td class="num">${qtd}</td><td class="val">R$ ${vu.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-            <td class="val">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-          </tr>`;
-        }).join('');
-        totalContrato += totalQuadro;
-        const header = ehGrupoSemanaFds
-          ? `<tr><th>Item</th><th>Descrição</th><th>Carga Horária</th><th>Profissionais por Plantão</th><th>Plantão</th><th>Valor Unitário por Plantão</th><th>Valor Total Mensal</th></tr>`
-          : `<tr><th>Descrição</th><th>Carga Horária</th><th>Profissionais</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total Mensal</th></tr>`;
-        return `<div class="lote-titulo">${quadroNome}</div>
-          <table><thead>${header}</thead><tbody>${linhas}
-          <tr class="total-row"><td colspan="${ehGrupoSemanaFds?6:5}" style="text-align:right">TOTAL DO QUADRO</td><td class="val">R$ ${totalQuadro.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>
-          </tbody></table>`;
-      }).join('');
-      corpoTabela = blocos + `<div class="total-geral">TOTAL GERAL DO CONTRATO &nbsp;&nbsp; R$ ${totalContrato.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`;
-    } else if(tipo === 'fixo') {
+    if(tipo === 'fixo') {
       // Modelo fixo: itens com valor mensal (A4PM, Labtec, LS Toledo)
       let totalMes = 0;
       const linhas = itensMes.map(it => {
@@ -1620,44 +1465,26 @@ try {
 
   // 1. Upsert de cada item desta medição — substitui o lançamento do mesmo
   //    item no mesmo mês em vez de somar em cima do que já existia.
-  //    Corrigido: o tipo agora é decidido POR ITEM (isSemanaFds), não mais
-  //    por "o contrato inteiro tem categoria" — isso evitava que Sobreaviso,
-  //    Eletiva, Ambulatório e RT fossem gravados como se fossem plantão semana/fds.
+  //    (Contratos de médicos usam gerarPDFRadiocom + medicoes_lancamentos; aqui só
+  //    tratamos contratos genéricos com quantidade + valor unitário.)
   const upserts = itensMesLocal.map(it => {
-    if (isSemanaFds(it)) {
-      const qSem = parseFloat(medicaoItens['sem_'+it.id] || 0);
-      const qFds = parseFloat(medicaoItens['fds_'+it.id] || 0);
-      return sb().from('medicoes_itens').upsert({
-        id: `${it.id}_${medicaoMes}`,
-        contrato_id: medicaoContrato,
-        item_id: it.id,
-        mes_referencia: medicaoMes,
-        qtd_semana: qSem,
-        qtd_fds: qFds,
-        vlr_unit_semana: it.vlr_unit_semana || 0,
-        vlr_unit_fds: it.vlr_unit_fds || 0,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'item_id,mes_referencia' });
-    } else {
-      const qtdExec = parseFloat(medicaoItens[it.id] || 0);
-      const vuState = medicaoItens['vu_'+it.id];
-      const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
-      return sb().from('medicoes_itens').upsert({
-        id: `${it.id}_${medicaoMes}`,
-        contrato_id: medicaoContrato,
-        item_id: it.id,
-        mes_referencia: medicaoMes,
-        qtd_executada: qtdExec,
-        vlr_unitario: vu,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'item_id,mes_referencia' });
-    }
+    const qtdExec = parseFloat(medicaoItens[it.id] || 0);
+    const vuState = medicaoItens['vu_'+it.id];
+    const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
+    return sb().from('medicoes_itens').upsert({
+      id: `${it.id}_${medicaoMes}`,
+      contrato_id: medicaoContrato,
+      item_id: it.id,
+      mes_referencia: medicaoMes,
+      qtd_executada: qtdExec,
+      vlr_unitario: vu,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'item_id,mes_referencia' });
   });
   await Promise.all(upserts);
 
-  // 1b. Sincroniza itens.qtd_exec (e vlr_unitario, se digitado) para os itens
-  //     de quantidade+valor-unitário, para refletir no Controle de Quantidade.
-  const syncQtdExec = itensMesLocal.filter(it => !isSemanaFds(it)).map(it => {
+  // 1b. Sincroniza itens.qtd_exec (e vlr_unitario, se digitado) para refletir no Controle de Quantidade.
+  const syncQtdExec = itensMesLocal.map(it => {
     const qtdExec = parseFloat(medicaoItens[it.id] || 0);
     const vuState = medicaoItens['vu_'+it.id];
     const patch = { qtd_exec: qtdExec };
@@ -1709,148 +1536,172 @@ try {
 }    }, 1200);
   };
 
+  // ─── GERAR PDF + REGISTRAR (contratos de médicos — Radiocom) ──────────────
+  // Modelo espelha exatamente a planilha oficial: por Quadro, item, dia da
+  // semana (quando aplicável) e médico. Vários médicos podem dividir o mesmo
+  // dia/item — cada linha é livre para adicionar/remover.
+  const gerarPDFRadiocom = () => {
+    const c = contratos.find(x => x.id === medicaoContrato);
+    if (!c) { alert('Selecione um contrato.'); return; }
+    const itensDoContrato = itens.filter(i => i.contrato_id === c.id).slice().sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+    const mesRef = mesToPT(medicaoMes);
+    const [y,m] = medicaoMes.split('-');
+    const diasMes = new Date(parseInt(y), parseInt(m), 0).getDate();
+    const periodoMes = `01/${m}/${y} À ${diasMes}/${m}/${y}`;
+
+    let totalGeral = 0;
+    const quadros = [...new Set(itensDoContrato.map(it => it.quadro || 'Outros itens'))];
+    const blocos = quadros.map(quadroNome => {
+      const itensQuadro = itensDoContrato.filter(it => (it.quadro||'Outros itens') === quadroNome);
+      let totalQuadro = 0;
+      const linhas = itensQuadro.map(it => {
+        const rows = radiocomRows[it.id] || [];
+        const isDia = isDiaSemanaItem(it);
+        if (!rows.length) {
+          return `<tr><td class="num">${it.ordem}</td><td class="desc">${it.item}</td><td class="num">${it.carga_horaria||'—'}</td><td class="num">${it.vaga||''}</td><td class="desc">—</td><td class="desc">—</td><td class="num">0</td><td class="val">R$ ${(it.vlr_unitario||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td class="val">R$ 0,00</td></tr>`;
+        }
+        return rows.map(r => {
+          const qtd = parseFloat(r.quantidade) || 0;
+          const total = qtd * (it.vlr_unitario||0);
+          totalQuadro += total;
+          return `<tr>
+            <td class="num">${it.ordem}</td>
+            <td class="desc">${it.item}</td>
+            <td class="num">${it.carga_horaria||'—'}</td>
+            <td class="num">${it.vaga||''}</td>
+            <td class="desc">${isDia ? (DIAS_SEMANA_LABEL[r.dia_semana]||'—') : '—'}</td>
+            <td class="desc">${r.medico_nome||'—'}</td>
+            <td class="num">${qtd}</td>
+            <td class="val">R$ ${(it.vlr_unitario||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+            <td class="val">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+          </tr>`;
+        }).join('');
+      }).join('');
+      totalGeral += totalQuadro;
+      return `<div class="lote-titulo">${quadroNome}</div>
+        <table><thead><tr><th>Item</th><th>Descrição</th><th>Carga Horária</th><th>Vaga</th><th>Dia</th><th>Profissional Médico</th><th>Quant. Plantões</th><th>Valor Plantão</th><th>Valor Bruto</th></tr></thead>
+        <tbody>${linhas}
+        <tr class="total-row"><td colspan="8" style="text-align:right">TOTAL DO QUADRO</td><td class="val">R$ ${totalQuadro.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>
+        </tbody></table>`;
+    }).join('');
+
+    const logoImg = LOGO_B64 ? `<img src="data:image/png;base64,${LOGO_B64}" style="height:60px">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
+    const estilos = `<style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; font-size: 10.5px; color: #000; padding: 20px; }
+      .header { text-align: center; margin-bottom: 16px; }
+      .header img { height: 60px; margin-bottom: 8px; }
+      .header h3 { font-size: 11px; font-weight: normal; letter-spacing: 1px; margin-bottom: 10px; }
+      .titulo-box { border: 1px solid #000; padding: 10px; text-align: center; margin-bottom: 14px; }
+      .titulo-box h2 { font-size: 14px; font-weight: bold; }
+      .titulo-box h3 { font-size: 12px; font-weight: normal; margin-top: 4px; }
+      .info { margin-bottom: 14px; line-height: 1.8; font-size: 11px; }
+      .periodo-box { background: #d0d0d0; text-align: center; padding: 7px; font-weight: bold; font-size: 11px; margin-bottom: 10px; }
+      .lote-titulo { background: #d0d0d0; text-align: center; padding: 5px; font-weight: bold; margin-top: 10px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+      th { background: #d0d0d0; border: 1px solid #000; padding: 4px 5px; font-size: 9px; text-align: center; font-weight: bold; }
+      td { border: 1px solid #000; padding: 3px 5px; font-size: 9px; }
+      td.desc { text-align: left; } td.num { text-align: center; } td.val { text-align: right; }
+      .total-row td { font-weight: bold; background: #f0f0f0; }
+      .total-geral { text-align: right; font-weight: bold; font-size: 12px; border: 1px solid #000; padding: 6px 8px; margin-top: 4px; }
+      .assinaturas { margin-top: 40px; display: flex; gap: 40px; justify-content:center; }
+      .assinatura-box { flex: 1; text-align: center; max-width:260px; }
+      .assinatura-box .linha { border-top: 1px solid #000; margin-bottom: 4px; }
+      .assinatura-box p { font-size: 10px; line-height: 1.5; }
+      @media print { body { padding: 10px; } }
+    </style>`;
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Medição ${c.numero} - ${mesRef}</title>${estilos}</head><body>
+      <div class="header">${logoImg}<h3>PROJETO SOCIAL CRESCE COMUNIDADE</h3></div>
+      <div class="titulo-box"><h2>PROCESSO INTERNO Nº ${c.processo || '129/2024'}</h2><h3>Medição - ${mesRef}</h3></div>
+      <div class="info">
+        <strong>Contrato:</strong> ${c.numero} &nbsp;&nbsp; <strong>Data Inicial:</strong> ${fmtD(c.inicio)}<br/>
+        <strong>Empresa:</strong> ${c.empresa}<br/>
+        <strong>CNPJ:</strong> ${c.cnpj || '33.192.856/0001-65'}<br/>
+        <strong>Representante Legal:</strong> ${c.representante || 'Sr. Rafael de Araújo Medina'}
+      </div>
+      <div class="periodo-box">${medicaoNumMedicao||'__'}ª MEDIÇÃO - ${periodoMes}</div>
+      ${blocos}
+      <div class="total-geral">TOTAL GERAL &nbsp;&nbsp; R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      <div class="assinaturas">
+        <div class="assinatura-box"><div class="linha"></div><p><strong>Camilla Valadares Heringer Quindeler</strong><br/>Assistente Administrativo<br/>Prima Qualitá Saúde</p></div>
+        <div class="assinatura-box"><div class="linha"></div><p><strong>Carlos Henrique Buzzi da Silva</strong><br/>Gestor do Contrato<br/>Prima Qualitá Saúde</p></div>
+      </div>
+    </body></html>`;
+
+    const janela = window.open('', '_blank');
+    janela.document.write(html);
+    janela.document.close();
+    setTimeout(() => janela.print(), 800);
+
+    setTimeout(async () => {
+      const confirmar = window.confirm(
+        `Medição gerada com sucesso!\n\nDeseja registrar esta medição (salva quem trabalhou em cada dia/item e recalcula os saldos)?\n\nTotal da medição: R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}`
+      );
+      if (!confirmar) return;
+      setSaving(true);
+      try {
+        // 1. Garante que todos os nomes digitados estão no cadastro de médicos
+        const nomesUsados = new Set();
+        itensDoContrato.forEach(it => (radiocomRows[it.id]||[]).forEach(r => { if (r.medico_nome?.trim()) nomesUsados.add(r.medico_nome.trim()); }));
+        await Promise.all([...nomesUsados].map(nome => addMedicoSeNaoExiste(c.id, nome)));
+
+        // 2. Remove lançamentos antigos deste contrato+mês (evita duplicidade ao regenerar) e insere os atuais
+        await sb().from('medicoes_lancamentos').delete().eq('contrato_id', c.id).eq('mes_referencia', medicaoMes);
+        const novosLancamentos = [];
+        itensDoContrato.forEach(it => {
+          (radiocomRows[it.id]||[]).forEach(r => {
+            const qtd = parseFloat(r.quantidade) || 0;
+            if (!r.medico_nome?.trim() && qtd === 0) return; // ignora linhas vazias
+            novosLancamentos.push({
+              id: uid('L'), contrato_id: c.id, item_id: it.id, mes_referencia: medicaoMes,
+              dia_semana: isDiaSemanaItem(it) ? (r.dia_semana||null) : null,
+              medico_nome: r.medico_nome?.trim() || '', quantidade: qtd, valor_unitario: it.vlr_unitario || 0
+            });
+          });
+        });
+        if (novosLancamentos.length) await sb().from('medicoes_lancamentos').insert(novosLancamentos);
+
+        // 3. Upsert do total financeiro do mês
+        await sb().from('execucoes').upsert({
+          id: `${c.id}_${medicaoMes}`, contrato_id: c.id, mes_referencia: medicaoMes,
+          valor: totalGeral, observacao: `${medicaoNumMedicao}ª Medição — ${mesToPT(medicaoMes)}`
+        }, { onConflict: 'contrato_id,mes_referencia' });
+
+        // 4. Recalcula qtd_acum de cada item a partir do HISTÓRICO REAL de lançamentos
+        const recalcs = itensDoContrato.map(async it => {
+          const { data } = await sb().from('medicoes_lancamentos').select('quantidade').eq('item_id', it.id);
+          const totalAcum = (data||[]).reduce((acc,r)=>acc+(r.quantidade||0),0);
+          return sb().from('itens').update({ qtd_acum: totalAcum }).eq('id', it.id);
+        });
+        await Promise.all(recalcs);
+
+        // 5. Recalcula consumo_acum do contrato a partir do histórico real de execucoes
+        const { data: execs } = await sb().from('execucoes').select('valor').eq('contrato_id', c.id);
+        const totalContrato = (execs||[]).reduce((acc,r)=>acc+(r.valor||0),0);
+        await sb().from('contratos').update({ consumo_acum: totalContrato, updated_at: new Date().toISOString() }).eq('id', c.id);
+
+        await loadAll();
+        setSaving(false);
+        alert('✅ Medição registrada com sucesso!');
+      } catch(e) {
+        setSaving(false);
+        alert('Erro ao registrar medição: ' + e.message);
+      }
+    }, 1200);
+  };
+
   const renderMedicao = () => {
     const c = contratos.find(x => x.id === medicaoContrato);
     const itensMes = medicaoContrato ? itens.filter(i => i.contrato_id === medicaoContrato) : [];
-    const temCategorias = itensMes.some(it => it.categoria);
+    const temCategorias = itens.some(i => i.contrato_id === medicaoContrato && i.quadro); // Radiocom (medicos) usa 'quadro'
 
-    // Total geral calculado em tempo real
+    // Total geral calculado em tempo real (contratos genéricos - fixo/exames_lote)
     const totalAtual = itensMes.reduce((acc, it) => {
-      if (isSemanaFds(it)) {
-        const qSem = parseFloat(medicaoItens['sem_'+it.id]||0);
-        const qFds = parseFloat(medicaoItens['fds_'+it.id]||0);
-        return acc + qSem*(it.vlr_unit_semana||0) + qFds*(it.vlr_unit_fds||0);
-      }
       const vuT = medicaoItens['vu_'+it.id];
       const vuVal = parseFloat(vuT !== undefined ? vuT : (it.vlr_unitario||0));
       return acc + parseFloat(medicaoItens[it.id]||0) * vuVal;
     }, 0);
-
-    // Lançamento agrupado por categoria/Quadro (contratos com itens categorizados, ex: Radiocom)
-    const renderLancamentoPorCategoria = () => {
-      const categorias = [...new Set(itensMes.map(it => it.categoria).filter(Boolean))];
-      return (
-        <>
-          <div style={{fontSize:12,color:'var(--text2)',marginBottom:12,padding:'8px 12px',background:'var(--blue-l)',borderRadius:6,borderLeft:'3px solid var(--blue)'}}>
-            <i className="fa-solid fa-circle-info"/> Só <strong>Médico Clínico</strong> usa plantões separados por <strong style={{color:'#0C447C'}}>dia de semana</strong> e <strong style={{color:'#9a3412'}}>final de semana</strong>. As demais categorias usam <strong>quantidade executada no mês × valor unitário</strong>, como no contrato original.
-          </div>
-          {categorias.map(cat => {
-            const grupo = itensMes.filter(it => it.categoria === cat);
-            const grupoSemanaFds = grupo.some(isSemanaFds);
-            const quadroInfo = QUADROS_RADIOCOM.find(q => q.v === cat);
-
-            if (grupoSemanaFds) {
-              const totalCat = grupo.reduce((acc,it) => {
-                const qS = parseFloat(medicaoItens['sem_'+it.id]||0);
-                const qF = parseFloat(medicaoItens['fds_'+it.id]||0);
-                return acc + qS*(it.vlr_unit_semana||0) + qF*(it.vlr_unit_fds||0);
-              }, 0);
-              return (
-                <div key={cat} style={{marginBottom:14,border:'1px solid var(--gray-b)',borderRadius:8,overflow:'hidden'}}>
-                  <div style={{padding:'8px 14px',background:'var(--gray)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <strong style={{fontSize:12.5}}><i className="fa-solid fa-user-doctor"/> {cat}</strong>
-                    <span style={{fontSize:12,fontWeight:600,color:'var(--teal-d)'}}>{brl(totalCat)}</span>
-                  </div>
-                  <table style={{width:'100%',borderCollapse:'collapse'}}>
-                    <thead>
-                      <tr>
-                        <th style={{textAlign:'left',padding:'7px 12px',fontSize:11,background:'var(--gray)',borderBottom:'1px solid var(--gray-b)'}}>Profissional</th>
-                        <th style={{padding:'7px 8px',fontSize:11,background:'#E0F4FB',borderBottom:'1px solid var(--gray-b)',textAlign:'center'}}>
-                          🗓 Plantões Seg–Sex<br/><span style={{color:'#0C447C',fontWeight:400}}>Valor: {brl(grupo[0]?.vlr_unit_semana||0)}/plantão</span>
-                        </th>
-                        <th style={{padding:'7px 8px',fontSize:11,background:'#FFF4E0',borderBottom:'1px solid var(--gray-b)',textAlign:'center'}}>
-                          🏖 Plantões Sáb–Dom<br/><span style={{color:'#9a3412',fontWeight:400}}>Valor: {brl(grupo[0]?.vlr_unit_fds||0)}/plantão</span>
-                        </th>
-                        <th style={{padding:'7px 8px',fontSize:11,background:'var(--gray)',borderBottom:'1px solid var(--gray-b)',textAlign:'right'}}>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {grupo.map(it => {
-                        const qSem = parseFloat(medicaoItens['sem_'+it.id]||0);
-                        const qFds = parseFloat(medicaoItens['fds_'+it.id]||0);
-                        const total = qSem*(it.vlr_unit_semana||0) + qFds*(it.vlr_unit_fds||0);
-                        return (
-                          <tr key={it.id} style={{borderBottom:'1px solid var(--gray-b)'}}>
-                            <td style={{padding:'6px 12px',fontSize:12,fontWeight:500}}>{it.item}</td>
-                            <td style={{background:'#F5FBFE',padding:'4px 8px',textAlign:'center'}}>
-                              <input type="number" min="0" defaultValue={medicaoItens['sem_'+it.id]||''}
-                                onChange={e=>setMedicaoItens(prev=>({...prev,['sem_'+it.id]:e.target.value}))}
-                                style={{width:60,padding:'4px 6px',border:'1px solid #178DBB',borderRadius:4,fontSize:12,textAlign:'center'}} />
-                            </td>
-                            <td style={{background:'#FFFAF0',padding:'4px 8px',textAlign:'center'}}>
-                              <input type="number" min="0" defaultValue={medicaoItens['fds_'+it.id]||''}
-                                onChange={e=>setMedicaoItens(prev=>({...prev,['fds_'+it.id]:e.target.value}))}
-                                style={{width:60,padding:'4px 6px',border:'1px solid #f97316',borderRadius:4,fontSize:12,textAlign:'center'}} />
-                            </td>
-                            <td style={{padding:'6px 12px',textAlign:'right',fontWeight:600,color:'var(--teal-d)'}}>
-                              {total>0?brl(total):'—'}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            }
-
-            // Categoria de quantidade + valor unitário (Sobreaviso, Rotina, Eletiva, Ambulatório, RT, Teleconsulta...)
-            const unitLabel = quadroInfo?.unitLabel || 'Unidade';
-            const totalCat = grupo.reduce((acc,it) => {
-              const vuT = medicaoItens['vu_'+it.id];
-              const vu = parseFloat(vuT !== undefined ? vuT : (it.vlr_unitario||0));
-              return acc + parseFloat(medicaoItens[it.id]||0) * vu;
-            }, 0);
-            return (
-              <div key={cat} style={{marginBottom:14,border:'1px solid var(--gray-b)',borderRadius:8,overflow:'hidden'}}>
-                <div style={{padding:'8px 14px',background:'var(--gray)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <strong style={{fontSize:12.5}}><i className="fa-solid fa-user-doctor"/> {cat}</strong>
-                  <span style={{fontSize:12,fontWeight:600,color:'var(--teal-d)'}}>{brl(totalCat)}</span>
-                </div>
-                <table style={{width:'100%',borderCollapse:'collapse'}}>
-                  <thead>
-                    <tr>
-                      <th style={{textAlign:'left',padding:'7px 12px',fontSize:11,background:'var(--gray)',borderBottom:'1px solid var(--gray-b)'}}>Profissional</th>
-                      <th style={{padding:'7px 8px',fontSize:11,background:'var(--gray)',borderBottom:'1px solid var(--gray-b)',textAlign:'center'}}>Qtd {unitLabel.toLowerCase()} contratada/mês</th>
-                      <th style={{padding:'7px 8px',fontSize:11,background:'var(--gray)',borderBottom:'1px solid var(--gray-b)',textAlign:'center'}}>Qtd {unitLabel.toLowerCase()} executada *</th>
-                      <th style={{padding:'7px 8px',fontSize:11,background:'var(--gray)',borderBottom:'1px solid var(--gray-b)',textAlign:'center'}}>Valor unitário (R$)</th>
-                      <th style={{padding:'7px 8px',fontSize:11,background:'var(--gray)',borderBottom:'1px solid var(--gray-b)',textAlign:'right'}}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grupo.map(it => {
-                      const qtd = parseFloat(medicaoItens[it.id]||0);
-                      const vuT = medicaoItens['vu_'+it.id];
-                      const vu = parseFloat(vuT !== undefined ? vuT : (it.vlr_unitario||0));
-                      const total = qtd*vu;
-                      return (
-                        <tr key={it.id} style={{borderBottom:'1px solid var(--gray-b)'}}>
-                          <td style={{padding:'6px 12px',fontSize:12,fontWeight:500}}>{it.item}</td>
-                          <td style={{textAlign:'center',fontSize:12}} className="cell-m">{it.qtd_mensal||0}</td>
-                          <td style={{padding:'4px 8px',textAlign:'center'}}>
-                            <input type="number" min="0" defaultValue={medicaoItens[it.id]||''}
-                              onChange={e=>setMedicaoItens(prev=>({...prev,[it.id]:e.target.value}))}
-                              style={{width:65,padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}} />
-                          </td>
-                          <td style={{padding:'4px 8px',textAlign:'center'}}>
-                            <input type="number" min="0" step="0.01" defaultValue={medicaoItens['vu_'+it.id] !== undefined ? medicaoItens['vu_'+it.id] : (it.vlr_unitario||'')}
-                              onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
-                              style={{width:85,padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}} />
-                          </td>
-                          <td style={{padding:'6px 12px',textAlign:'right',fontWeight:600,color:'var(--teal-d)'}}>
-                            {total>0?brl(total):'—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            );
-          })}
-        </>
-      );
-    };
 
     // Layout genérico para outros contratos (sem categoria)
     const renderLancamentoGenerico = () => (
@@ -1900,6 +1751,122 @@ try {
       </>
     );
 
+    const ehMedico = c && tipoContrato(c.numero) === 'medicos';
+
+    const renderPainelRadiocom = () => {
+      const itensDoContrato = itens.filter(i => i.contrato_id === c.id).slice().sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+      const medicosDoContrato = medicos.filter(m => m.contrato_id === c.id);
+      const quadros = [...new Set(itensDoContrato.map(it => it.quadro || 'Outros itens'))];
+      const totalGeralRadiocom = itensDoContrato.reduce((acc, it) => {
+        const rows = radiocomRows[it.id] || [];
+        return acc + rows.reduce((a,r) => a + (parseFloat(r.quantidade)||0) * (it.vlr_unitario||0), 0);
+      }, 0);
+      return (
+        <>
+          <div className="panel">
+            <div className="panel-head"><h2><i className="fa-solid fa-user-doctor"/> Médicos cadastrados neste contrato</h2></div>
+            <div className="panel-body">
+              <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:10}}>
+                {medicosDoContrato.length===0 && <span className="cell-m">Nenhum médico cadastrado ainda — digite o nome ao lançar abaixo e ele entra na lista automaticamente.</span>}
+                {medicosDoContrato.map(m => (
+                  <span key={m.id} className="badge azul" style={{paddingRight:4}}>
+                    {m.nome}
+                    <button onClick={()=>removerMedico(m.id)} style={{border:'none',background:'none',cursor:'pointer',marginLeft:4,color:'inherit'}} title="Remover do cadastro"><i className="fa-solid fa-xmark"/></button>
+                  </span>
+                ))}
+              </div>
+              <div style={{display:'flex',gap:8}}>
+                <input id="novo-medico-input" placeholder="Adicionar médico ao cadastro..." style={{maxWidth:280}} />
+                <button className="btn btn-secondary btn-sm" onClick={()=>{
+                  const el = document.getElementById('novo-medico-input');
+                  if (el && el.value.trim()) { addMedicoSeNaoExiste(c.id, el.value.trim()); el.value=''; }
+                }}><i className="fa-solid fa-plus"/> Adicionar</button>
+              </div>
+            </div>
+          </div>
+
+          <datalist id={`medicos-datalist-${c.id}`}>
+            {medicosDoContrato.map(m => <option key={m.id} value={m.nome} />)}
+          </datalist>
+
+          {quadros.map(quadroNome => {
+            const itensQuadro = itensDoContrato.filter(it => (it.quadro||'Outros itens') === quadroNome);
+            return (
+              <div key={quadroNome} className="panel">
+                <div className="panel-head"><h2><i className="fa-solid fa-table-list"/> {quadroNome}</h2></div>
+                <div className="panel-body">
+                  {itensQuadro.map(it => {
+                    const rows = radiocomRows[it.id] || [];
+                    const isDia = isDiaSemanaItem(it);
+                    const diasOpts = it.dias_aplicaveis ? it.dias_aplicaveis.split(',') : (ITENS_FIXOS_RADIOCOM.find(f=>f.item===it.item)?.diasAplicaveis || DIAS_SEMANA);
+                    const totalItem = rows.reduce((a,r)=>a+(parseFloat(r.quantidade)||0)*(it.vlr_unitario||0),0);
+                    return (
+                      <div key={it.id} style={{marginBottom:14,border:'1px solid var(--gray-b)',borderRadius:8,overflow:'hidden'}}>
+                        <div style={{padding:'8px 14px',background:'var(--gray)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                          <strong style={{fontSize:12.5}}>{it.ordem}. {it.item}</strong>
+                          <span style={{fontSize:12,fontWeight:600,color:'var(--teal-d)'}}>{brl(totalItem)}</span>
+                        </div>
+                        <div style={{padding:'8px 14px'}}>
+                          <div className="tbl-wrap">
+                            <table style={{width:'100%',borderCollapse:'collapse'}}>
+                              <thead>
+                                <tr>
+                                  {isDia && <th style={{textAlign:'left',fontSize:11,padding:'4px 6px'}}>Dia da semana</th>}
+                                  <th style={{textAlign:'left',fontSize:11,padding:'4px 6px'}}>Médico</th>
+                                  <th style={{fontSize:11,padding:'4px 6px'}}>Qtd</th>
+                                  <th style={{fontSize:11,padding:'4px 6px'}}>Valor unit.</th>
+                                  <th style={{fontSize:11,padding:'4px 6px'}}>Total</th>
+                                  <th></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rows.map(r => (
+                                  <tr key={r.uid}>
+                                    {isDia && (
+                                      <td>
+                                        <select value={r.dia_semana||diasOpts[0]} onChange={e=>updateRadiocomRow(it.id,r.uid,'dia_semana',e.target.value)} style={{fontSize:12,padding:'4px 6px'}}>
+                                          {diasOpts.map(d=><option key={d} value={d}>{DIAS_SEMANA_LABEL[d]}</option>)}
+                                        </select>
+                                      </td>
+                                    )}
+                                    <td>
+                                      <input list={`medicos-datalist-${c.id}`} value={r.medico_nome}
+                                        onChange={e=>updateRadiocomRow(it.id,r.uid,'medico_nome',e.target.value)}
+                                        placeholder="Nome do médico" style={{fontSize:12,padding:'4px 6px',width:180}} />
+                                    </td>
+                                    <td>
+                                      <input type="number" min="0" value={r.quantidade}
+                                        onChange={e=>updateRadiocomRow(it.id,r.uid,'quantidade',e.target.value)}
+                                        style={{width:65,fontSize:12,padding:'4px 6px',textAlign:'center'}} />
+                                    </td>
+                                    <td className="cell-m" style={{textAlign:'center',fontSize:12}}>{brl(it.vlr_unitario||0)}</td>
+                                    <td style={{fontWeight:600,color:'var(--teal-d)',fontSize:12}}>{brl((parseFloat(r.quantidade)||0)*(it.vlr_unitario||0))}</td>
+                                    <td><ActBtn icon="fa-trash" onClick={()=>removeRadiocomRow(it.id,r.uid)} danger/></td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <button className="btn btn-secondary btn-sm" style={{marginTop:8}} onClick={()=>addRadiocomRow(it.id, isDia?diasOpts[0]:null)}>
+                            <i className="fa-solid fa-plus"/> Adicionar {isDia?'lançamento':'médico'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="panel"><div className="panel-body" style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--teal-l)'}}>
+            <div style={{fontSize:12,color:'var(--teal-d)',fontWeight:500}}>💰 Total calculado da medição</div>
+            <div style={{fontSize:20,fontWeight:700,color:'var(--teal-d)'}}>{brl(totalGeralRadiocom)}</div>
+          </div></div>
+        </>
+      );
+    };
+
     return (
       <>
         <div className="panel">
@@ -1911,7 +1878,7 @@ try {
                 <select className="sel-contract" style={{margin:0}} value={medicaoContrato} onChange={e=>{
                   const cId = e.target.value;
                   setMedicaoContrato(cId);
-                  // Pre-carregar valores unitários do banco
+                  // Pre-carregar valores unitários do banco (contratos genéricos)
                   const itensDoCont = itens.filter(i => i.contrato_id === cId);
                   const preload = {};
                   itensDoCont.forEach(it => {
@@ -1937,14 +1904,21 @@ try {
           </div>
         </div>
 
-        {c && itensMes.length > 0 && (
+        {ehMedico && (
+          <div className="panel"><div className="panel-body" style={{textAlign:'right'}}>
+            <button className="btn btn-primary" onClick={gerarPDFRadiocom}><i className="fa-solid fa-file-pdf"/> Gerar PDF e registrar</button>
+          </div></div>
+        )}
+        {ehMedico && renderPainelRadiocom()}
+
+        {!ehMedico && c && itensMes.length > 0 && (
           <div className="panel">
             <div className="panel-head">
-              <h2><i className="fa-solid fa-list-check"/>Lançar {temCategorias?'plantões / quantidades':'quantidades'} — {mesToPT(medicaoMes)}</h2>
+              <h2><i className="fa-solid fa-list-check"/>Lançar quantidades — {mesToPT(medicaoMes)}</h2>
               <button className="btn btn-primary" onClick={gerarPDF}><i className="fa-solid fa-file-pdf"/> Gerar PDF e registrar</button>
             </div>
             <div className="panel-body">
-              {temCategorias ? renderLancamentoPorCategoria() : renderLancamentoGenerico()}
+              {renderLancamentoGenerico()}
               <div style={{marginTop:14,padding:'10px 14px',background:'var(--teal-l)',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{fontSize:12,color:'var(--teal-d)',fontWeight:500}}>💰 Total calculado da medição</div>
                 <div style={{fontSize:20,fontWeight:700,color:'var(--teal-d)'}}>
@@ -1955,7 +1929,7 @@ try {
           </div>
         )}
 
-        {c && itensMes.length === 0 && (
+        {!ehMedico && c && itensMes.length === 0 && (
           <div className="panel"><div className="panel-body">
             <div className="empty"><i className="fa-solid fa-boxes-stacked"/>Este contrato não tem itens cadastrados.<br/><span style={{fontSize:12,marginTop:6,display:'block'}}>Cadastre os itens em <strong>Controle de quantidade</strong> primeiro.</span></div>
           </div></div>
