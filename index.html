@@ -431,6 +431,9 @@ function App() {
       setForm({ data: today(), status:'Em análise', tipo:'Suplementação de valor' });
     } else if (tipo === 'item') {
       setForm({ contrato_id: id, unit:'exame' });
+    } else if (tipo === 'editar-item') {
+      const it = itens.find(x => x.id === id);
+      setForm({ ...it });
     } else if (tipo === 'prorrog') {
       const c = contratos.find(x => x.id === id);
       setForm({ contrato_id: id, fim_atual: c.fim?.substring(0,10), novo_prazo: c.fim?.substring(0,10) });
@@ -517,24 +520,29 @@ function App() {
     // de "existe categoria?" — isso corrigia o bug de todas as categorias médicas
     // (Sobreaviso, Eletiva, Ambulatório, RT) serem tratadas como semana/fds.
     const ehSemanaFds = fv('tipo_calculo') === 'semana_fds';
+    // Numeração automática: se não informada, usa a próxima ordem livre do contrato
+    // (garante que o PDF sempre mostre 1, 2, 3... na ordem certa, não a descrição do item).
+    const itensDoContratoAtual = itens.filter(i => i.contrato_id === fv('contrato_id'));
+    const proximaOrdem = itensDoContratoAtual.length ? Math.max(...itensDoContratoAtual.map(i=>i.ordem||0)) + 1 : 1;
+    const ordemFinal = parseInt(fv('ordem')) || proximaOrdem;
     const data = ehSemanaFds ? {
-      id: uid('I'), contrato_id: fv('contrato_id'), item: fv('item'),
-      categoria: fv('categoria') || '', ordem: parseInt(fv('ordem')) || 0,
+      id: modal.id && modal.tipo==='editar-item' ? modal.id : uid('I'), contrato_id: fv('contrato_id'), item: fv('item'),
+      categoria: fv('categoria') || '', ordem: ordemFinal, lote: fv('lote') || null,
       tipo_calculo: 'semana_fds', unit: 'plantão',
       vlr_unit_semana: parseFloat(fv('vlr_unit_semana')) || 0,
       vlr_unit_fds: parseFloat(fv('vlr_unit_fds')) || 0,
       qtd_semana: parseFloat(fv('qtd_semana')) || 0,
       qtd_fds: parseFloat(fv('qtd_fds')) || 0,
-      qtd_mensal: 0, qtd_exec: 0, qtd_acum: 0
+      qtd_mensal: 0, qtd_exec: 0, qtd_acum: parseFloat(fv('qtd_acum'))||0
     } : {
-      id: uid('I'), contrato_id: fv('contrato_id'), item: fv('item'),
-      categoria: fv('categoria') || '', ordem: parseInt(fv('ordem')) || 0,
+      id: modal.id && modal.tipo==='editar-item' ? modal.id : uid('I'), contrato_id: fv('contrato_id'), item: fv('item'),
+      categoria: fv('categoria') || '', ordem: ordemFinal, lote: fv('lote') || null,
       tipo_calculo: 'quantidade_unitario',
       qtd_mensal: parseFloat(fv('qtd_mensal')) || 0, qtd_exec: parseFloat(fv('qtd_exec')) || 0,
       qtd_acum: parseFloat(fv('qtd_acum')) || 0, unit: fv('unit') || 'un.',
       vlr_unitario: parseFloat(fv('vlr_unitario')) || 0
     };
-    const { error } = await sb().from('itens').insert(data);
+    const { error } = await sb().from('itens').upsert(data);
     setSaving(false);
     if (error) { alert('Erro: ' + error.message); return; }
     await loadAll(); closeModal();
@@ -629,6 +637,26 @@ function App() {
     const precisamAtencao = contratosPrecisamAtencao();
     const adi = aditivos.filter(a => a.status === 'Em análise').length;
 
+    // Status de medição por contrato: compara o último mês medido com o mês atual.
+    const mesAtual = todayMonth();
+    const [anoAtual, mesAtualNum] = mesAtual.split('-').map(Number);
+    const statusMedicoes = contratos.map(c => {
+      const execsContrato = execucoes.filter(e => e.contrato_id === c.id);
+      const ultimoMes = execsContrato.length ? execsContrato.map(e=>e.mes_referencia).sort().slice(-1)[0] : null;
+      let mesesAtraso = null, cls = 'vermelho', label = 'Nunca medido';
+      if (ultimoMes) {
+        const [uy, um] = ultimoMes.split('-').map(Number);
+        mesesAtraso = (anoAtual - uy) * 12 + (mesAtualNum - um);
+        if (mesesAtraso <= 0) { cls='verde'; label='Em dia'; }
+        else if (mesesAtraso === 1) { cls='amarelo'; label='Aguardando mês atual'; }
+        else { cls='vermelho'; label=`Atrasada · ${mesesAtraso} meses`; }
+      }
+      return { contrato:c, ultimoMes, mesesAtraso, cls, label };
+    }).sort((a,b) => (b.mesesAtraso??99) - (a.mesesAtraso??99));
+    const atrasadas = statusMedicoes.filter(s => s.cls==='vermelho').length;
+    const pendentes = statusMedicoes.filter(s => s.cls==='amarelo').length;
+    const emDia = statusMedicoes.filter(s => s.cls==='verde').length;
+
     return (
       <>
         <div className="cards-grid">
@@ -645,6 +673,31 @@ function App() {
               <div className="s-sub">{card.sub}</div>
             </div>
           ))}
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <h2><i className="fa-solid fa-calendar-check"/> Status das medições por empresa</h2>
+            <div style={{display:'flex',gap:6}}>
+              <span className="badge verde">✓ {emDia} em dia</span>
+              {pendentes>0 && <span className="badge amarelo">{pendentes} aguardando</span>}
+              {atrasadas>0 && <span className="badge vermelho">⚠ {atrasadas} atrasada(s)</span>}
+            </div>
+          </div>
+          <div className="tbl-wrap">
+            <table>
+              <thead><tr><th>Empresa</th><th>Contrato</th><th>Última medição</th><th>Status</th><th></th></tr></thead>
+              <tbody>{statusMedicoes.map(s => (
+                <tr key={s.contrato.id}>
+                  <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.contrato.empresa}</td>
+                  <td className="mono"><strong>{s.contrato.numero}</strong></td>
+                  <td className="cell-m">{s.ultimoMes ? mesToPT(s.ultimoMes) : '—'}</td>
+                  <td><Badge cls={s.cls} label={s.label} /></td>
+                  <td><button className="btn btn-secondary btn-sm" onClick={()=>{ setMedicaoContrato(s.contrato.id); setSection('medicao'); }}>Lançar medição</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
         </div>
 
         {precisamAtencao.size > 0 && (
@@ -985,13 +1038,15 @@ function App() {
           <button className="btn btn-primary btn-sm" onClick={() => openModal('item', selQtd)}><i className="fa-solid fa-plus" /> Adicionar item</button>
         </div>
         <div className="tbl-wrap">
-          <table><thead><tr><th>Item / serviço</th><th>Qtd/mês</th><th>Exec. mês</th><th>Acumulado</th><th>Saldo mês</th><th>Média</th><th>% Execução</th><th>Status</th><th></th></tr></thead>
+          <table><thead><tr><th>Nº</th><th>Lote</th><th>Item / serviço</th><th>Qtd/mês</th><th>Exec. mês</th><th>Acumulado</th><th>Saldo mês</th><th>Média</th><th>% Execução</th><th>Status</th><th></th></tr></thead>
           <tbody>{lista.map(it => {
             const p = it.qtd_mensal > 0 ? Math.round((it.qtd_exec / it.qtd_mensal) * 100) : 0;
             const media = Math.round(it.qtd_acum / Math.max(1, new Date().getMonth()));
             const cls = p >= 95 ? 'vermelho' : p >= 85 ? 'laranja' : p >= 70 ? 'amarelo' : 'verde';
             return (
               <tr key={it.id}>
+                <td className="mono" style={{textAlign:'center'}}>{it.ordem||'—'}</td>
+                <td className="cell-m">{it.lote||'—'}</td>
                 <td>{it.item}</td>
                 <td style={{textAlign:'center'}}>{it.qtd_mensal} <span className="cell-m">{it.unit}</span></td>
                 <td style={{textAlign:'center'}}>{it.qtd_exec}</td>
@@ -1000,7 +1055,10 @@ function App() {
                 <td style={{textAlign:'center'}} className="cell-m">{media}/mês</td>
                 <td style={{minWidth:100}}><ProgBar p={Math.min(p,100)} /></td>
                 <td><Badge cls={cls} label={p>=95?'Crítico':p>=85?'Risco':p>=70?'Atenção':'Regular'} /></td>
-                <td><ActBtn icon="fa-trash" onClick={() => excluir('itens', it.id)} danger /></td>
+                <td>
+                  <ActBtn icon="fa-pen" onClick={() => openModal('editar-item', it.id)} title="Editar" />
+                  <ActBtn icon="fa-trash" onClick={() => excluir('itens', it.id)} danger />
+                </td>
               </tr>
             );
           })}</tbody></table>
@@ -1243,8 +1301,9 @@ function App() {
       </div>
     );
 
-    if (tipo === 'item') {
-      const contratoAtual = contratos.find(c => c.id === id);
+    if (tipo === 'item' || tipo === 'editar-item') {
+      const contratoIdReal = tipo === 'editar-item' ? fv('contrato_id') : id;
+      const contratoAtual = contratos.find(c => c.id === contratoIdReal);
       const ehContratoMedico = contratoAtual?.segmento === 'Recursos humanos médicos' || contratoAtual?.numero?.includes('002/2024');
 
       if (ehContratoMedico) {
@@ -1259,6 +1318,8 @@ function App() {
       return (
         <div className="form-row" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11}}>
           <FG label="Item / serviço *" full><FI k="item" placeholder="Descrição completa do item" /></FG>
+          <FG label="Nº do item (ordem no PDF)"><FI k="ordem" type="number" placeholder="Automático se deixar em branco" /></FG>
+          <FG label="Lote (opcional)"><FI k="lote" placeholder="Ex: LOTE I - LOCAÇÃO (deixe em branco se não houver lotes)" /></FG>
           <FG label="Quantidade contratada/mês *"><FI k="qtd_mensal" type="number" placeholder="0" /></FG>
           <FG label="Unidade de medida"><FI k="unit" placeholder="Ex: exame, m³, ciclo" /></FG>
           <FG label="Valor unitário (R$)"><FI k="vlr_unitario" type="number" placeholder="0,00" /></FG>
@@ -1308,6 +1369,7 @@ function App() {
     ver: { title:'Detalhes do contrato', icon:'fa-eye', onSave: null },
     aditivo: { title:'Registrar aditivo / supressão', icon:'fa-file-pen', onSave: salvarAditivo },
     item: { title:'Adicionar item contratado', icon:'fa-boxes-stacked', onSave: salvarItem },
+    'editar-item': { title:'Editar item contratado', icon:'fa-pen', onSave: salvarItem },
     execucao: { title:'Registrar execução mensal (desativado)', icon:'fa-circle-dollar-to-slot', onSave: null },
     prorrog: { title:'Solicitar prorrogação de prazo', icon:'fa-clock-rotate-left', onSave: salvarProrrog },
   };
@@ -1448,93 +1510,49 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     let corpoTabela = '';
 
-    if(tipo === 'fixo') {
-      // Modelo fixo: itens com valor mensal (A4PM, Labtec, LS Toledo)
-      let totalMes = 0;
-      const linhas = itensMes.map(it => {
-        const qtd = parseFloat(medicaoItens[it.id] || 1);
-        const vuState = medicaoItens['vu_'+it.id];
-        const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
-        const total = qtd * vu;
-        totalMes += total;
-        return `<tr>
-          <td class="num">${it.item?.substring(0,3) || ''}</td>
-          <td class="desc">${it.item}</td>
-          <td class="num">${qtd}</td>
-          <td class="val">R$ ${vu.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-          <td class="val">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-        </tr>`;
-      }).join('');
-      corpoTabela = `
-        <table>
-          <thead><tr><th>ITEM</th><th>DESCRIÇÃO</th><th>QUANT.</th><th>VALOR UNITÁRIO</th><th>VALOR TOTAL</th></tr></thead>
-          <tbody>${linhas}</tbody>
-        </table>
-        <div class="total-geral">TOTAL GERAL &nbsp;&nbsp; R$ ${totalMes.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-      `;
-    } else if(tipo === 'exames_lote') {
-      // Modelo CEDI: Lote I e Lote II
-      const lote1 = itensMes.filter(i => i.item?.includes('L1'));
-      const lote2 = itensMes.filter(i => i.item?.includes('L2'));
-      const renderLote = (lista, titulo) => {
-        let totalLote = 0;
-        const linhas = lista.map(it => {
-          const qtd = parseFloat(medicaoItens[it.id] || 0);
-          const vuState2 = medicaoItens['vu_'+it.id];
-          const vu = parseFloat(vuState2 !== undefined && vuState2 !== '' ? vuState2 : (it.vlr_unitario || 0));
-          const qtdContr = it.qtd_mensal || 0;
-          const total = qtd * vu;
-          totalLote += total;
-          return `<tr>
-            <td class="num">${it.item?.match(/Item (\d+)/)?.[1] || ''}</td>
-            <td class="desc">${it.item?.replace(/^L[12] – Item \d+ – /,'')}</td>
-            <td class="num">Exames</td>
-            <td class="num">${qtdContr}</td>
-            <td class="val">R$ ${vu.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-            <td class="num">${qtd}</td>
-            <td class="val">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-          </tr>`;
-        }).join('');
-        return `
-          <div class="lote-titulo">${titulo}</div>
-          <table>
-            <thead><tr><th>ITEM</th><th>DESCRIÇÃO</th><th>UNIDADE</th><th>QTD MÊS</th><th>VALOR UNITÁRIO</th><th>QUANTIDADE MÊS</th><th>TOTAL MÊS</th></tr></thead>
-            <tbody>${linhas}
-            <tr class="total-row"><td colspan="6" style="text-align:right">TOTAL MENSAL (R$)</td><td class="val">R$ ${totalLote.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>
-            </tbody>
-          </table>`;
-      };
-      corpoTabela = renderLote(lote1, 'LOTE - I') + '<br/>' + renderLote(lote2, 'LOTE - II - SOBREAVISO');
-      const totalTudo = itensMes.reduce((acc,it) => {
-        const qtd = parseFloat(medicaoItens[it.id]||0);
-        const vuT = medicaoItens['vu_'+it.id];
-        const vu = parseFloat(vuT !== undefined && vuT !== '' ? vuT : (it.vlr_unitario||0));
-        return acc + qtd*vu;
-      },0);
-      corpoTabela += `<div class="total-geral">TOTAL: R$ ${totalTudo.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`;
-    } else {
-      // Modelo genérico para outros tipos
-      let totalMes = 0;
-      const linhas = itensMes.map(it => {
-        const qtd = parseFloat(medicaoItens[it.id] || 0);
-        const vuStateG = medicaoItens['vu_'+it.id];
-        const vu = parseFloat(vuStateG !== undefined && vuStateG !== '' ? vuStateG : (it.vlr_unitario || 0));
-        const total = qtd * vu;
-        totalMes += total;
-        return `<tr>
+    // Modelo unificado, dirigido pelos dados (não mais um "if" hardcoded por contrato):
+    // se algum item tiver "lote" preenchido, agrupa em tabelas por lote (CEDI, MLX...);
+    // senão, uma tabela única (A4PM, Labtec, LS Toledo...). A numeração usa sempre
+    // it.ordem (1, 2, 3...), nunca a descrição do item.
+    const itensOrdenados = itensMes.slice().sort((a,b) => (a.ordem||999) - (b.ordem||999));
+    const temLotes = itensOrdenados.some(it => it.lote);
+
+    const linhaItem = (it) => {
+      const qtd = parseFloat(medicaoItens[it.id] ?? it.qtd_exec ?? 0);
+      const vuState = medicaoItens['vu_'+it.id];
+      const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
+      const total = qtd * vu;
+      return { total, html: `<tr>
+          <td class="num">${it.ordem||''}</td>
           <td class="desc">${it.item}</td>
           <td class="num">${it.unit||'un.'}</td>
-          <td class="num">${qtd}</td>
+          <td class="num">${it.qtd_mensal||''}</td>
           <td class="val">R$ ${vu.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+          <td class="num">${qtd}</td>
           <td class="val">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-        </tr>`;
+        </tr>` };
+    };
+    const headerLinha = `<tr><th>ITEM</th><th>DESCRIÇÃO</th><th>UNID.</th><th>QTD CONTRATADA/MÊS</th><th>VALOR UNITÁRIO</th><th>QUANTIDADE MÊS</th><th>TOTAL MÊS</th></tr>`;
+
+    let totalGeralTabela = 0;
+    if (temLotes) {
+      const lotes = [...new Set(itensOrdenados.map(it => it.lote || 'Itens sem lote'))];
+      corpoTabela = lotes.map(loteNome => {
+        const itensLote = itensOrdenados.filter(it => (it.lote||'Itens sem lote') === loteNome);
+        let totalLote = 0;
+        const linhas = itensLote.map(it => { const r = linhaItem(it); totalLote += r.total; return r.html; }).join('');
+        totalGeralTabela += totalLote;
+        return `<div class="lote-titulo">${loteNome}</div>
+          <table><thead>${headerLinha}</thead><tbody>${linhas}
+          <tr class="total-row"><td colspan="6" style="text-align:right">TOTAL MENSAL (R$)</td><td class="val">R$ ${totalLote.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>
+          </tbody></table>`;
       }).join('');
+      corpoTabela += `<div class="total-geral">TOTAL GERAL &nbsp;&nbsp; R$ ${totalGeralTabela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`;
+    } else {
+      const linhas = itensOrdenados.map(it => { const r = linhaItem(it); totalGeralTabela += r.total; return r.html; }).join('');
       corpoTabela = `
-        <table>
-          <thead><tr><th>DESCRIÇÃO</th><th>UNID.</th><th>QUANT.</th><th>VALOR UNITÁRIO</th><th>VALOR TOTAL</th></tr></thead>
-          <tbody>${linhas}</tbody>
-        </table>
-        <div class="total-geral">TOTAL GERAL &nbsp;&nbsp; R$ ${totalMes.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        <table><thead>${headerLinha}</thead><tbody>${linhas}</tbody></table>
+        <div class="total-geral">TOTAL GERAL &nbsp;&nbsp; R$ ${totalGeralTabela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       `;
     }
 
@@ -1560,39 +1578,22 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       setSaving(true);
 try {
   const itensMesLocal = itens.filter(i => i.contrato_id === medicaoContrato);
+  const itemIds = itensMesLocal.map(it => it.id);
 
-  // 1. Upsert de cada item desta medição — substitui o lançamento do mesmo
-  //    item no mesmo mês em vez de somar em cima do que já existia.
-  //    (Contratos de médicos usam gerarPDFRadiocom + medicoes_lancamentos; aqui só
-  //    tratamos contratos genéricos com quantidade + valor unitário.)
-  const upserts = itensMesLocal.map(it => {
+  // 1. Upsert em LOTE de todas as linhas desta medição (1 chamada em vez de N) —
+  //    substitui o lançamento do mesmo item no mesmo mês em vez de somar em cima.
+  const linhasMedicao = itensMesLocal.map(it => {
     const qtdExec = parseFloat(medicaoItens[it.id] || 0);
     const vuState = medicaoItens['vu_'+it.id];
     const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
-    return sb().from('medicoes_itens').upsert({
-      id: `${it.id}_${medicaoMes}`,
-      contrato_id: medicaoContrato,
-      item_id: it.id,
-      mes_referencia: medicaoMes,
-      qtd_executada: qtdExec,
-      vlr_unitario: vu,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'item_id,mes_referencia' });
+    return {
+      id: `${it.id}_${medicaoMes}`, contrato_id: medicaoContrato, item_id: it.id, mes_referencia: medicaoMes,
+      qtd_executada: qtdExec, vlr_unitario: vu, updated_at: new Date().toISOString()
+    };
   });
-  await Promise.all(upserts);
+  if (linhasMedicao.length) await sb().from('medicoes_itens').upsert(linhasMedicao, { onConflict: 'item_id,mes_referencia' });
 
-  // 1b. Sincroniza itens.qtd_exec (e vlr_unitario, se digitado) para refletir no Controle de Quantidade.
-  const syncQtdExec = itensMesLocal.map(it => {
-    const qtdExec = parseFloat(medicaoItens[it.id] || 0);
-    const vuState = medicaoItens['vu_'+it.id];
-    const patch = { qtd_exec: qtdExec };
-    if (vuState !== undefined && vuState !== '') patch.vlr_unitario = parseFloat(vuState) || 0;
-    return sb().from('itens').update(patch).eq('id', it.id);
-  });
-  await Promise.all(syncQtdExec);
-
-  // 2. Upsert do total financeiro do mês — 1 linha por contrato+mês,
-  //    substitui em vez de acumular.
+  // 2. Upsert do total financeiro do mês — 1 linha por contrato+mês, substitui em vez de acumular.
   await sb().from('execucoes').upsert({
     id: `${medicaoContrato}_${medicaoMes}`,
     contrato_id: medicaoContrato,
@@ -1601,19 +1602,21 @@ try {
     observacao: `${medicaoNumMedicao}ª Medição — ${mesToPT(medicaoMes)}`
   }, { onConflict: 'contrato_id,mes_referencia' });
 
-  // 3. Recalcula qtd_acum de cada item a partir do HISTÓRICO REAL
-  //    (soma de todas as medições já lançadas para aquele item — nunca
-  //    soma em cima do valor anterior, sempre reconstitui do zero).
-  const recalcItens = itensMesLocal.map(async it => {
-    const { data } = await sb().from('medicoes_itens')
-      .select('qtd_executada,qtd_semana,qtd_fds')
-      .eq('item_id', it.id);
-    const totalAcum = (data || []).reduce(
-      (acc, r) => acc + (r.qtd_executada || 0) + (r.qtd_semana || 0) + (r.qtd_fds || 0), 0
-    );
-    return sb().from('itens').update({ qtd_acum: totalAcum }).eq('id', it.id);
+  // 3. Recalcula qtd_acum a partir do HISTÓRICO REAL — 1 SELECT em lote (não mais N),
+  //    soma em JS, depois aplica em paralelo (nunca acumula em cima do valor anterior).
+  const { data: historico } = await sb().from('medicoes_itens')
+    .select('item_id,qtd_executada,qtd_semana,qtd_fds')
+    .in('item_id', itemIds);
+  const somaPorItem = {};
+  (historico||[]).forEach(r => { somaPorItem[r.item_id] = (somaPorItem[r.item_id]||0) + (r.qtd_executada||0) + (r.qtd_semana||0) + (r.qtd_fds||0); });
+  const atualizaItens = itensMesLocal.map(it => {
+    const qtdExec = parseFloat(medicaoItens[it.id] || 0);
+    const vuState = medicaoItens['vu_'+it.id];
+    const patch = { qtd_exec: qtdExec, qtd_acum: somaPorItem[it.id]||0 };
+    if (vuState !== undefined && vuState !== '') patch.vlr_unitario = parseFloat(vuState) || 0;
+    return sb().from('itens').update(patch).eq('id', it.id);
   });
-  await Promise.all(recalcItens);
+  await Promise.all(atualizaItens);
 
   // 4. Recalcula consumo_acum do contrato a partir do HISTÓRICO REAL de execucoes
   const { data: execs } = await sb().from('execucoes')
@@ -1631,7 +1634,7 @@ try {
 } catch(e) {
   setSaving(false);
   alert('Erro ao registrar medição: ' + e.message);
-}    }, 1200);
+}    }, 400);
   };
 
   // ─── GERAR PDF + REGISTRAR (contratos de médicos — Radiocom) ──────────────
@@ -1766,12 +1769,12 @@ try {
           valor: totalGeral, observacao: `${medicaoNumMedicao}ª Medição — ${mesToPT(medicaoMes)}`
         }, { onConflict: 'contrato_id,mes_referencia' });
 
-        // 4. Recalcula qtd_acum de cada item a partir do HISTÓRICO REAL de lançamentos
-        const recalcs = itensDoContrato.map(async it => {
-          const { data } = await sb().from('medicoes_lancamentos').select('quantidade').eq('item_id', it.id);
-          const totalAcum = (data||[]).reduce((acc,r)=>acc+(r.quantidade||0),0);
-          return sb().from('itens').update({ qtd_acum: totalAcum }).eq('id', it.id);
-        });
+        // 4. Recalcula qtd_acum de cada item a partir do HISTÓRICO REAL de lançamentos —
+        //    1 SELECT em lote (não mais N), soma em JS, aplica em paralelo.
+        const { data: histLanc } = await sb().from('medicoes_lancamentos').select('item_id,quantidade').in('item_id', itensDoContrato.map(it=>it.id));
+        const somaPorItem = {};
+        (histLanc||[]).forEach(r => { somaPorItem[r.item_id] = (somaPorItem[r.item_id]||0) + (r.quantidade||0); });
+        const recalcs = itensDoContrato.map(it => sb().from('itens').update({ qtd_acum: somaPorItem[it.id]||0 }).eq('id', it.id));
         await Promise.all(recalcs);
 
         // 5. Recalcula consumo_acum do contrato a partir do histórico real de execucoes
@@ -1786,7 +1789,7 @@ try {
         setSaving(false);
         alert('Erro ao registrar medição: ' + e.message);
       }
-    }, 1200);
+    }, 400);
   };
 
   const renderMedicao = () => {
