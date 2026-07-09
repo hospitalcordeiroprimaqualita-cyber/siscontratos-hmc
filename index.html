@@ -401,7 +401,9 @@ function App() {
       setContratos(c.data || []);
       setItens((i.data || []).slice().sort((a,b) => (a.ordem||999) - (b.ordem||999)));
       setAditivos(a.data || []);
-      setMedicos(m.data || []); // se a tabela ainda não existir, m.error fica setado e usamos []
+      if (m.error) console.error('Tabela "medicos":', m.error.message);
+      if (l.error) console.error('Tabela "medicoes_lancamentos":', l.error.message);
+      setMedicos(m.data || []); // se a tabela ainda não existir ou o RLS bloquear, m.error fica setado e usamos []
       setLancamentos(l.data || []);
       setExecucoes(ex.data || []);
       setMedicoesItensHist(mi.data || []);
@@ -496,7 +498,8 @@ function App() {
     if (jaExiste) return;
     const novo = { id: uid('M'), contrato_id: contratoId, nome };
     const { error } = await sb().from('medicos').insert(novo);
-    if (!error) setMedicos(prev => [...prev, novo]);
+    if (error) { alert('Não consegui salvar o médico no cadastro: ' + error.message + '\n\nVerifique se a tabela "medicos" existe e se o RLS permite escrita (veja o SQL de migração).'); return; }
+    setMedicos(prev => [...prev, novo]);
   };
   const removerMedico = async (medicoId) => {
     if (!confirm('Remover este médico do cadastro? (não apaga lançamentos já feitos)')) return;
@@ -1389,7 +1392,15 @@ function App() {
     const rows = {};
     itensDoContrato.forEach(it => {
       const existentes = lancamentos.filter(l => l.item_id === it.id && l.mes_referencia === medicaoMes);
-      rows[it.id] = existentes.map(l => ({ uid: l.id, dia_semana: l.dia_semana||null, medico_nome: l.medico_nome||'', quantidade: l.quantidade||0 }));
+      if (existentes.length) {
+        rows[it.id] = existentes.map(l => ({ uid: l.id, dia_semana: l.dia_semana||null, medico_nome: l.medico_nome||'', quantidade: l.quantidade||0 }));
+      } else if (it.medico_padrao) {
+        // Quadros III/IV/V: o médico é fixo (conforme última medição) — já vem preenchido,
+        // só falta o usuário digitar a quantidade do mês.
+        rows[it.id] = [{ uid: uid('L'), dia_semana: isDiaSemanaItem(it) ? (it.dias_aplicaveis?.split(',')[0]||null) : null, medico_nome: it.medico_padrao, quantidade: 0 }];
+      } else {
+        rows[it.id] = [];
+      }
     });
     setRadiocomRows(rows);
   }, [medicaoContrato, medicaoMes, itens, lancamentos]);
@@ -1427,7 +1438,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   return Math.max(0, meses);
 };
 
-  const gerarPDF = () => {
+  const gerarPDF = async () => {
     const c = contratos.find(x => x.id === medicaoContrato);
     if(!c) { alert('Selecione um contrato.'); return; }
     const tipo = tipoContrato(c.numero);
@@ -1512,9 +1523,12 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     // Modelo unificado, dirigido pelos dados (não mais um "if" hardcoded por contrato):
     // se algum item tiver "lote" preenchido, agrupa em tabelas por lote (CEDI, MLX...);
-    // senão, uma tabela única (A4PM, Labtec, LS Toledo...). A numeração usa sempre
-    // it.ordem (1, 2, 3...), nunca a descrição do item.
-    const itensOrdenados = itensMes.slice().sort((a,b) => (a.ordem||999) - (b.ordem||999));
+    // senão, uma tabela única (A4PM, Labtec, LS Toledo...). A numeração sempre aparece
+    // sequencial (1,2,3...) — usa it.ordem quando salvo, senão cai na posição da lista,
+    // pra nunca ficar em branco mesmo em itens antigos sem ordem cadastrada.
+    const itensOrdenados = itensMes.slice()
+      .sort((a,b) => (a.ordem||999) - (b.ordem||999))
+      .map((it, idx) => ({ ...it, ordemExibir: it.ordem || (idx+1) }));
     const temLotes = itensOrdenados.some(it => it.lote);
 
     const linhaItem = (it) => {
@@ -1523,7 +1537,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
       const total = qtd * vu;
       return { total, html: `<tr>
-          <td class="num">${it.ordem||''}</td>
+          <td class="num">${it.ordemExibir}</td>
           <td class="desc">${it.item}</td>
           <td class="num">${it.unit||'un.'}</td>
           <td class="num">${it.qtd_mensal||''}</td>
@@ -1538,7 +1552,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     if (temLotes) {
       const lotes = [...new Set(itensOrdenados.map(it => it.lote || 'Itens sem lote'))];
       corpoTabela = lotes.map(loteNome => {
-        const itensLote = itensOrdenados.filter(it => (it.lote||'Itens sem lote') === loteNome);
+        // Numeração reinicia em 1 dentro de cada lote (igual ao modelo oficial: MLX
+        // tem Lote I com itens 1-3, Lote II com item 1, Lote III com itens 1-3).
+        const itensLote = itensOrdenados
+          .filter(it => (it.lote||'Itens sem lote') === loteNome)
+          .map((it, idx) => ({ ...it, ordemExibir: idx+1 }));
         let totalLote = 0;
         const linhas = itensLote.map(it => { const r = linhaItem(it); totalLote += r.total; return r.html; }).join('');
         totalGeralTabela += totalLote;
@@ -1566,15 +1584,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-    setTimeout(() => janela.print(), 800);
 
-    // Perguntar se quer registrar a medição e atualizar saldos
-    setTimeout(async () => {
-      const confirmar = window.confirm(
-        `Medição gerada com sucesso!\n\nDeseja registrar esta medição e atualizar automaticamente:\n• Controle financeiro (saldo contratual)\n• Controle de quantidade (acumulado de cada item)\n\nTotal da medição: R$ ${totalGeral.toLocaleString('pt-BR', {minimumFractionDigits:2})}`
-      );
-      if (!confirmar) return;
+    // Pergunta ANTES de imprimir — sem timeout, sem disputa de foco com a
+    // janela nova. O diálogo aparece imediatamente e de forma confiável.
+    const confirmar = window.confirm(
+      `Deseja registrar esta medição e atualizar automaticamente:\n• Controle financeiro (saldo contratual)\n• Controle de quantidade (acumulado de cada item)\n\nTotal da medição: R$ ${totalGeral.toLocaleString('pt-BR', {minimumFractionDigits:2})}`
+    );
 
+    if (confirmar) {
       setSaving(true);
 try {
   const itensMesLocal = itens.filter(i => i.contrato_id === medicaoContrato);
@@ -1634,14 +1651,17 @@ try {
 } catch(e) {
   setSaving(false);
   alert('Erro ao registrar medição: ' + e.message);
-}    }, 400);
+}
+    }
+
+    janela.print();
   };
 
   // ─── GERAR PDF + REGISTRAR (contratos de médicos — Radiocom) ──────────────
   // Modelo espelha exatamente a planilha oficial: por Quadro, item, dia da
   // semana (quando aplicável) e médico. Vários médicos podem dividir o mesmo
   // dia/item — cada linha é livre para adicionar/remover.
-  const gerarPDFRadiocom = () => {
+  const gerarPDFRadiocom = async () => {
     const c = contratos.find(x => x.id === medicaoContrato);
     if (!c) { alert('Selecione um contrato.'); return; }
     const itensDoContrato = itens.filter(i => i.contrato_id === c.id).slice().sort((a,b)=>(a.ordem||0)-(b.ordem||0));
@@ -1733,13 +1753,13 @@ try {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-    setTimeout(() => janela.print(), 800);
 
-    setTimeout(async () => {
-      const confirmar = window.confirm(
-        `Medição gerada com sucesso!\n\nDeseja registrar esta medição (salva quem trabalhou em cada dia/item e recalcula os saldos)?\n\nTotal da medição: R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}`
-      );
-      if (!confirmar) return;
+    // Pergunta ANTES de imprimir — sem timeout, sem disputa de foco com a janela nova.
+    const confirmar = window.confirm(
+      `Deseja registrar esta medição (salva quem trabalhou em cada dia/item e recalcula os saldos)?\n\nTotal da medição: R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}`
+    );
+
+    if (confirmar) {
       setSaving(true);
       try {
         // 1. Garante que todos os nomes digitados estão no cadastro de médicos
@@ -1789,7 +1809,9 @@ try {
         setSaving(false);
         alert('Erro ao registrar medição: ' + e.message);
       }
-    }, 400);
+    }
+
+    janela.print();
   };
 
   const renderMedicao = () => {
@@ -1805,52 +1827,67 @@ try {
     }, 0);
 
     // Layout genérico para outros contratos (sem categoria)
-    const renderLancamentoGenerico = () => (
-      <>
-        <div style={{fontSize:12,color:'var(--text2)',marginBottom:12,padding:'8px 10px',background:'var(--gray)',borderRadius:6}}>
-          Preencha a <strong>quantidade executada no mês</strong> e o <strong>valor unitário</strong> para cada item.
-        </div>
-        <div className="tbl-wrap">
-          <table>
-            <thead><tr><th>Item</th><th>Unidade</th><th>Qtd contratada/mês</th><th>Qtd executada *</th><th>Valor unitário (R$) *</th><th>Total mês</th></tr></thead>
-            <tbody>
-              {itensMes.map(it => {
-                const qtd = parseFloat(medicaoItens[it.id]||0);
-                const vuState = medicaoItens['vu_'+it.id];
-                const vu = parseFloat(vuState !== undefined ? vuState : (it.vlr_unitario||0));
-                const total = qtd * vu;
-                return (
-                  <tr key={it.id} style={{background:qtd>0?'#f9fffe':'transparent'}}>
-                    <td style={{fontSize:11.5,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item?.replace(/^L[12] – Item \d+ – /,'')}</td>
-                    <td style={{textAlign:'center'}}>{it.unit||'un.'}</td>
-                    <td style={{textAlign:'center'}}>{it.qtd_mensal}</td>
-                    <td style={{width:80}}>
-                      <input type="number" min="0"
-                        value={medicaoItens[it.id]||''}
-                        onChange={e=>setMedicaoItens(prev=>({...prev,[it.id]:e.target.value}))}
-                        style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}}/>
-                    </td>
-                    <td style={{width:110}}>
-                      <input type="number" min="0" step="0.01"
-                        value={medicaoItens['vu_'+it.id] !== undefined ? medicaoItens['vu_'+it.id] : (it.vlr_unitario||'')}
-                        onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
-                        style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,background:it.vlr_unitario?'#f0fff4':'#fff'}}/>
-                    </td>
-                    <td style={{textAlign:'right',fontWeight:700,fontSize:13,
-                      color:total>0?'var(--teal-d)':'var(--text3)',
-                      minWidth:110,whiteSpace:'nowrap'}}>
-                      {total>0
-                        ? `R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`
-                        : <span style={{color:'var(--gray-d)',fontWeight:400}}>—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </>
-    );
+    const renderLancamentoGenerico = () => {
+      const itensOrd = itensMes.slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
+      const temLotesUI = itensOrd.some(it => it.lote);
+      const lotesUI = temLotesUI ? [...new Set(itensOrd.map(it => it.lote || 'Itens sem lote'))] : ['__flat__'];
+
+      const linhaTabela = (it, idx) => {
+        const qtd = parseFloat(medicaoItens[it.id]||0);
+        const vuState = medicaoItens['vu_'+it.id];
+        const vu = parseFloat(vuState !== undefined ? vuState : (it.vlr_unitario||0));
+        const total = qtd * vu;
+        return (
+          <tr key={it.id} style={{background:qtd>0?'#f9fffe':'transparent'}}>
+            <td className="mono" style={{textAlign:'center'}}>{idx+1}</td>
+            <td style={{fontSize:11.5,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item}</td>
+            <td style={{textAlign:'center'}}>{it.unit||'un.'}</td>
+            <td style={{textAlign:'center'}}>{it.qtd_mensal}</td>
+            <td style={{width:80}}>
+              <input type="number" min="0"
+                value={medicaoItens[it.id]||''}
+                onChange={e=>setMedicaoItens(prev=>({...prev,[it.id]:e.target.value}))}
+                style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}}/>
+            </td>
+            <td style={{width:110}}>
+              <input type="number" min="0" step="0.01"
+                value={medicaoItens['vu_'+it.id] !== undefined ? medicaoItens['vu_'+it.id] : (it.vlr_unitario||'')}
+                onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
+                style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,background:it.vlr_unitario?'#f0fff4':'#fff'}}/>
+            </td>
+            <td style={{textAlign:'right',fontWeight:700,fontSize:13,
+              color:total>0?'var(--teal-d)':'var(--text3)',
+              minWidth:110,whiteSpace:'nowrap'}}>
+              {total>0
+                ? `R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+                : <span style={{color:'var(--gray-d)',fontWeight:400}}>—</span>}
+            </td>
+          </tr>
+        );
+      };
+
+      return (
+        <>
+          <div style={{fontSize:12,color:'var(--text2)',marginBottom:12,padding:'8px 10px',background:'var(--gray)',borderRadius:6}}>
+            Preencha a <strong>quantidade executada no mês</strong> e o <strong>valor unitário</strong> para cada item.
+          </div>
+          {lotesUI.map(loteNome => {
+            const itensLote = temLotesUI ? itensOrd.filter(it => (it.lote||'Itens sem lote')===loteNome) : itensOrd;
+            return (
+              <div key={loteNome} style={{marginBottom:temLotesUI?16:0}}>
+                {temLotesUI && <div style={{fontWeight:700,fontSize:12.5,padding:'6px 10px',background:'var(--gray)',borderRadius:5,marginBottom:6}}>{loteNome}</div>}
+                <div className="tbl-wrap">
+                  <table>
+                    <thead><tr><th>Nº</th><th>Item</th><th>Unidade</th><th>Qtd contratada/mês</th><th>Qtd executada *</th><th>Valor unitário (R$) *</th><th>Total mês</th></tr></thead>
+                    <tbody>{itensLote.map((it, idx) => linhaTabela(it, idx))}</tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      );
+    };
 
     const ehMedico = c && tipoContrato(c.numero) === 'medicos';
 
