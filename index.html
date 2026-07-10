@@ -1552,11 +1552,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     if (temLotes) {
       const lotes = [...new Set(itensOrdenados.map(it => it.lote || 'Itens sem lote'))];
       corpoTabela = lotes.map(loteNome => {
-        // Numeração reinicia em 1 dentro de cada lote (igual ao modelo oficial: MLX
-        // tem Lote I com itens 1-3, Lote II com item 1, Lote III com itens 1-3).
-        const itensLote = itensOrdenados
-          .filter(it => (it.lote||'Itens sem lote') === loteNome)
-          .map((it, idx) => ({ ...it, ordemExibir: idx+1 }));
+        // A numeração exibida é sempre a que está salva em cada item (ordemExibir,
+        // já calculada acima) — alguns contratos reiniciam em 1 por lote (CEDI, MLX),
+        // outros mantêm numeração contínua entre os grupos (A4PM: 1-4 depois 5-7).
+        // O código não força nenhum dos dois: só respeita o que está no banco.
+        const itensLote = itensOrdenados.filter(it => (it.lote||'Itens sem lote') === loteNome);
         let totalLote = 0;
         const linhas = itensLote.map(it => { const r = linhaItem(it); totalLote += r.total; return r.html; }).join('');
         totalGeralTabela += totalLote;
@@ -1839,7 +1839,7 @@ try {
         const total = qtd * vu;
         return (
           <tr key={it.id} style={{background:qtd>0?'#f9fffe':'transparent'}}>
-            <td className="mono" style={{textAlign:'center'}}>{idx+1}</td>
+            <td className="mono" style={{textAlign:'center'}}>{it.ordem || (idx+1)}</td>
             <td style={{fontSize:11.5,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item}</td>
             <td style={{textAlign:'center'}}>{it.unit||'un.'}</td>
             <td style={{textAlign:'center'}}>{it.qtd_mensal}</td>
