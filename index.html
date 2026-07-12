@@ -1184,10 +1184,12 @@ function App() {
         if (a.acao === 'ADITIVO') deficit.push({ item: it, dif: a.dif, valor });
         else if (a.acao === 'SUPRESSÃO') superavit.push({ item: it, dif: a.dif, valor });
       });
-      if (!deficit.length && !superavit.length) return null;
+      // Só mostra o contrato aqui se ele tiver risco real (algum item em falta).
+      // Excedente sozinho, sem risco, não aparece mais — deixa de ser ruído.
+      if (!deficit.length) return null;
       const totalFalta = deficit.reduce((acc,d)=>acc+d.valor,0);
       const totalSobra = superavit.reduce((acc,s)=>acc+s.valor,0);
-      const podeReequilibrar = deficit.length>0 && totalSobra >= totalFalta;
+      const podeReequilibrar = totalSobra >= totalFalta;
       const valorAditivoNecessario = Math.max(0, totalFalta - totalSobra);
       return { contrato:c, deficit, superavit, totalFalta, totalSobra, podeReequilibrar, valorAditivoNecessario };
     }).filter(Boolean);
@@ -1201,35 +1203,31 @@ function App() {
         </div>
         <div className="panel-body" style={{paddingTop:8}}>
           <div style={{fontSize:11.5,color:'var(--text2)',marginBottom:14}}>
-            Para cada contrato, compara em <strong>valor (R$)</strong> o que falta em itens com risco de esgotar contra o que sobra em itens com excedente. Quando a sobra cobre a falta, dá pra resolver só remanejando quantidade entre itens (Termo de Redistribuição Quantitativa, sem gastar mais). Só quando não cobre é que aparece a necessidade real de aditivo.
+            Só aparecem aqui contratos com <strong>risco real</strong> (algum item com projeção de esgotar antes do fim da vigência). Para cada um, compara em <strong>valor (R$)</strong> a falta contra a sobra em itens com excedente do mesmo contrato. Quando a sobra cobre a falta, dá pra resolver só remanejando quantidade (Termo de Redistribuição Quantitativa, sem gastar mais). Só quando não cobre é que aparece a necessidade real de aditivo.
           </div>
           {analiseReequilibrio.map(({contrato, deficit, superavit, totalFalta, totalSobra, podeReequilibrar, valorAditivoNecessario}) => (
             <div key={contrato.id} style={{marginBottom:16,border:'1px solid var(--gray-b)',borderRadius:8,overflow:'hidden'}}>
               <div style={{padding:'9px 14px',background:'var(--gray)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
                 <strong style={{fontSize:12.5}}>{contrato.numero} · {contrato.empresa?.substring(0,38)}</strong>
-                {deficit.length===0 ? (
-                  <span className="badge amarelo">↓ Só excedente — pode suprimir</span>
-                ) : podeReequilibrar ? (
+                {podeReequilibrar ? (
                   <span className="badge verde">✓ Reequilíbrio interno cobre a necessidade</span>
                 ) : (
                   <span className="badge vermelho">⚠ Precisa de aditivo · {brl(valorAditivoNecessario)}</span>
                 )}
               </div>
               <div style={{padding:'10px 14px'}}>
-                {deficit.length>0 && (
-                  <div style={{marginBottom:superavit.length?12:0}}>
-                    <div style={{fontSize:11,fontWeight:700,color:'#991b1b',marginBottom:5}}>FALTA (itens com risco de esgotar) — total {brl(totalFalta)}</div>
-                    {deficit.map((d,i) => (
-                      <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12,borderBottom:i<deficit.length-1?'1px solid var(--gray-b)':'none'}}>
-                        <span>{d.item.item}</span>
-                        <span style={{color:'#b91c1c',fontWeight:600}}>faltam {Math.abs(d.dif)} un. · {brl(d.valor)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div style={{marginBottom:superavit.length?12:0}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'#991b1b',marginBottom:5}}>FALTA (itens com risco de esgotar) — total {brl(totalFalta)}</div>
+                  {deficit.map((d,i) => (
+                    <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12,borderBottom:i<deficit.length-1?'1px solid var(--gray-b)':'none'}}>
+                      <span>{d.item.item}</span>
+                      <span style={{color:'#b91c1c',fontWeight:600}}>faltam {Math.abs(d.dif)} un. · {brl(d.valor)}</span>
+                    </div>
+                  ))}
+                </div>
                 {superavit.length>0 && (
                   <div>
-                    <div style={{fontSize:11,fontWeight:700,color:'#92400e',marginBottom:5}}>SOBRA (itens com excedente) — total {brl(totalSobra)}</div>
+                    <div style={{fontSize:11,fontWeight:700,color:'#92400e',marginBottom:5}}>SOBRA NO MESMO CONTRATO (de onde tirar) — total {brl(totalSobra)}</div>
                     {superavit.map((s,i) => (
                       <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12,borderBottom:i<superavit.length-1?'1px solid var(--gray-b)':'none'}}>
                         <span>{s.item.item}</span>
@@ -1239,17 +1237,11 @@ function App() {
                   </div>
                 )}
                 <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap'}}>
-                  {deficit.length===0 && superavit.length>0 && (
-                    <button className="btn btn-secondary btn-sm" onClick={() => { setFiltroAditivoContrato(contrato.id); openModal('aditivo'); }}>
-                      <i className="fa-solid fa-plus"/> Registrar supressão
-                    </button>
-                  )}
-                  {deficit.length>0 && podeReequilibrar && (
+                  {podeReequilibrar ? (
                     <button className="btn btn-secondary btn-sm" onClick={() => { setFiltroAditivoContrato(contrato.id); openModal('aditivo'); }}>
                       <i className="fa-solid fa-arrow-right-arrow-left"/> Registrar redistribuição quantitativa
                     </button>
-                  )}
-                  {deficit.length>0 && !podeReequilibrar && (
+                  ) : (
                     <button className="btn btn-danger btn-sm" onClick={() => { setFiltroAditivoContrato(contrato.id); openModal('aditivo'); }}>
                       <i className="fa-solid fa-triangle-exclamation"/> Registrar solicitação de aditivo ({brl(valorAditivoNecessario)})
                     </button>
