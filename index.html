@@ -1537,14 +1537,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       totalGeral += qtd * vlrUnit;
     });
 
-    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="height:70px">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
+    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
 
     const estilos = `
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 20px; }
         .header { text-align: center; margin-bottom: 16px; }
-        .header img { height: 60px; margin-bottom: 8px; }
+        .header img { width: 100%; height: auto; margin-bottom: 8px; }
         .header h3 { font-size: 11px; font-weight: normal; letter-spacing: 1px; margin-bottom: 10px; }
         .titulo-box { border: 1px solid #000; padding: 10px; text-align: center; margin-bottom: 14px; }
         .titulo-box h2 { font-size: 14px; font-weight: bold; }
@@ -1780,12 +1780,12 @@ try {
         </tbody></table>`;
     }).join('');
 
-    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="height:70px">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
+    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: Arial, sans-serif; font-size: 10.5px; color: #000; padding: 20px; }
       .header { text-align: center; margin-bottom: 16px; }
-      .header img { height: 60px; margin-bottom: 8px; }
+      .header img { width: 100%; height: auto; margin-bottom: 8px; }
       .header h3 { font-size: 11px; font-weight: normal; letter-spacing: 1px; margin-bottom: 10px; }
       .titulo-box { border: 1px solid #000; padding: 10px; text-align: center; margin-bottom: 14px; }
       .titulo-box h2 { font-size: 14px; font-weight: bold; }
@@ -2432,7 +2432,7 @@ try {
       return { rub, desc:info?.desc||'', tetoMensal, executado, pct: tetoMensal>0?Math.round((executado/tetoMensal)*100):0 };
     }).sort((a,b) => b.pct - a.pct);
 
-    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="height:65px">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
+    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
       body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; }
