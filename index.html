@@ -1463,6 +1463,7 @@ function App() {
   const [medicaoMes, setMedicaoMes] = React.useState(todayMonth());
   const [medicaoItens, setMedicaoItens] = React.useState({});
   const [medicaoNumMedicao, setMedicaoNumMedicao] = React.useState('');
+  const [pendenteRegistro, setPendenteRegistro] = React.useState(null); // { totalGeral, numero, mesLabel, executar }
   const [radiocomRows, setRadiocomRows] = React.useState({}); // { [item_id]: [{uid, dia_semana, medico_nome, quantidade}] }
 
   useEffect(() => {
@@ -1566,7 +1567,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         .assinatura-box .linha { border-top: 1px solid #000; margin-bottom: 4px; }
         .assinatura-box p { font-size: 10px; line-height: 1.5; }
         @media print { body { padding: 10px; } }
-      .rodape-sistema { margin-top: 28px; padding-top: 8px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; }
+      .rodape-sistema { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
       </style>
     `;
@@ -1663,77 +1664,70 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-
-    // Pergunta ANTES de imprimir — sem timeout, sem disputa de foco com a
-    // janela nova. O diálogo aparece imediatamente e de forma confiável.
-    const confirmar = window.confirm(
-      `Deseja registrar esta medição e atualizar automaticamente:\n• Controle financeiro (saldo contratual)\n• Controle de quantidade (acumulado de cada item)\n\nTotal da medição: R$ ${totalGeral.toLocaleString('pt-BR', {minimumFractionDigits:2})}`
-    );
-
-    if (confirmar) {
-      setSaving(true);
-try {
-  const itensMesLocal = itens.filter(i => i.contrato_id === medicaoContrato);
-  const itemIds = itensMesLocal.map(it => it.id);
-
-  // 1. Upsert em LOTE de todas as linhas desta medição (1 chamada em vez de N) —
-  //    substitui o lançamento do mesmo item no mesmo mês em vez de somar em cima.
-  const linhasMedicao = itensMesLocal.map(it => {
-    const qtdExec = parseFloat(medicaoItens[it.id] || 0);
-    const vuState = medicaoItens['vu_'+it.id];
-    const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
-    return {
-      id: `${it.id}_${medicaoMes}`, contrato_id: medicaoContrato, item_id: it.id, mes_referencia: medicaoMes,
-      qtd_executada: qtdExec, vlr_unitario: vu, updated_at: new Date().toISOString()
-    };
-  });
-  if (linhasMedicao.length) await sb().from('medicoes_itens').upsert(linhasMedicao, { onConflict: 'item_id,mes_referencia' });
-
-  // 2. Upsert do total financeiro do mês — 1 linha por contrato+mês, substitui em vez de acumular.
-  await sb().from('execucoes').upsert({
-    id: `${medicaoContrato}_${medicaoMes}`,
-    contrato_id: medicaoContrato,
-    mes_referencia: medicaoMes,
-    valor: totalGeral,
-    observacao: `${medicaoNumMedicao}ª Medição — ${mesToPT(medicaoMes)}`
-  }, { onConflict: 'contrato_id,mes_referencia' });
-
-  // 3. Recalcula qtd_acum a partir do HISTÓRICO REAL — 1 SELECT em lote (não mais N),
-  //    soma em JS, depois aplica em paralelo (nunca acumula em cima do valor anterior).
-  const { data: historico } = await sb().from('medicoes_itens')
-    .select('item_id,qtd_executada,qtd_semana,qtd_fds')
-    .in('item_id', itemIds);
-  const somaPorItem = {};
-  (historico||[]).forEach(r => { somaPorItem[r.item_id] = (somaPorItem[r.item_id]||0) + (r.qtd_executada||0) + (r.qtd_semana||0) + (r.qtd_fds||0); });
-  const atualizaItens = itensMesLocal.map(it => {
-    const qtdExec = parseFloat(medicaoItens[it.id] || 0);
-    const vuState = medicaoItens['vu_'+it.id];
-    const patch = { qtd_exec: qtdExec, qtd_acum: somaPorItem[it.id]||0 };
-    if (vuState !== undefined && vuState !== '') patch.vlr_unitario = parseFloat(vuState) || 0;
-    return sb().from('itens').update(patch).eq('id', it.id);
-  });
-  await Promise.all(atualizaItens);
-
-  // 4. Recalcula consumo_acum do contrato a partir do HISTÓRICO REAL de execucoes
-  const { data: execs } = await sb().from('execucoes')
-    .select('valor').eq('contrato_id', medicaoContrato);
-  const totalContrato = (execs || []).reduce((acc, r) => acc + (r.valor || 0), 0);
-  await sb().from('contratos').update({
-    consumo_acum: totalContrato,
-    updated_at: new Date().toISOString()
-  }).eq('id', medicaoContrato);
-
-  // 5. Recarregar dados
-  await loadAll();
-  setSaving(false);
-  alert('✅ Medição registrada com sucesso!\n\nHistórico salvo sem duplicidade.\nSaldo financeiro e quantitativo recalculados a partir do histórico real.');
-} catch(e) {
-  setSaving(false);
-  alert('Erro ao registrar medição: ' + e.message);
-}
-    }
-
     janela.print();
+
+    // Em vez de window.confirm (que fica "preso" na aba de origem quando o
+    // foco vai pra aba nova), guarda a ação de registrar num aviso fixo
+    // dentro do próprio app — sempre visível, não depende de qual aba está ativa.
+    const contratoAtualNome = contratos.find(c=>c.id===medicaoContrato)?.numero || '';
+    setPendenteRegistro({
+      totalGeral, numero: contratoAtualNome, mesLabel: mesToPT(medicaoMes),
+      executar: async () => {
+        setSaving(true);
+        try {
+          const itensMesLocal = itens.filter(i => i.contrato_id === medicaoContrato);
+          const itemIds = itensMesLocal.map(it => it.id);
+
+          const linhasMedicao = itensMesLocal.map(it => {
+            const qtdExec = parseFloat(medicaoItens[it.id] || 0);
+            const vuState = medicaoItens['vu_'+it.id];
+            const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
+            return {
+              id: `${it.id}_${medicaoMes}`, contrato_id: medicaoContrato, item_id: it.id, mes_referencia: medicaoMes,
+              qtd_executada: qtdExec, vlr_unitario: vu, updated_at: new Date().toISOString()
+            };
+          });
+          if (linhasMedicao.length) await sb().from('medicoes_itens').upsert(linhasMedicao, { onConflict: 'item_id,mes_referencia' });
+
+          await sb().from('execucoes').upsert({
+            id: `${medicaoContrato}_${medicaoMes}`,
+            contrato_id: medicaoContrato,
+            mes_referencia: medicaoMes,
+            valor: totalGeral,
+            observacao: `${medicaoNumMedicao}ª Medição — ${mesToPT(medicaoMes)}`
+          }, { onConflict: 'contrato_id,mes_referencia' });
+
+          const { data: historico } = await sb().from('medicoes_itens')
+            .select('item_id,qtd_executada,qtd_semana,qtd_fds')
+            .in('item_id', itemIds);
+          const somaPorItem = {};
+          (historico||[]).forEach(r => { somaPorItem[r.item_id] = (somaPorItem[r.item_id]||0) + (r.qtd_executada||0) + (r.qtd_semana||0) + (r.qtd_fds||0); });
+          const atualizaItens = itensMesLocal.map(it => {
+            const qtdExec = parseFloat(medicaoItens[it.id] || 0);
+            const vuState = medicaoItens['vu_'+it.id];
+            const patch = { qtd_exec: qtdExec, qtd_acum: somaPorItem[it.id]||0 };
+            if (vuState !== undefined && vuState !== '') patch.vlr_unitario = parseFloat(vuState) || 0;
+            return sb().from('itens').update(patch).eq('id', it.id);
+          });
+          await Promise.all(atualizaItens);
+
+          const { data: execs } = await sb().from('execucoes')
+            .select('valor').eq('contrato_id', medicaoContrato);
+          const totalContrato = (execs || []).reduce((acc, r) => acc + (r.valor || 0), 0);
+          await sb().from('contratos').update({
+            consumo_acum: totalContrato,
+            updated_at: new Date().toISOString()
+          }).eq('id', medicaoContrato);
+
+          await loadAll();
+          setSaving(false);
+          setPendenteRegistro(null);
+        } catch(e) {
+          setSaving(false);
+          alert('Erro ao registrar medição: ' + e.message);
+        }
+      }
+    });
   };
 
   // ─── GERAR PDF + REGISTRAR (contratos de médicos — Radiocom) ──────────────
@@ -1809,7 +1803,7 @@ try {
       .assinatura-box .linha { border-top: 1px solid #000; margin-bottom: 4px; }
       .assinatura-box p { font-size: 10px; line-height: 1.5; }
       @media print { body { padding: 10px; } }
-      .rodape-sistema { margin-top: 28px; padding-top: 8px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; }
+      .rodape-sistema { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
     </style>`;
 
@@ -1834,65 +1828,56 @@ try {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
+    janela.print();
 
-    // Pergunta ANTES de imprimir — sem timeout, sem disputa de foco com a janela nova.
-    const confirmar = window.confirm(
-      `Deseja registrar esta medição (salva quem trabalhou em cada dia/item e recalcula os saldos)?\n\nTotal da medição: R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}`
-    );
+    setPendenteRegistro({
+      totalGeral, numero: c.numero, mesLabel: mesToPT(medicaoMes),
+      executar: async () => {
+        setSaving(true);
+        try {
+          const nomesUsados = new Set();
+          itensDoContrato.forEach(it => (radiocomRows[it.id]||[]).forEach(r => { if (r.medico_nome?.trim()) nomesUsados.add(r.medico_nome.trim()); }));
+          await Promise.all([...nomesUsados].map(nome => addMedicoSeNaoExiste(c.id, nome)));
 
-    if (confirmar) {
-      setSaving(true);
-      try {
-        // 1. Garante que todos os nomes digitados estão no cadastro de médicos
-        const nomesUsados = new Set();
-        itensDoContrato.forEach(it => (radiocomRows[it.id]||[]).forEach(r => { if (r.medico_nome?.trim()) nomesUsados.add(r.medico_nome.trim()); }));
-        await Promise.all([...nomesUsados].map(nome => addMedicoSeNaoExiste(c.id, nome)));
-
-        // 2. Remove lançamentos antigos deste contrato+mês (evita duplicidade ao regenerar) e insere os atuais
-        await sb().from('medicoes_lancamentos').delete().eq('contrato_id', c.id).eq('mes_referencia', medicaoMes);
-        const novosLancamentos = [];
-        itensDoContrato.forEach(it => {
-          (radiocomRows[it.id]||[]).forEach(r => {
-            const qtd = parseFloat(r.quantidade) || 0;
-            if (!r.medico_nome?.trim() && qtd === 0) return; // ignora linhas vazias
-            novosLancamentos.push({
-              id: uid('L'), contrato_id: c.id, item_id: it.id, mes_referencia: medicaoMes,
-              dia_semana: isDiaSemanaItem(it) ? (r.dia_semana||null) : null,
-              medico_nome: r.medico_nome?.trim() || '', quantidade: qtd, valor_unitario: it.vlr_unitario || 0
+          await sb().from('medicoes_lancamentos').delete().eq('contrato_id', c.id).eq('mes_referencia', medicaoMes);
+          const novosLancamentos = [];
+          itensDoContrato.forEach(it => {
+            (radiocomRows[it.id]||[]).forEach(r => {
+              const qtd = parseFloat(r.quantidade) || 0;
+              if (!r.medico_nome?.trim() && qtd === 0) return;
+              novosLancamentos.push({
+                id: uid('L'), contrato_id: c.id, item_id: it.id, mes_referencia: medicaoMes,
+                dia_semana: isDiaSemanaItem(it) ? (r.dia_semana||null) : null,
+                medico_nome: r.medico_nome?.trim() || '', quantidade: qtd, valor_unitario: it.vlr_unitario || 0
+              });
             });
           });
-        });
-        if (novosLancamentos.length) await sb().from('medicoes_lancamentos').insert(novosLancamentos);
+          if (novosLancamentos.length) await sb().from('medicoes_lancamentos').insert(novosLancamentos);
 
-        // 3. Upsert do total financeiro do mês
-        await sb().from('execucoes').upsert({
-          id: `${c.id}_${medicaoMes}`, contrato_id: c.id, mes_referencia: medicaoMes,
-          valor: totalGeral, observacao: `${medicaoNumMedicao}ª Medição — ${mesToPT(medicaoMes)}`
-        }, { onConflict: 'contrato_id,mes_referencia' });
+          await sb().from('execucoes').upsert({
+            id: `${c.id}_${medicaoMes}`, contrato_id: c.id, mes_referencia: medicaoMes,
+            valor: totalGeral, observacao: `${medicaoNumMedicao}ª Medição — ${mesToPT(medicaoMes)}`
+          }, { onConflict: 'contrato_id,mes_referencia' });
 
-        // 4. Recalcula qtd_acum de cada item a partir do HISTÓRICO REAL de lançamentos —
-        //    1 SELECT em lote (não mais N), soma em JS, aplica em paralelo.
-        const { data: histLanc } = await sb().from('medicoes_lancamentos').select('item_id,quantidade').in('item_id', itensDoContrato.map(it=>it.id));
-        const somaPorItem = {};
-        (histLanc||[]).forEach(r => { somaPorItem[r.item_id] = (somaPorItem[r.item_id]||0) + (r.quantidade||0); });
-        const recalcs = itensDoContrato.map(it => sb().from('itens').update({ qtd_acum: somaPorItem[it.id]||0 }).eq('id', it.id));
-        await Promise.all(recalcs);
+          const { data: histLanc } = await sb().from('medicoes_lancamentos').select('item_id,quantidade').in('item_id', itensDoContrato.map(it=>it.id));
+          const somaPorItem = {};
+          (histLanc||[]).forEach(r => { somaPorItem[r.item_id] = (somaPorItem[r.item_id]||0) + (r.quantidade||0); });
+          const recalcs = itensDoContrato.map(it => sb().from('itens').update({ qtd_acum: somaPorItem[it.id]||0 }).eq('id', it.id));
+          await Promise.all(recalcs);
 
-        // 5. Recalcula consumo_acum do contrato a partir do histórico real de execucoes
-        const { data: execs } = await sb().from('execucoes').select('valor').eq('contrato_id', c.id);
-        const totalContrato = (execs||[]).reduce((acc,r)=>acc+(r.valor||0),0);
-        await sb().from('contratos').update({ consumo_acum: totalContrato, updated_at: new Date().toISOString() }).eq('id', c.id);
+          const { data: execs } = await sb().from('execucoes').select('valor').eq('contrato_id', c.id);
+          const totalContrato = (execs||[]).reduce((acc,r)=>acc+(r.valor||0),0);
+          await sb().from('contratos').update({ consumo_acum: totalContrato, updated_at: new Date().toISOString() }).eq('id', c.id);
 
-        await loadAll();
-        setSaving(false);
-        alert('✅ Medição registrada com sucesso!');
-      } catch(e) {
-        setSaving(false);
-        alert('Erro ao registrar medição: ' + e.message);
+          await loadAll();
+          setSaving(false);
+          setPendenteRegistro(null);
+        } catch(e) {
+          setSaving(false);
+          alert('Erro ao registrar medição: ' + e.message);
+        }
       }
-    }
-
-    janela.print();
+    });
   };
 
   const renderMedicao = () => {
@@ -2399,6 +2384,30 @@ try {
 
   // ─── RELATÓRIO MENSAL ────────────────────────────────────────────────────
   const [relatorioMes, setRelatorioMes] = React.useState(todayMonth());
+  const [pedidoContrato, setPedidoContrato] = React.useState('');
+  const [pedidoQtds, setPedidoQtds] = React.useState({}); // { [item_id]: quantidade a pedir }
+  const [pedidoBase, setPedidoBase] = React.useState('media'); // 'media' | 'contratado'
+
+  useEffect(() => {
+    if (!pedidoContrato) { setPedidoQtds({}); return; }
+    const c = contratos.find(x => x.id === pedidoContrato);
+    const itensDoContrato = itens.filter(i => i.contrato_id === pedidoContrato);
+    const novasQtds = {};
+    itensDoContrato.forEach(it => {
+      if (pedidoBase === 'contratado') {
+        novasQtds[it.id] = it.qtd_mensal || 0;
+      } else {
+        // média histórica real (mesma lógica da Análise Preditiva)
+        if (c?.inicio) {
+          const mesesDec = Math.max(1, mesesCalendario(c.inicio, new Date().toISOString()));
+          novasQtds[it.id] = Math.round((it.qtd_acum||0) / mesesDec) || (it.qtd_mensal||0);
+        } else {
+          novasQtds[it.id] = it.qtd_mensal || 0;
+        }
+      }
+    });
+    setPedidoQtds(novasQtds);
+  }, [pedidoContrato, pedidoBase, itens, contratos]);
 
   const gerarRelatorioMensal = () => {
     const mesRef = mesToPT(relatorioMes);
@@ -2462,7 +2471,7 @@ try {
       .assinatura-box { flex:1; text-align:center; max-width:260px; }
       .assinatura-box .linha { border-top:1px solid #000; margin-bottom:4px; }
       @media print { body{padding:12px;} }
-      .rodape-sistema { margin-top: 28px; padding-top: 8px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; }
+      .rodape-sistema { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
     </style>`;
 
@@ -2555,6 +2564,162 @@ try {
   );
 
 
+  // ─── PEDIDO DE COMPRA ────────────────────────────────────────────────────
+  const gerarPedidoCompra = () => {
+    const c = contratos.find(x => x.id === pedidoContrato);
+    if (!c) { alert('Selecione um contrato.'); return; }
+    const itensDoContrato = itens.filter(i => i.contrato_id === pedidoContrato).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
+    const hoje = new Date();
+
+    let totalGeral = 0;
+    const linhas = itensDoContrato.map(it => {
+      const qtd = parseFloat(pedidoQtds[it.id] || 0);
+      const total = qtd * (it.vlr_unitario || 0);
+      totalGeral += total;
+      return `<tr>
+        <td class="num">${it.ordem||''}</td>
+        <td class="desc">${it.item}</td>
+        <td class="num">${it.unit||'un.'}</td>
+        <td class="num" style="font-weight:bold">${qtd}</td>
+        <td class="val">R$ ${(it.vlr_unitario||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+        <td class="val">R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+      </tr>`;
+    }).join('');
+
+    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
+    const estilos = `<style>
+      * { box-sizing: border-box; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; }
+      .header { text-align:center; margin-bottom:14px; }
+      .header img { width:100%; height:auto; margin-bottom:8px; }
+      .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
+      .titulo-box h2 { font-size:15px; font-weight:bold; }
+      .info { margin-bottom:14px; line-height:1.8; font-size:11px; }
+      table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+      th { background:#d0d0d0; border:1px solid #000; padding:5px 6px; font-size:10px; text-align:center; font-weight:bold; }
+      td { border:1px solid #000; padding:4px 6px; font-size:10px; }
+      td.desc{text-align:left;} td.num{text-align:center;} td.val{text-align:right;}
+      .total-geral { text-align:right; font-weight:bold; font-size:12px; border:1px solid #000; padding:6px 8px; margin-top:4px; }
+      .rodape-sistema { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema strong { color: #0F6E56; }
+      @media print { body{padding:12px;} }
+    </style>`;
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Pedido de Compra - ${c.numero}</title>${estilos}</head><body>
+      <div class="header">${logoImg}</div>
+      <div class="titulo-box"><h2>PEDIDO DE COMPRA / SOLICITAÇÃO DE FORNECIMENTO</h2></div>
+      <div class="info">
+        <strong>Contrato:</strong> ${c.numero} &nbsp;&nbsp; <strong>Data do pedido:</strong> ${hoje.toLocaleDateString('pt-BR')}<br/>
+        <strong>Fornecedor:</strong> ${c.empresa}<br/>
+        <strong>CNPJ:</strong> ${c.cnpj || '___.___.___/____-__'}<br/>
+        <strong>Representante Legal:</strong> ${c.representante || '___________________'}
+      </div>
+      <table><thead><tr><th>Item</th><th>Descrição</th><th>Unid.</th><th>Qtd. solicitada</th><th>Valor unitário</th><th>Valor total</th></tr></thead>
+      <tbody>${linhas}</tbody></table>
+      <div class="total-geral">TOTAL ESTIMADO DO PEDIDO &nbsp;&nbsp; R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      <br/><br/>
+      <div style="display:flex;gap:60px;justify-content:center;margin-top:40px">
+        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>Solicitante</div>
+        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>Aprovação</div>
+      </div>
+      <div class="rodape-sistema">
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2025<br/>
+        Gerado em ${hoje.toLocaleDateString('pt-BR')} às ${hoje.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+      </div>
+    </body></html>`;
+
+    const janela = window.open('', '_blank');
+    janela.document.write(html);
+    janela.document.close();
+    janela.print();
+  };
+
+  const renderPedido = () => {
+    const c = contratos.find(x => x.id === pedidoContrato);
+    const itensDoContrato = pedidoContrato ? itens.filter(i => i.contrato_id === pedidoContrato).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999)) : [];
+    const totalPedido = itensDoContrato.reduce((acc,it) => acc + (parseFloat(pedidoQtds[it.id]||0) * (it.vlr_unitario||0)), 0);
+
+    return (
+      <>
+        <div className="panel">
+          <div className="panel-head"><h2><i className="fa-solid fa-cart-shopping"/> Gerar pedido de compra</h2></div>
+          <div className="panel-body">
+            <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
+              Monta um pedido pronto pra enviar ao fornecedor, já com quantidade sugerida — sem precisar catar medições antigas toda vez que precisar comprar.
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Contrato de fornecimento</label>
+                <select className="sel-contract" style={{margin:0}} value={pedidoContrato} onChange={e=>setPedidoContrato(e.target.value)}>
+                  <option value="">— Selecione —</option>
+                  {contratos.map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Sugerir quantidade com base em</label>
+                <select value={pedidoBase} onChange={e=>setPedidoBase(e.target.value)}>
+                  <option value="media">Média histórica de consumo real</option>
+                  <option value="contratado">Quantidade contratada/mês</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {c && itensDoContrato.length > 0 && (
+          <div className="panel">
+            <div className="panel-head">
+              <h2><i className="fa-solid fa-list-check"/> Itens — {c.numero}</h2>
+              <button className="btn btn-primary" onClick={gerarPedidoCompra}><i className="fa-solid fa-file-pdf"/> Gerar pedido de compra</button>
+            </div>
+            <div className="panel-body">
+              <div className="tbl-wrap">
+                <table>
+                  <thead><tr><th>Item</th><th>Unidade</th><th>Qtd contratada/mês</th><th>Qtd sugerida</th><th>Valor unitário</th><th>Total estimado</th></tr></thead>
+                  <tbody>{itensDoContrato.map(it => {
+                    const qtd = parseFloat(pedidoQtds[it.id]||0);
+                    const total = qtd * (it.vlr_unitario||0);
+                    return (
+                      <tr key={it.id}>
+                        <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item}</td>
+                        <td className="cell-m" style={{textAlign:'center'}}>{it.unit||'un.'}</td>
+                        <td className="cell-m" style={{textAlign:'center'}}>{it.qtd_mensal||0}</td>
+                        <td style={{width:90}}>
+                          <input type="number" min="0" value={pedidoQtds[it.id]||''}
+                            onChange={e=>setPedidoQtds(prev=>({...prev,[it.id]:e.target.value}))}
+                            style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center',fontWeight:600}} />
+                        </td>
+                        <td className="cell-m" style={{textAlign:'center'}}>{brl(it.vlr_unitario||0)}</td>
+                        <td style={{fontWeight:700,color:'var(--teal-d)'}}>{brl(total)}</td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+              <div style={{marginTop:14,padding:'10px 14px',background:'var(--teal-l)',borderRadius:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div style={{fontSize:12,color:'var(--teal-d)',fontWeight:500}}>💰 Total estimado do pedido</div>
+                <div style={{fontSize:20,fontWeight:700,color:'var(--teal-d)'}}>{brl(totalPedido)}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {c && itensDoContrato.length === 0 && (
+          <div className="panel"><div className="panel-body">
+            <div className="empty"><i className="fa-solid fa-boxes-stacked"/>Este contrato não tem itens cadastrados.</div>
+          </div></div>
+        )}
+
+        {!c && (
+          <div className="panel"><div className="panel-body">
+            <div className="empty"><i className="fa-solid fa-cart-shopping" style={{color:'var(--teal)'}}/>Selecione um contrato acima para montar o pedido de compra.</div>
+          </div></div>
+        )}
+      </>
+    );
+  };
+
+
   // ─── ANÁLISE PREDITIVA ──────────────────────────────────────────────────
   const renderPreditiva = () => {
     const hoje = new Date();
@@ -2630,9 +2795,10 @@ const mesesTot = mesesCalendario(c.inicio, c.fim);
     { sec:'historico', icon:'fa-clock-rotate-left', label:'Histórico de medições', group:'gestao' },
     { sec:'rubrica', icon:'fa-scale-balanced', label:'Consumo por rubrica', group:'gestao' },
     { sec:'relatorio', icon:'fa-file-lines', label:'Relatório mensal', group:'gestao' },
+    { sec:'pedido', icon:'fa-cart-shopping', label:'Pedido de compra', group:'gestao' },
   ];
 
-  const sectionTitles = { painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais', historico:'Histórico de Medições', rubrica:'Consumo por Rubrica', relatorio:'Relatório Mensal' };
+  const sectionTitles = { painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais', historico:'Histórico de Medições', rubrica:'Consumo por Rubrica', relatorio:'Relatório Mensal', pedido:'Pedido de Compra' };
 
   if (!configured) return (
     <div style={{minHeight:'100vh',background:'#EEF2F6'}}>
@@ -2723,8 +2889,23 @@ const mesesTot = mesesCalendario(c.inicio, c.fim);
           {section === 'historico' && renderHistorico()}
           {section === 'rubrica' && renderRubrica()}
           {section === 'relatorio' && renderRelatorio()}
+          {section === 'pedido' && renderPedido()}
         </div>
       </div>
+
+      {pendenteRegistro && (
+        <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',zIndex:2000,background:'#fff',borderRadius:10,boxShadow:'0 12px 40px rgba(0,0,0,.25)',border:'1px solid var(--gray-b)',padding:'14px 18px',display:'flex',alignItems:'center',gap:16,maxWidth:560}}>
+          <i className="fa-solid fa-file-circle-check" style={{fontSize:22,color:'var(--teal)'}} />
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:13}}>Medição gerada — {pendenteRegistro.numero} · {pendenteRegistro.mesLabel}</div>
+            <div style={{fontSize:12,color:'var(--text2)'}}>Total: {brl(pendenteRegistro.totalGeral)} — deseja registrar e atualizar os saldos?</div>
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={()=>setPendenteRegistro(null)} disabled={saving}>Descartar</button>
+          <button className="btn btn-primary btn-sm" onClick={pendenteRegistro.executar} disabled={saving}>
+            {saving ? <><i className="fa-solid fa-rotate spin" /> Salvando...</> : <><i className="fa-solid fa-floppy-disk" /> Registrar</>}
+          </button>
+        </div>
+      )}
 
       {modal && (
         <Modal
