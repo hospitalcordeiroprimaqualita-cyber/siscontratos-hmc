@@ -696,9 +696,11 @@ function App() {
       if (ultimoMes) {
         const [uy, um] = ultimoMes.split('-').map(Number);
         mesesAtraso = (anoAtual - uy) * 12 + (mesAtualNum - um);
-        if (mesesAtraso <= 0) { cls='verde'; label='Em dia'; }
-        else if (mesesAtraso === 1) { cls='amarelo'; label='Aguardando mês atual'; }
-        else { cls='vermelho'; label=`Atrasada · ${mesesAtraso} meses`; }
+        // O mês vigente só é medido no início do mês seguinte — por isso "em dia"
+        // é ter medido até o mês anterior (mesesAtraso 0 ou 1), não o mês atual.
+        if (mesesAtraso <= 1) { cls='verde'; label='Em dia'; }
+        else if (mesesAtraso === 2) { cls='amarelo'; label='Atenção · 1 mês atrasado'; }
+        else { cls='vermelho'; label=`Atrasada · ${mesesAtraso-1} meses`; }
       }
       return { contrato:c, ultimoMes, mesesAtraso, cls, label };
     }).sort((a,b) => (b.mesesAtraso??99) - (a.mesesAtraso??99));
@@ -2397,12 +2399,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       if (pedidoBase === 'contratado') {
         novasQtds[it.id] = it.qtd_mensal || 0;
       } else {
-        // média histórica real (mesma lógica da Análise Preditiva)
-        if (c?.inicio) {
+        // Média histórica real. Se o item nunca foi usado ainda (sem histórico),
+        // não faz sentido sugerir o valor contratado inteiro — deixa em branco
+        // pra quem está pedindo preencher com o que realmente precisa.
+        if (c?.inicio && (it.qtd_acum||0) > 0) {
           const mesesDec = Math.max(1, mesesCalendario(c.inicio, new Date().toISOString()));
-          novasQtds[it.id] = Math.round((it.qtd_acum||0) / mesesDec) || (it.qtd_mensal||0);
+          novasQtds[it.id] = Math.round((it.qtd_acum||0) / mesesDec);
         } else {
-          novasQtds[it.id] = it.qtd_mensal || 0;
+          novasQtds[it.id] = '';
         }
       }
     });
@@ -2421,9 +2425,9 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       if (ultimoMes) {
         const [uy,um] = ultimoMes.split('-').map(Number);
         mesesAtraso = (ry - uy)*12 + (rm - um);
-        if (mesesAtraso<=0) { cls='verde'; label='Em dia'; }
-        else if (mesesAtraso===1) { cls='amarelo'; label='Aguardando'; }
-        else { cls='vermelho'; label=`Atrasada · ${mesesAtraso}m`; }
+        if (mesesAtraso<=1) { cls='verde'; label='Em dia'; }
+        else if (mesesAtraso===2) { cls='amarelo'; label='Atenção · 1 mês atrasado'; }
+        else { cls='vermelho'; label=`Atrasada · ${mesesAtraso-1}m`; }
       }
       return { c, ultimoMes, cls, label };
     });
