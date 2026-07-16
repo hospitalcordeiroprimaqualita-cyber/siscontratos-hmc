@@ -1633,21 +1633,27 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     let totalGeralTabela = 0;
     if (temLotes) {
       const grupos = [...new Set(itensOrdenados.map(it => nomeGrupo(it) || 'Itens sem lote'))];
-      corpoTabela = grupos.map(grupoNome => {
-        // A numeração exibida é sempre a que está salva em cada item (ordemExibir,
-        // já calculada acima) — alguns contratos reiniciam em 1 por lote/rubrica (CEDI, MLX),
-        // outros mantêm numeração contínua entre os grupos (A4PM: 1-4 depois 5-7).
-        // O código não força nenhum dos dois: só respeita o que está no banco.
+      // Só separa por página quando os grupos realmente correspondem a rubricas
+      // orçamentárias diferentes (ex: A4PM, MLX) — quando é só organização por
+      // lote dentro da MESMA rubrica (ex: CEDI), mantém tudo num documento só.
+      const rubricasDistintas = new Set(itensOrdenados.map(it => it.rubrica).filter(Boolean));
+      const separarPorPagina = rubricasDistintas.size > 1;
+      corpoTabela = grupos.map((grupoNome, idx) => {
         const itensLote = itensOrdenados.filter(it => (nomeGrupo(it) || 'Itens sem lote') === grupoNome);
         let totalLote = 0;
         const linhas = itensLote.map(it => { const r = linhaItem(it); totalLote += r.total; return r.html; }).join('');
         totalGeralTabela += totalLote;
-        return `<div class="lote-titulo">${grupoNome}</div>
+        const quebraDePagina = (separarPorPagina && idx > 0) ? `<div style="page-break-before: always; break-before: page;"></div>${cabecalho(medicaoNumMedicao||'__')}` : '';
+        const totalDaPagina = separarPorPagina ? `<div class="total-geral">TOTAL DA PÁGINA &nbsp;&nbsp; R$ ${totalLote.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>` : '';
+        return `${quebraDePagina}
+          <div class="lote-titulo">${grupoNome}</div>
           <table><thead>${headerLinha}</thead><tbody>${linhas}
           <tr class="total-row"><td colspan="6" style="text-align:right">TOTAL MENSAL (R$)</td><td class="val">R$ ${totalLote.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>
-          </tbody></table>`;
+          </tbody></table>${totalDaPagina}`;
       }).join('');
-      corpoTabela += `<div class="total-geral">TOTAL GERAL &nbsp;&nbsp; R$ ${totalGeralTabela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`;
+      if (!separarPorPagina) {
+        corpoTabela += `<div class="total-geral">TOTAL GERAL &nbsp;&nbsp; R$ ${totalGeralTabela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`;
+      }
     } else {
       const linhas = itensOrdenados.map(it => { const r = linhaItem(it); totalGeralTabela += r.total; return r.html; }).join('');
       corpoTabela = `
