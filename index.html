@@ -504,6 +504,7 @@ function App() {
       vlr_total: parseFloat(fv('vlr_total')) || 0,
       tipo: fv('tipo'), medicao: fv('medicao'), status: fv('status'),
       consumo_acum: parseFloat(fv('consumo_acum')) || 0,
+      vigencia_meses: parseInt(fv('vigencia_meses')) || null,
       updated_at: new Date().toISOString()
     };
     const { error } = await sb().from('contratos').upsert(data);
@@ -589,7 +590,8 @@ function App() {
       tipo_calculo: 'quantidade_unitario',
       qtd_mensal: parseFloat(fv('qtd_mensal')) || 0, qtd_exec: parseFloat(fv('qtd_exec')) || 0,
       qtd_acum: parseFloat(fv('qtd_acum')) || 0, unit: fv('unit') || 'un.',
-      vlr_unitario: parseFloat(fv('vlr_unitario')) || 0
+      vlr_unitario: parseFloat(fv('vlr_unitario')) || 0,
+      qtd_total_contratada: parseFloat(fv('qtd_total_contratada')) || null
     };
     const { error } = await sb().from('itens').upsert(data);
     setSaving(false);
@@ -641,18 +643,22 @@ function App() {
     const hoje = new Date();
     const fimC = new Date(c.fim);
     const inicioC = new Date(c.inicio);
-   const mesesRest = mesesCalendario(hoje.toISOString(), c.fim);
+    const mesesRest = mesesCalendario(hoje.toISOString(), c.fim);
     const mesesDec = Math.max(1, mesesCalendario(c.inicio, hoje.toISOString()));
-    const mesesTot = mesesCalendario(c.inicio, c.fim);
+    // vigencia_meses é a fonte confiável (evita o erro de contar 11 meses em contratos
+    // tipo 16/08 a 15/08 do ano seguinte, que por conta de data pura arredonda errado).
+    const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
     const media = it.qtd_acum/mesesDec;
     const proj = Math.round(media*mesesRest);
-    const qtdTot = it.qtd_mensal*mesesTot;
+    // qtd_total_contratada é a fonte confiável quando preenchida (evita ambiguidade
+    // de contratos onde qtd_mensal na verdade guarda o total do período, não a taxa mensal).
+    const qtdTot = it.qtd_total_contratada || (it.qtd_mensal*mesesTot);
     const saldo = Math.round(qtdTot-it.qtd_acum);
     const dif = Math.round(saldo-proj);
     const acao = dif<-1?'ADITIVO':dif>it.qtd_mensal*2?'SUPRESSÃO':'OK';
     // Dias até o saldo zerar no ritmo atual (para alerta de 30 dias de antecedência)
     const diasAteZerar = media>0 ? Math.floor((saldo/media)*30) : 9999;
-    return { acao, dif, saldo, proj, media, diasAteZerar };
+    return { acao, dif, saldo, proj, media, diasAteZerar, qtdTot };
   };
 
   // Contratos que precisam de atenção: financeiro OU quantitativo, com 30+ dias de antecedência
@@ -938,11 +944,11 @@ function App() {
       const inicioC = new Date(contrato.inicio);
       const mesesRest = mesesCalendario(hoje.toISOString(), contrato.fim);
       const mesesDec = Math.max(1, mesesCalendario(contrato.inicio, hoje.toISOString()));
-      const mesesTot = mesesCalendario(contrato.inicio, contrato.fim);
+      const mesesTot = contrato.vigencia_meses || mesesCalendario(contrato.inicio, contrato.fim);
       const analise = lista.map(it => {
         const media = it.qtd_acum/mesesDec;
         const proj = Math.round(media*mesesRest);
-        const qtdTot = it.qtd_mensal*mesesTot;
+        const qtdTot = it.qtd_total_contratada || (it.qtd_mensal*mesesTot);
         const saldo = Math.round(qtdTot-it.qtd_acum);
         const dif = Math.round(saldo-proj);
         const pctAnual = qtdTot>0?Math.min(Math.round((it.qtd_acum/qtdTot)*100),100):0;
@@ -1088,24 +1094,33 @@ function App() {
         <div className="panel-head"><h2><i className="fa-solid fa-list-check" /> Itens contratados</h2>
           <button className="btn btn-primary btn-sm" onClick={() => openModal('item', selQtd)}><i className="fa-solid fa-plus" /> Adicionar item</button>
         </div>
+        <div style={{fontSize:11.5,color:'var(--text2)',padding:'0 17px 10px'}}>
+          <i className="fa-solid fa-circle-info"/> "Saldo real" já considera o total contratado pra toda a vigência (não só o mês) — é o número certo pra saber se precisa de aditivo ou pode suprimir.
+        </div>
         <div className="tbl-wrap">
-          <table><thead><tr><th>Nº</th><th>Lote</th><th>Item / serviço</th><th>Qtd/mês</th><th>Exec. mês</th><th>Acumulado</th><th>Saldo mês</th><th>Média</th><th>% Execução</th><th>Status</th><th></th></tr></thead>
+          <table><thead><tr><th>Nº</th><th>Lote</th><th>Item / serviço</th><th>Qtd/mês</th><th>Total contratado</th><th>Acumulado</th><th>Saldo real</th><th>% consumido</th><th>Status</th><th></th></tr></thead>
           <tbody>{lista.map(it => {
-            const p = it.qtd_mensal > 0 ? Math.round((it.qtd_exec / it.qtd_mensal) * 100) : 0;
-            const media = Math.round(it.qtd_acum / Math.max(1, new Date().getMonth()));
-            const cls = p >= 95 ? 'vermelho' : p >= 85 ? 'laranja' : p >= 70 ? 'amarelo' : 'verde';
+            const a = contrato ? calcAnaliseItem(contrato, it) : null;
+            const qtdTot = a ? a.qtdTot : (it.qtd_mensal||0);
+            const saldo = a ? a.saldo : ((it.qtd_mensal||0) - (it.qtd_acum||0));
+            const pctConsumido = qtdTot>0 ? Math.min(Math.round(((it.qtd_acum||0)/qtdTot)*100),999) : 0;
+            const cls = pctConsumido >= 100 ? 'vermelho' : pctConsumido >= 85 ? 'laranja' : pctConsumido >= 70 ? 'amarelo' : 'verde';
+            const statusLabel = pctConsumido>=100?'Estourado':pctConsumido>=85?'Risco':pctConsumido>=70?'Atenção':'Regular';
             return (
-              <tr key={it.id}>
+              <tr key={it.id} style={a?.acao==='ADITIVO'?{background:'#fff5f5'}:a?.acao==='SUPRESSÃO'?{background:'#fffbeb'}:{}}>
                 <td className="mono" style={{textAlign:'center'}}>{it.ordem||'—'}</td>
                 <td className="cell-m">{it.lote||'—'}</td>
                 <td>{it.item}</td>
-                <td style={{textAlign:'center'}}>{it.qtd_mensal} <span className="cell-m">{it.unit}</span></td>
-                <td style={{textAlign:'center'}}>{it.qtd_exec}</td>
+                <td style={{textAlign:'center'}} className="cell-m">{it.qtd_mensal} {it.unit}</td>
+                <td style={{textAlign:'center',fontWeight:600}}>{Math.round(qtdTot)}</td>
                 <td style={{textAlign:'center'}}>{it.qtd_acum}</td>
-                <td style={{textAlign:'center'}}>{it.qtd_mensal - it.qtd_exec}</td>
-                <td style={{textAlign:'center'}} className="cell-m">{media}/mês</td>
-                <td style={{minWidth:100}}><ProgBar p={Math.min(p,100)} /></td>
-                <td><Badge cls={cls} label={p>=95?'Crítico':p>=85?'Risco':p>=70?'Atenção':'Regular'} /></td>
+                <td style={{textAlign:'center',fontWeight:700,color:saldo<0?'#b91c1c':'var(--text)'}}>{saldo}</td>
+                <td style={{minWidth:100}}><ProgBar p={Math.min(pctConsumido,100)} /></td>
+                <td>
+                  <Badge cls={cls} label={statusLabel} />
+                  {a?.acao==='ADITIVO' && <div style={{marginTop:3}}><span className="badge vermelho">⚠ Precisa de aditivo</span></div>}
+                  {a?.acao==='SUPRESSÃO' && <div style={{marginTop:3}}><span className="badge amarelo">↓ Pode suprimir</span></div>}
+                </td>
                 <td>
                   <ActBtn icon="fa-pen" onClick={() => openModal('editar-item', it.id)} title="Editar" />
                   <ActBtn icon="fa-trash" onClick={() => excluir('itens', it.id)} danger />
@@ -1115,7 +1130,7 @@ function App() {
           })}</tbody></table>
         </div>
         <div className="legend">
-          {[['#22c55e','Regular < 70%'],['#f59e0b','Atenção ≥ 70%'],['#f97316','Risco ≥ 85%'],['#ef4444','Crítico ≥ 95%']].map(([color,label]) => (
+          {[['#22c55e','Regular < 70%'],['#f59e0b','Atenção ≥ 70%'],['#f97316','Risco ≥ 85%'],['#ef4444','Estourado ≥ 100%']].map(([color,label]) => (
             <div key={label} className="leg-item"><div className="leg-dot" style={{background:color}} />{label}</div>
           ))}
         </div>
@@ -1358,11 +1373,13 @@ function App() {
         <div className="form-row cols3">
           <FG label="Data de início"><FD k="inicio" disabled={ro} /></FG>
           <FG label="Data final (vencimento)"><FD k="fim" disabled={ro} /></FG>
+          <FG label="Vigência em meses"><FI k="vigencia_meses" type="number" placeholder="12" disabled={ro} /></FG>
           <FG label="Forma de medição"><FS k="medicao" opts={['Por produção','Por ciclo','Por consumo','Por indicadores','Mensal fixo']} disabled={ro} /></FG>
           <FG label="Valor mensal (R$)"><FI k="vlr_mensal" type="number" placeholder="0,00" disabled={ro} /></FG>
           <FG label="Valor total contratado (R$)"><FI k="vlr_total" type="number" placeholder="0,00" disabled={ro} /></FG>
           <FG label="Status"><FS k="status" opts={[{v:'vigente',l:'Vigente'},{v:'proximo',l:'Próx. vencimento'},{v:'vencido',l:'Vencido'},{v:'em renovacao',l:'Em renovação'}]} disabled={ro} /></FG>
         </div>
+        <div className="cell-m" style={{fontSize:11,marginTop:-6,marginBottom:8}}>Usada no cálculo de saldo e análise preditiva — evita erro de contar 11 ou 13 meses por causa da data exata. Deixe em branco pra calcular automaticamente pelas datas (menos confiável).</div>
         {!ro && <><div className="form-row"><div className="sec-label">Controle financeiro</div></div>
         <div className="form-row">
           <FG label="Valor acumulado executado (R$)"><FI k="consumo_acum" type="number" placeholder="0,00" /></FG>
@@ -1407,6 +1424,7 @@ function App() {
             <FS k="rubrica" opts={[{v:'',l:'— Sem rubrica —'}, ...RUBRICAS_ORCAMENTARIAS.map(r=>({v:r.cod, l:`${r.cod} - ${r.desc}`}))]} />
           </FG>
           <FG label="Quantidade contratada/mês *"><FI k="qtd_mensal" type="number" placeholder="0" /></FG>
+          <FG label="Qtd. TOTAL contratada (toda a vigência)"><FI k="qtd_total_contratada" type="number" placeholder="Deixe em branco = qtd/mês × meses de vigência" /></FG>
           <FG label="Unidade de medida"><FI k="unit" placeholder="Ex: exame, m³, ciclo" /></FG>
           <FG label="Valor unitário (R$)"><FI k="vlr_unitario" type="number" placeholder="0,00" /></FG>
           <FG label="Qtd executada este mês"><FI k="qtd_exec" type="number" placeholder="0" /></FG>
@@ -2740,11 +2758,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       const inicioC = new Date(c.inicio);
       const mesesRest = mesesCalendario(hoje.toISOString(), c.fim);
 const mesesDec = Math.max(1, mesesCalendario(c.inicio, hoje.toISOString()));
-const mesesTot = mesesCalendario(c.inicio, c.fim);
+const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
       itens.filter(i=>i.contrato_id===c.id).forEach(it=>{
         const media = it.qtd_acum/mesesDec;
         const proj = Math.round(media*mesesRest);
-        const qtdTot = it.qtd_mensal*mesesTot;
+        const qtdTot = it.qtd_total_contratada || (it.qtd_mensal*mesesTot);
         const saldo = Math.round(qtdTot-it.qtd_acum);
         const dif = Math.round(saldo-proj);
         const pct = qtdTot>0?Math.min(Math.round((it.qtd_acum/qtdTot)*100),100):0;
