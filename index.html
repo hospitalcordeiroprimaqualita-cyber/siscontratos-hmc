@@ -406,6 +406,7 @@ function App() {
   const [historicoContrato, setHistoricoContrato] = useState('');
   const [rubricaMes, setRubricaMes] = useState(todayMonth());
   const [mesExpandido, setMesExpandido] = useState(null);
+  const [confirmarExclusaoChave, setConfirmarExclusaoChave] = useState(null);
   const [filtroAditivoContrato, setFiltroAditivoContrato] = useState('');
   const [buscaAditivo, setBuscaAditivo] = useState('');
   const [formData, setFormData] = useState({});
@@ -1801,6 +1802,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           const itensMesLocal = itens.filter(i => i.contrato_id === medicaoContrato);
           const itemIds = itensMesLocal.map(it => it.id);
 
+          if (totalGeral > 0 && itensMesLocal.length === 0) {
+            throw new Error('O total calculado é R$ ' + totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ' mas nenhum item do contrato foi encontrado pra salvar. Nada foi registrado — recarregue a página e tente de novo.');
+          }
+
           const linhasMedicao = itensMesLocal.map(it => {
             const qtdExec = parseFloat(medicaoItens[it.id] || 0);
             const vuState = medicaoItens['vu_'+it.id];
@@ -1962,12 +1967,18 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           itensDoContrato.forEach(it => (radiocomRows[it.id]||[]).forEach(r => { if (r.medico_nome?.trim()) nomesUsados.add(r.medico_nome.trim()); }));
           await Promise.all([...nomesUsados].map(nome => addMedicoSeNaoExiste(c.id, nome)));
 
-          await sb().from('medicoes_lancamentos').delete().eq('contrato_id', c.id).eq('mes_referencia', medicaoMes);
+          // Monta e valida os lançamentos ANTES de apagar os antigos — se o total
+          // calculado é maior que zero mas nada sobrevive pra salvar, é sinal de
+          // problema (dado inválido, estado dessincronizado, etc). Nesse caso
+          // aborta sem tocar no que já estava salvo, em vez de gravar um valor
+          // em R$ sem nenhum lançamento por trás.
           const novosLancamentos = [];
+          let somaValidacao = 0;
           itensDoContrato.forEach(it => {
             (radiocomRows[it.id]||[]).forEach(r => {
               const qtd = parseFloat(r.quantidade) || 0;
               if (!r.medico_nome?.trim() && qtd === 0) return;
+              somaValidacao += qtd * (it.vlr_unitario||0);
               novosLancamentos.push({
                 id: uid('L'), contrato_id: c.id, item_id: it.id, mes_referencia: medicaoMes,
                 dia_semana: isDiaSemanaItem(it) ? (r.dia_semana||null) : null,
@@ -1975,6 +1986,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
               });
             });
           });
+          if (totalGeral > 0 && novosLancamentos.length === 0) {
+            throw new Error('O total calculado é R$ ' + totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ' mas nenhum lançamento válido foi encontrado pra salvar. Nada foi registrado — confira os lançamentos e tente de novo.');
+          }
+
+          await sb().from('medicoes_lancamentos').delete().eq('contrato_id', c.id).eq('mes_referencia', medicaoMes);
           if (novosLancamentos.length) await sb().from('medicoes_lancamentos').insert(novosLancamentos);
 
           await sb().from('execucoes').upsert({
@@ -2002,6 +2018,81 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       }
     });
   };
+
+  // ─── EXCLUIR MEDIÇÃO REGISTRADA (correção de lançamento indevido) ─────────
+  // Remove a execução do mês e seus lançamentos detalhados (item a item ou
+  // médico a médico, conforme o tipo de contrato), depois recalcula qtd_acum
+  // de cada item e o consumo_acum do contrato a partir do que restou —
+  // os mesmos cálculos usados no registro normal, então nada fica dessincronizado.
+  const excluirMedicao = async (execucao) => {
+    setSaving(true);
+    try {
+      const contratoId = execucao.contrato_id;
+      const mes = execucao.mes_referencia;
+      const c = contratos.find(x => x.id === contratoId);
+      const ehMedico = c && tipoContrato(c.numero) === 'medicos';
+      const itensDoContrato = itens.filter(i => i.contrato_id === contratoId);
+      const itemIds = itensDoContrato.map(it => it.id);
+
+      if (ehMedico) {
+        await sb().from('medicoes_lancamentos').delete().eq('contrato_id', contratoId).eq('mes_referencia', mes);
+      } else {
+        await sb().from('medicoes_itens').delete().eq('contrato_id', contratoId).eq('mes_referencia', mes);
+      }
+      await sb().from('execucoes').delete().eq('contrato_id', contratoId).eq('mes_referencia', mes);
+
+      if (ehMedico) {
+        const { data: histLanc } = await sb().from('medicoes_lancamentos').select('item_id,quantidade').in('item_id', itemIds);
+        const somaPorItem = {};
+        (histLanc||[]).forEach(r => { somaPorItem[r.item_id] = (somaPorItem[r.item_id]||0) + (r.quantidade||0); });
+        await Promise.all(itensDoContrato.map(it => sb().from('itens').update({ qtd_acum: somaPorItem[it.id]||0 }).eq('id', it.id)));
+      } else {
+        const { data: historico } = await sb().from('medicoes_itens').select('item_id,qtd_executada,qtd_semana,qtd_fds').in('item_id', itemIds);
+        const somaPorItem = {};
+        (historico||[]).forEach(r => { somaPorItem[r.item_id] = (somaPorItem[r.item_id]||0) + (r.qtd_executada||0) + (r.qtd_semana||0) + (r.qtd_fds||0); });
+        await Promise.all(itensDoContrato.map(it => sb().from('itens').update({ qtd_acum: somaPorItem[it.id]||0 }).eq('id', it.id)));
+      }
+
+      const { data: execs } = await sb().from('execucoes').select('valor').eq('contrato_id', contratoId);
+      const totalContrato = (execs||[]).reduce((acc,r)=>acc+(r.valor||0),0);
+      await sb().from('contratos').update({ consumo_acum: totalContrato, updated_at: new Date().toISOString() }).eq('id', contratoId);
+
+      await loadAll();
+      setSaving(false);
+      setConfirmarExclusaoChave(null);
+    } catch(e) {
+      setSaving(false);
+      alert('Erro ao excluir medição: ' + e.message);
+    }
+  };
+
+  // Prefill dos valores lançados quando o usuário reabre um mês já registrado
+  // (contratos genéricos) — permite corrigir sem perder o que já foi digitado.
+  // Radiocom já tem o equivalente no useEffect de radiocomRows acima.
+  useEffect(() => {
+    if (!medicaoContrato || !medicaoMes) return;
+    const c = contratos.find(x => x.id === medicaoContrato);
+    if (!c || tipoContrato(c.numero) === 'medicos') return;
+    const itensDoContrato = itens.filter(i => i.contrato_id === medicaoContrato);
+    const existentes = medicoesItensHist.filter(mi => mi.contrato_id === medicaoContrato && mi.mes_referencia === medicaoMes);
+    if (!existentes.length) return;
+    setMedicaoItens(prev => {
+      const novo = { ...prev };
+      itensDoContrato.forEach(it => {
+        const mi = existentes.find(m => m.item_id === it.id);
+        if (mi) {
+          novo[it.id] = mi.qtd_executada ?? 0;
+          novo['vu_'+it.id] = mi.vlr_unitario ?? it.vlr_unitario ?? 0;
+        }
+      });
+      return novo;
+    });
+    const execExistente = execucoes.find(e => e.contrato_id === medicaoContrato && e.mes_referencia === medicaoMes);
+    if (execExistente) {
+      const m = (execExistente.observacao||'').match(/^(\d+)ª/);
+      if (m) setMedicaoNumMedicao(m[1]);
+    }
+  }, [medicaoContrato, medicaoMes]);
 
   const renderMedicao = () => {
     const c = contratos.find(x => x.id === medicaoContrato);
@@ -2369,11 +2460,12 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           ) : (
             <div className="tbl-wrap">
               <table>
-                <thead><tr><th>Contrato</th><th>Mês</th><th>Nº medição</th><th>Valor total</th><th></th></tr></thead>
+                <thead><tr><th>Contrato</th><th>Mês</th><th>Nº medição</th><th>Valor total</th><th style={{width:150}}></th></tr></thead>
                 <tbody>{listaExecucoes.map(e => {
                   const c = contratos.find(x => x.id === e.contrato_id);
                   const chave = e.contrato_id+'_'+e.mes_referencia;
                   const aberto = mesExpandido === chave;
+                  const confirmando = confirmarExclusaoChave === chave;
                   return (
                     <React.Fragment key={chave}>
                       <tr>
@@ -2381,7 +2473,21 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                         <td>{mesToPT(e.mes_referencia)}</td>
                         <td className="cell-m" style={{textAlign:'center'}}>{extrairNumMedicao(e.observacao)}</td>
                         <td style={{fontWeight:700,color:'var(--teal-d)'}}>{brl(e.valor)}</td>
-                        <td><ActBtn icon={aberto?'fa-chevron-up':'fa-chevron-down'} onClick={()=>setMesExpandido(aberto?null:chave)} title="Ver detalhe" /></td>
+                        <td>
+                          {confirmando ? (
+                            <div style={{display:'flex',gap:6,alignItems:'center',justifyContent:'flex-end'}}>
+                              <span style={{fontSize:11,color:'#b91c1c',fontWeight:600}}>Excluir?</span>
+                              <button className="btn btn-danger btn-sm" disabled={saving} onClick={()=>excluirMedicao(e)}>Sim</button>
+                              <button className="btn btn-secondary btn-sm" disabled={saving} onClick={()=>setConfirmarExclusaoChave(null)}>Não</button>
+                            </div>
+                          ) : (
+                            <div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
+                              <ActBtn icon={aberto?'fa-chevron-up':'fa-chevron-down'} onClick={()=>setMesExpandido(aberto?null:chave)} title="Ver detalhe" />
+                              <ActBtn icon="fa-pen" onClick={()=>{ setMedicaoContrato(e.contrato_id); setMedicaoMes(e.mes_referencia); setSection('medicao'); }} title="Corrigir esta medição" />
+                              <ActBtn icon="fa-trash" danger onClick={()=>setConfirmarExclusaoChave(chave)} title="Apagar esta medição" />
+                            </div>
+                          )}
+                        </td>
                       </tr>
                       {aberto && (
                         <tr><td colSpan={5} style={{padding:0,background:'#FAFBFD'}}>
@@ -2392,6 +2498,9 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                   );
                 })}</tbody>
               </table>
+              <div style={{padding:'8px 16px',fontSize:11.5,color:'var(--text3)'}}>
+                <i className="fa-solid fa-circle-info"/> <strong>Corrigir</strong> abre a medição no mês certo com os valores já lançados, prontos pra ajustar e registrar de novo. <strong>Apagar</strong> remove o registro e os lançamentos daquele mês e recalcula automaticamente o saldo acumulado do item e do contrato.
+              </div>
             </div>
           )}
         </div>
