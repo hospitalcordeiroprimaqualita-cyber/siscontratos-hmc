@@ -762,7 +762,7 @@ function App() {
           <div className="panel">
             <div className="panel-head">
               <h2><i className="fa-solid fa-triangle-exclamation" style={{color:'#f97316'}}/> Contratos que precisam de atenção</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setSection('preditiva')}>Ver análise completa →</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setSection('aditivos')}>Ver análise completa →</button>
             </div>
             <div className="panel-body" style={{paddingTop:8}}>
               {contratos.filter(c => precisamAtencao.has(c.id)).map(c => {
@@ -3023,7 +3023,6 @@ const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
     { sec:'financeiro', icon:'fa-circle-dollar-to-slot', label:'Controle financeiro', group:'controles' },
     { sec:'quantidade', icon:'fa-boxes-stacked', label:'Controle de quantidade', group:'controles' },
     { sec:'prazo', icon:'fa-calendar-days', label:'Controle de prazo', group:'controles' },
-    { sec:'preditiva', icon:'fa-brain', label:'Análise preditiva', group:'gestao' },
     { sec:'aditivos', icon:'fa-file-pen', label:'Aditivos e supressões', group:'gestao' },
     { sec:'medicao', icon:'fa-file-invoice-dollar', label:'Medições mensais', group:'gestao' },
     { sec:'historico', icon:'fa-clock-rotate-left', label:'Histórico de medições', group:'gestao' },
