@@ -405,6 +405,7 @@ function App() {
   const [selQtd, setSelQtd] = useState('');
   const [historicoContrato, setHistoricoContrato] = useState('');
   const [rubricaMes, setRubricaMes] = useState(todayMonth());
+  const [rubricaExpandida, setRubricaExpandida] = useState(null);
   const [mesExpandido, setMesExpandido] = useState(null);
   const [confirmarExclusaoChave, setConfirmarExclusaoChave] = useState(null);
   const [filtroAditivoContrato, setFiltroAditivoContrato] = useState('');
@@ -2515,6 +2516,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const rubricas = [...new Set(itensComRubrica.map(it => it.rubrica))];
     const contratosSemRubrica = contratos.filter(c => itens.some(it => it.contrato_id === c.id) && !itens.some(it => it.contrato_id === c.id && it.rubrica));
 
+    const anoRef = rubricaMes.slice(0,4);
     const dadosRubrica = rubricas.map(rub => {
       const info = rubricaInfo(rub);
       const itensRub = itensComRubrica.filter(it => it.rubrica === rub);
@@ -2530,6 +2532,25 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       const tetoMensal = info?.mensal || 0;
       const pctTeto = tetoMensal>0 ? Math.round((executado/tetoMensal)*100) : 0;
       const pctContratado = contratado>0 ? Math.round((executado/contratado)*100) : 0;
+
+      // ── Projeção anual: pega todo mês do ano de rubricaMes com execução real
+      // registrada (qualquer contrato desta rubrica) e projeta pelos 12 meses.
+      const porMesAno = {};
+      itensRub.forEach(it => {
+        medicoesItensHist.filter(mi => mi.item_id === it.id && mi.mes_referencia.startsWith(anoRef)).forEach(mi => {
+          porMesAno[mi.mes_referencia] = (porMesAno[mi.mes_referencia]||0) + (mi.qtd_executada||0)*(mi.vlr_unitario||it.vlr_unitario||0);
+        });
+        lancamentos.filter(l => l.item_id === it.id && l.mes_referencia.startsWith(anoRef)).forEach(l => {
+          porMesAno[l.mes_referencia] = (porMesAno[l.mes_referencia]||0) + (l.quantidade||0)*(l.valor_unitario||it.vlr_unitario||0);
+        });
+      });
+      const mesesComDado = Object.keys(porMesAno).filter(m => porMesAno[m] > 0);
+      const executadoAno = Object.values(porMesAno).reduce((a,b)=>a+b, 0);
+      const mediaMensalReal = mesesComDado.length ? executadoAno / mesesComDado.length : 0;
+      const projecaoAnual = mediaMensalReal * 12;
+      const tetoAnual = info?.anual || 0;
+      const pctAnual = tetoAnual>0 ? Math.round((projecaoAnual/tetoAnual)*100) : 0;
+
       // Contribuição por contrato dentro desta rubrica
       const contratosIds = [...new Set(itensRub.map(it => it.contrato_id))];
       const porContrato = contratosIds.map(cid => {
@@ -2542,8 +2563,9 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         }, 0);
         return { contrato:c, valor:execContrato };
       }).sort((a,b) => b.valor - a.valor);
-      return { rubrica:rub, desc:info?.desc||'', tetoMensal, contratado, executado, pctTeto, pctContratado, porContrato };
-    }).sort((a,b) => b.pctTeto - a.pctTeto);
+      return { rubrica:rub, desc:info?.desc||'', tetoMensal, contratado, executado, pctTeto, pctContratado, porContrato,
+                mesesComDado:mesesComDado.length, executadoAno, mediaMensalReal, projecaoAnual, tetoAnual, pctAnual };
+    }).sort((a,b) => b.pctAnual - a.pctAnual);
 
     return (
       <>
@@ -2563,44 +2585,73 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         ) : (
           <>
             <div className="panel">
-              <div className="panel-head"><h2><i className="fa-solid fa-chart-bar"/> % do teto mensal aprovado consumido — {mesToPT(rubricaMes)}</h2></div>
+              <div className="panel-head"><h2><i className="fa-solid fa-chart-bar"/> % do teto anual projetado — com base na média real até {mesToPT(rubricaMes)}</h2></div>
               <div className="panel-body">
-                <HorizontalBarChart labels={dadosRubrica.map(d=>`${d.rubrica}`)} data={dadosRubrica.map(d=>d.pctTeto)} color="#178DBB" height={Math.max(180,dadosRubrica.length*36)} />
+                <HorizontalBarChart labels={dadosRubrica.map(d=>`${d.rubrica}`)} data={dadosRubrica.map(d=>d.pctAnual)} color="#178DBB" height={Math.max(180,dadosRubrica.length*36)} />
               </div>
             </div>
 
-            {dadosRubrica.map(d => {
-              const cls = d.pctTeto>=100?'vermelho':d.pctTeto>=85?'laranja':d.pctTeto>=70?'amarelo':'verde';
-              return (
-                <div key={d.rubrica} className="panel">
-                  <div className="panel-head">
-                    <h2><i className="fa-solid fa-scale-balanced"/> {d.rubrica} — {d.desc}</h2>
-                    <Badge cls={cls} label={`${d.pctTeto}% do teto aprovado`} />
-                  </div>
-                  <div className="panel-body">
-                    <div style={{display:'flex',gap:20,marginBottom:12,flexWrap:'wrap'}}>
-                      <div><div className="s-label">Teto mensal aprovado</div><div style={{fontWeight:700,fontSize:15}}>{brl(d.tetoMensal)}</div></div>
-                      <div><div className="s-label">Contratado (soma dos itens)</div><div style={{fontWeight:700,fontSize:15}}>{brl(d.contratado)}</div></div>
-                      <div><div className="s-label">Executado no mês</div><div style={{fontWeight:700,fontSize:15,color:d.executado>d.tetoMensal?'#b91c1c':'var(--teal-d)'}}>{brl(d.executado)}</div></div>
-                      <div><div className="s-label">Diferença p/ o teto</div><div style={{fontWeight:700,fontSize:15,color:d.executado>d.tetoMensal?'#b91c1c':'#16a34a'}}>{d.executado>d.tetoMensal?'+':''}{brl(d.executado-d.tetoMensal)}</div></div>
-                    </div>
-                    <div className="tbl-wrap">
-                      <table>
-                        <thead><tr><th>Contrato</th><th>Empresa</th><th>Executado no mês</th><th>% do teto da rubrica</th></tr></thead>
-                        <tbody>{d.porContrato.map(pc => (
-                          <tr key={pc.contrato?.id}>
-                            <td className="mono"><strong>{pc.contrato?.numero}</strong></td>
-                            <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{pc.contrato?.empresa}</td>
-                            <td style={{fontWeight:600}}>{brl(pc.valor)}</td>
-                            <td style={{minWidth:100}}><ProgBar p={d.tetoMensal>0?Math.min(Math.round((pc.valor/d.tetoMensal)*100),100):0} /></td>
-                          </tr>
-                        ))}</tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            <div className="panel">
+              <div className="panel-head">
+                <h2><i className="fa-solid fa-list"/> Resumo por rubrica ({dadosRubrica.length})</h2>
+                <span style={{fontSize:11.5,color:'var(--text3)'}}>Clique numa linha pra ver o detalhe por contrato</span>
+              </div>
+              <div className="tbl-wrap">
+                <table>
+                  <thead><tr>
+                    <th>Rubrica</th><th>Teto mensal</th><th>Executado no mês</th><th>% mês</th>
+                    <th>Média real/mês</th><th>Projeção anual</th><th>Teto anual</th><th>% anual projetado</th><th></th>
+                  </tr></thead>
+                  <tbody>{dadosRubrica.map(d => {
+                    const clsAnual = d.pctAnual>=100?'vermelho':d.pctAnual>=85?'laranja':d.pctAnual>=70?'amarelo':'verde';
+                    const aberto = rubricaExpandida === d.rubrica;
+                    return (
+                      <React.Fragment key={d.rubrica}>
+                        <tr style={{cursor:'pointer'}} onClick={()=>setRubricaExpandida(aberto?null:d.rubrica)}>
+                          <td><strong className="mono">{d.rubrica}</strong><div style={{fontSize:11,color:'var(--text3)',maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.desc}</div></td>
+                          <td>{brl(d.tetoMensal)}</td>
+                          <td style={{fontWeight:600,color:d.executado>d.tetoMensal?'#b91c1c':'var(--text)'}}>{brl(d.executado)}</td>
+                          <td style={{minWidth:90}}><ProgBar p={Math.min(d.pctTeto,100)}/></td>
+                          <td>{brl(d.mediaMensalReal)}<div style={{fontSize:10.5,color:'var(--text3)'}}>{d.mesesComDado} {d.mesesComDado===1?'mês':'meses'} com dado em {anoRef}</div></td>
+                          <td style={{fontWeight:600}}>{brl(d.projecaoAnual)}</td>
+                          <td>{brl(d.tetoAnual)}</td>
+                          <td style={{minWidth:110}}><Badge cls={clsAnual} label={`${d.pctAnual}%`} /></td>
+                          <td><ActBtn icon={aberto?'fa-chevron-up':'fa-chevron-down'} onClick={(e)=>{e.stopPropagation(); setRubricaExpandida(aberto?null:d.rubrica);}} title="Ver detalhe por contrato" /></td>
+                        </tr>
+                        {aberto && (
+                          <tr><td colSpan={9} style={{padding:0,background:'#FAFBFD'}}>
+                            <div style={{padding:'14px 16px'}}>
+                              <div style={{display:'flex',gap:20,marginBottom:12,flexWrap:'wrap'}}>
+                                <div><div className="s-label">Diferença p/ o teto mensal</div><div style={{fontWeight:700,fontSize:15,color:d.executado>d.tetoMensal?'#b91c1c':'#16a34a'}}>{d.executado>d.tetoMensal?'+':''}{brl(d.executado-d.tetoMensal)}</div></div>
+                                <div><div className="s-label">Executado acumulado em {anoRef}</div><div style={{fontWeight:700,fontSize:15}}>{brl(d.executadoAno)}</div></div>
+                                <div><div className="s-label">Diferença p/ o teto anual (projetado)</div><div style={{fontWeight:700,fontSize:15,color:d.projecaoAnual>d.tetoAnual?'#b91c1c':'#16a34a'}}>{d.projecaoAnual>d.tetoAnual?'+':''}{brl(d.projecaoAnual-d.tetoAnual)}</div></div>
+                                <div><div className="s-label">Contratado (soma dos itens)</div><div style={{fontWeight:700,fontSize:15}}>{brl(d.contratado)}</div></div>
+                              </div>
+                              <div className="tbl-wrap">
+                                <table>
+                                  <thead><tr><th>Contrato</th><th>Empresa</th><th>Executado no mês</th><th>% do teto da rubrica</th></tr></thead>
+                                  <tbody>{d.porContrato.map(pc => (
+                                    <tr key={pc.contrato?.id}>
+                                      <td className="mono"><strong>{pc.contrato?.numero}</strong></td>
+                                      <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{pc.contrato?.empresa}</td>
+                                      <td style={{fontWeight:600}}>{brl(pc.valor)}</td>
+                                      <td style={{minWidth:100}}><ProgBar p={d.tetoMensal>0?Math.min(Math.round((pc.valor/d.tetoMensal)*100),100):0} /></td>
+                                    </tr>
+                                  ))}</tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td></tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+              <div style={{padding:'8px 16px',fontSize:11.5,color:'var(--text3)'}}>
+                <i className="fa-solid fa-circle-info"/> <strong>Projeção anual</strong> = média real de execução por mês (considerando só os meses de {anoRef} com dado lançado) × 12. Ordenado pelo maior % do teto anual projetado primeiro.
+              </div>
+            </div>
           </>
         )}
 
