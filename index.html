@@ -335,6 +335,53 @@ function HorizontalBarChart({ labels, data, color, height }) {
   return <div style={{height:height||Math.max(180,labels.length*32)}}><canvas ref={canvasRef}></canvas></div>;
 }
 
+// ─── GRÁFICOS SVG PARA O RELATÓRIO IMPRESSO (PDF) ─────────────────────────
+// Não usamos Chart.js aqui porque a janela de impressão é um documento HTML
+// isolado (window.open) sem os scripts do app — SVG inline garante que o
+// gráfico já nasce pronto no papel, sem depender de timing de renderização.
+function svgBarrasHorizontaisPDF(dados, opts={}) {
+  const largura = opts.largura || 680;
+  const alturaBarra = 18, gap = 9, margemEsq = opts.margemEsq || 230, margemDir = 46;
+  const maxValor = Math.max(...dados.map(d=>d.pct), 10);
+  const alturaTotal = dados.length*(alturaBarra+gap)+6;
+  const escala = (largura-margemEsq-margemDir)/maxValor;
+  const linhas = dados.map((d,i) => {
+    const y = i*(alturaBarra+gap)+3;
+    const w = Math.max(2, Math.min(d.pct, maxValor)*escala);
+    const cor = d.pct>=100?'#ef4444':d.pct>=85?'#f59e0b':d.pct>=70?'#eab308':'#22c55e';
+    const rotulo = d.label.length>34 ? d.label.slice(0,33)+'…' : d.label;
+    return `<text x="${margemEsq-8}" y="${y+alturaBarra/2+3.5}" text-anchor="end" font-size="9" font-family="Arial">${rotulo}</text>
+      <rect x="${margemEsq}" y="${y}" width="${largura-margemEsq-margemDir}" height="${alturaBarra}" fill="#EEF2F6" rx="3"/>
+      <rect x="${margemEsq}" y="${y}" width="${w}" height="${alturaBarra}" fill="${cor}" rx="3"/>
+      <text x="${largura-margemDir+6}" y="${y+alturaBarra/2+3.5}" font-size="9" font-family="Arial" font-weight="bold">${d.pct}%</text>`;
+  }).join('');
+  return `<svg width="${largura}" height="${alturaTotal}" xmlns="http://www.w3.org/2000/svg">${linhas}</svg>`;
+}
+
+function svgLinhaEvolucaoPDF(pontos, opts={}) {
+  const largura = opts.largura || 680, altura = opts.altura || 160;
+  const margemEsq = 66, margemDir = 20, margemTopo = 18, margemBase = 26;
+  const maxValor = Math.max(...pontos.map(p=>p.valor), 1);
+  const passoX = pontos.length>1 ? (largura-margemEsq-margemDir)/(pontos.length-1) : 0;
+  const escalaY = (altura-margemTopo-margemBase)/maxValor;
+  const coords = pontos.map((p,i) => ({ x: margemEsq+i*passoX, y: altura-margemBase-p.valor*escalaY }));
+  const path = coords.map((c,i)=> (i===0?'M':'L')+c.x.toFixed(1)+','+c.y.toFixed(1)).join(' ');
+  const area = coords.length ? `${path} L${coords[coords.length-1].x.toFixed(1)},${altura-margemBase} L${coords[0].x.toFixed(1)},${altura-margemBase} Z` : '';
+  const linhasGrade = [0.25,0.5,0.75,1].map(f => {
+    const y = altura-margemBase-(maxValor*f)*escalaY;
+    return `<line x1="${margemEsq}" y1="${y.toFixed(1)}" x2="${largura-margemDir}" y2="${y.toFixed(1)}" stroke="#EEF2F6" stroke-width="1"/>`;
+  }).join('');
+  const pontosSvg = coords.map(c=>`<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="3" fill="#0F6E56"/>`).join('');
+  const valoresSvg = pontos.map((p,i)=>`<text x="${coords[i].x.toFixed(1)}" y="${(coords[i].y-8).toFixed(1)}" text-anchor="middle" font-size="8" font-family="Arial" font-weight="bold">${(p.valor/1000).toLocaleString('pt-BR',{maximumFractionDigits:0})}k</text>`).join('');
+  const labelsSvg = pontos.map((p,i)=>`<text x="${coords[i].x.toFixed(1)}" y="${altura-7}" text-anchor="middle" font-size="8.5" font-family="Arial">${p.label}</text>`).join('');
+  return `<svg width="${largura}" height="${altura}" xmlns="http://www.w3.org/2000/svg">
+    ${linhasGrade}
+    <path d="${area}" fill="#0F6E5622" stroke="none"/>
+    <path d="${path}" fill="none" stroke="#0F6E56" stroke-width="2"/>
+    ${pontosSvg}${valoresSvg}${labelsSvg}
+  </svg>`;
+}
+
 // ─── CONFIG SCREEN ────────────────────────────────────────────────────────────
 function ConfigScreen({ onSave }) {
   const [url, setUrl] = useState(localStorage.getItem(STORAGE_KEYS.url)||'');
@@ -510,8 +557,17 @@ function App() {
       updated_at: new Date().toISOString()
     };
     const { error } = await sb().from('contratos').upsert(data);
+    if (error) { setSaving(false); alert('Erro ao salvar: ' + error.message); return; }
+
+    // Se o usuário mexeu no seletor de rubrica do contrato, aplica de uma vez
+    // a todos os itens — evita ter que editar item por item.
+    const rubricaEscolhida = fv('rubrica_aplicar_todos');
+    if (rubricaEscolhida !== undefined && rubricaEscolhida !== '__mista__') {
+      const { error: errRub } = await sb().from('itens').update({ rubrica: rubricaEscolhida || null }).eq('contrato_id', data.id);
+      if (errRub) { setSaving(false); alert('Contrato salvo, mas houve erro ao aplicar a rubrica aos itens: ' + errRub.message); await loadAll(); return; }
+    }
+
     setSaving(false);
-    if (error) { alert('Erro ao salvar: ' + error.message); return; }
     await loadAll(); closeModal();
   };
 
@@ -935,6 +991,10 @@ function App() {
   };
 
   const renderQuantidade = () => {
+    const atualizarRubricaItem = async (itemId, novaRubrica) => {
+      await sb().from('itens').update({ rubrica: novaRubrica || null }).eq('id', itemId);
+      await loadAll();
+    };
     const lista = itens.filter(i => i.contrato_id === selQtd);
     const contrato = contratos.find(c => c.id === selQtd);
 
@@ -1069,7 +1129,7 @@ function App() {
               <div className="panel-head"><h2><i className="fa-solid fa-table-list"/> {quadroNome}</h2></div>
               <div className="tbl-wrap">
                 <table>
-                  <thead><tr><th>Item</th><th>Carga Horária</th><th>Vaga</th><th>Valor Unitário</th><th>Qtd contratada/mês</th><th>Acumulado (todas medições)</th></tr></thead>
+                  <thead><tr><th>Item</th><th>Carga Horária</th><th>Vaga</th><th>Valor Unitário</th><th>Qtd contratada/mês</th><th>Acumulado (todas medições)</th><th>Rubrica</th></tr></thead>
                   <tbody>{grupo.map(it => (
                     <tr key={it.id}>
                       <td style={{fontWeight:600}}>{it.ordem}. {it.item}</td>
@@ -1078,6 +1138,12 @@ function App() {
                       <td style={{textAlign:'center'}}>{brl(it.vlr_unitario||0)}</td>
                       <td style={{textAlign:'center'}}>{it.qtd_mensal||0}</td>
                       <td style={{textAlign:'center',fontWeight:600}}>{it.qtd_acum||0}</td>
+                      <td style={{minWidth:220}}>
+                        <select value={it.rubrica||''} onChange={e=>atualizarRubricaItem(it.id, e.target.value)} style={{width:'100%',fontSize:11.5,padding:'4px 6px'}}>
+                          <option value="">— Sem rubrica —</option>
+                          {RUBRICAS_ORCAMENTARIAS.map(r => <option key={r.cod} value={r.cod}>{r.cod} - {r.desc}</option>)}
+                        </select>
+                      </td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -1483,6 +1549,28 @@ function App() {
         <div className="form-row">
           <FG label="Valor acumulado executado (R$)"><FI k="consumo_acum" type="number" placeholder="0,00" /></FG>
         </div></>}
+        {tipo !== 'novo' && (() => {
+          const itensDoContrato = itens.filter(i => i.contrato_id === modal.id);
+          const rubricasUnicas = [...new Set(itensDoContrato.map(i => i.rubrica).filter(Boolean))];
+          const mista = rubricasUnicas.length > 1;
+          const rubricaAtual = rubricasUnicas.length === 1 ? rubricasUnicas[0] : (mista ? '__mista__' : '');
+          return (
+            <>
+              <div className="form-row"><div className="sec-label">Rubrica orçamentária</div></div>
+              <div className="form-row">
+                <FG label={itensDoContrato.length ? `Aplicar a todos os ${itensDoContrato.length} item(ns) deste contrato` : 'Aplicar aos itens deste contrato'} full>
+                  <select defaultValue={rubricaAtual} onChange={e=>sf('rubrica_aplicar_todos', e.target.value)} disabled={ro || itensDoContrato.length===0}>
+                    {mista && <option value="__mista__">— Múltiplas rubricas nos itens (escolha uma pra padronizar) —</option>}
+                    <option value="">— Sem rubrica —</option>
+                    {RUBRICAS_ORCAMENTARIAS.map(r => <option key={r.cod} value={r.cod}>{r.cod} - {r.desc}</option>)}
+                  </select>
+                </FG>
+              </div>
+              {itensDoContrato.length===0 && <div className="cell-m" style={{fontSize:11,marginTop:-6}}>Este contrato ainda não tem itens cadastrados.</div>}
+              {!ro && itensDoContrato.length>0 && <div className="cell-m" style={{fontSize:11,marginTop:-6}}>Ao salvar, a rubrica escolhida aqui é aplicada de uma vez a todos os itens — não precisa editar item por item.</div>}
+            </>
+          );
+        })()}
       </>
     );
 
@@ -2697,6 +2785,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   const gerarRelatorioMensal = () => {
     const mesRef = mesToPT(relatorioMes);
     const [ry, rm] = relatorioMes.split('-').map(Number);
+    const mesCurto = (mes) => { const [y,m] = mes.split('-'); const nomes=['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return nomes[parseInt(m)]+'/'+y.slice(2); };
 
     // Status das medições (mesma lógica do Painel)
     const statusMedicoesRel = contratos.map(c => {
@@ -2712,6 +2801,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       }
       return { c, ultimoMes, cls, label };
     });
+    const emDiaCount = statusMedicoesRel.filter(s=>s.cls==='verde').length;
+    const atencaoCount = statusMedicoesRel.filter(s=>s.cls==='amarelo').length;
+    const atrasadoCount = statusMedicoesRel.filter(s=>s.cls==='vermelho').length;
+    const statusAtencao = statusMedicoesRel.filter(s=>s.cls!=='verde').sort((a,b)=> a.cls===b.cls?0:(a.cls==='vermelho'?-1:1));
 
     // Contratos vencendo em breve
     const vencendo = contratos.filter(c => { const d = dias(c.fim); return d<=90; }).sort((a,b)=>dias(a.fim)-dias(b.fim));
@@ -2722,6 +2815,9 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       const achados = itensC.map(it => ({ it, a: calcAnaliseItem(c, it) })).filter(x => x.a && x.a.acao !== 'OK');
       return { c, achados };
     }).filter(x => x.achados.length);
+    const totalItensAditivo = achadosPorContrato.reduce((acc,x)=>acc+x.achados.filter(y=>y.a.acao==='ADITIVO').length,0);
+    const totalItensSupressao = achadosPorContrato.reduce((acc,x)=>acc+x.achados.filter(y=>y.a.acao==='SUPRESSÃO').length,0);
+    const contratosComAditivo = new Set(achadosPorContrato.filter(x=>x.achados.some(y=>y.a.acao==='ADITIVO')).map(x=>x.c.id)).size;
 
     // Rubrica (reaproveita a mesma lógica de renderRubrica, recalculada aqui pro mês do relatório)
     const itensComRubrica = itens.filter(it => it.rubrica);
@@ -2736,6 +2832,34 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       const tetoMensal = info?.mensal || 0;
       return { rub, desc:info?.desc||'', tetoMensal, executado, pct: tetoMensal>0?Math.round((executado/tetoMensal)*100):0 };
     }).sort((a,b) => b.pct - a.pct);
+    const rubricasCriticas = rubricasRel.filter(r=>r.pct>=70);
+    const piorRubrica = rubricasRel[0];
+
+    // Evolução do valor executado — últimos 6 meses (soma de todos os contratos)
+    const mesesEvolucao = [];
+    for (let i=5;i>=0;i--) { const d = new Date(ry, rm-1-i, 1); mesesEvolucao.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')); }
+    const evolucaoMensal = mesesEvolucao.map(m => ({ label: mesCurto(m), valor: execucoes.filter(e=>e.mes_referencia===m).reduce((a,e)=>a+(e.valor||0),0) }));
+    const totalExecutadoMes = execucoes.filter(e=>e.mes_referencia===relatorioMes).reduce((a,e)=>a+(e.valor||0),0);
+
+    // ── Resumo executivo (texto corrido) ────────────────────────────────
+    const paragrafo1 = `No mês de referência de ${mesRef}, o Hospital Municipal de Cordeiro executou o total de ${brl(totalExecutadoMes)} em contratos de gestão sob o Contrato de Gestão nº 196/2025, distribuídos entre ${contratos.length} contrato(s) ativo(s) acompanhados pelo sistema. Das medições esperadas para o período, ${emDiaCount} contrato(s) encontram-se em dia, ${atencaoCount} necessitam atenção por um mês de atraso e ${atrasadoCount} estão com medição em atraso superior a um mês.`;
+    const paragrafo2 = (totalItensAditivo || totalItensSupressao)
+      ? `Foram identificados ${totalItensAditivo} item(ns), em ${contratosComAditivo} contrato(s), com necessidade de aditivo por projeção de esgotamento do saldo contratado antes do fim da vigência, além de ${totalItensSupressao} item(ns) indicados para supressão por excedente de quantitativo projetado.`
+      : `Não foram identificados, neste mês, itens com necessidade de aditivo ou supressão nos contratos monitorados.`;
+    const paragrafo3 = rubricasCriticas.length
+      ? `Em relação ao consumo orçamentário por rubrica, ${rubricasCriticas.length} rubrica(s) atingiram ou ultrapassaram 70% do teto mensal aprovado na Proposta Financeira, com destaque para "${piorRubrica.desc}" (${piorRubrica.pct}% do teto). Recomenda-se acompanhamento próximo dessas rubricas para evitar extrapolação do orçamento aprovado.`
+      : `Nenhuma rubrica orçamentária atingiu 70% do teto mensal aprovado neste mês.`;
+    const paragrafo4 = vencendo.length
+      ? `Por fim, ${vencendo.length} contrato(s) vencem em até 90 dias e requerem atenção quanto à prorrogação, renovação ou nova licitação, conforme detalhado na Seção 2 deste relatório.`
+      : `Não há contratos com vencimento previsto para os próximos 90 dias.`;
+
+    const recomendacoes = [];
+    if (atrasadoCount>0) recomendacoes.push(`Regularizar a medição dos ${atrasadoCount} contrato(s) em atraso o quanto antes, para não comprometer o controle financeiro e a análise de saldo.`);
+    if (totalItensAditivo>0) recomendacoes.push(`Iniciar os processos de aditivo para os itens identificados na Seção 3, priorizando os de maior diferença negativa projetada.`);
+    if (totalItensSupressao>0) recomendacoes.push(`Avaliar a supressão dos itens excedentes identificados — podem ser redistribuídos via reequilíbrio dentro do próprio contrato.`);
+    if (rubricasCriticas.length>0) recomendacoes.push(`Monitorar de perto as rubricas em alerta (≥70% do teto), especialmente "${piorRubrica.desc}".`);
+    if (vencendo.filter(c=>dias(c.fim)<=30).length>0) recomendacoes.push(`Priorizar a prorrogação/renovação dos contratos com vencimento em até 30 dias.`);
+    if (!recomendacoes.length) recomendacoes.push('Nenhuma ação crítica identificada para o período — manter o acompanhamento de rotina.');
 
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
@@ -2752,6 +2876,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       td.desc{text-align:left;} td.num{text-align:center;} td.val{text-align:right;}
       .badge-pdf { display:inline-block; padding:2px 7px; border-radius:10px; font-size:9px; font-weight:bold; color:#fff; }
       .obs { font-size:10px; color:#333; margin:6px 0 14px; line-height:1.5; }
+      .resumo-texto { font-size:10.5px; line-height:1.7; text-align:justify; margin-bottom:4px; }
+      .kpis { display:flex; gap:10px; margin:12px 0 16px; }
+      .kpi-card { flex:1; border:1px solid #ccc; border-radius:6px; padding:10px 8px; text-align:center; }
+      .kpi-card .val { font-size:17px; font-weight:bold; color:#0F6E56; }
+      .kpi-card .lbl { font-size:8.5px; color:#555; margin-top:3px; line-height:1.3; }
+      .chart-box { border:1px solid #e0e0e0; border-radius:6px; padding:12px 10px; margin-bottom:8px; text-align:center; }
+      .chart-box .titulo-chart { font-size:10px; font-weight:bold; color:#333; margin-bottom:8px; text-align:left; }
+      .recos { font-size:10.5px; line-height:1.8; padding-left:18px; margin-bottom:8px; }
       .assinaturas { margin-top:50px; display:flex; gap:40px; justify-content:center; }
       .assinatura-box { flex:1; text-align:center; max-width:260px; }
       .assinatura-box .linha { border-top:1px solid #000; margin-bottom:4px; }
@@ -2762,14 +2894,23 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const corBadge = cls => cls==='verde'?'#22c55e':cls==='amarelo'?'#f59e0b':'#ef4444';
 
-    const tabelaStatus = `
+    const kpisHtml = `<div class="kpis">
+      <div class="kpi-card"><div class="val">${brl(totalExecutadoMes)}</div><div class="lbl">EXECUTADO NO MÊS</div></div>
+      <div class="kpi-card"><div class="val">${emDiaCount}/${contratos.length}</div><div class="lbl">CONTRATOS COM MEDIÇÃO EM DIA</div></div>
+      <div class="kpi-card"><div class="val">${totalItensAditivo+totalItensSupressao}</div><div class="lbl">ITENS PRECISANDO DE ADITIVO/SUPRESSÃO</div></div>
+      <div class="kpi-card"><div class="val">${rubricasCriticas.length}</div><div class="lbl">RUBRICAS EM ALERTA (≥70% DO TETO)</div></div>
+    </div>`;
+
+    const tabelaStatusAtencao = statusAtencao.length ? `
       <table><thead><tr><th>Contrato</th><th>Empresa</th><th>Última medição</th><th>Status</th></tr></thead>
-      <tbody>${statusMedicoesRel.map(s => `<tr>
+      <tbody>${statusAtencao.map(s => `<tr>
         <td class="num"><strong>${s.c.numero}</strong></td>
         <td class="desc">${s.c.empresa}</td>
         <td class="num">${s.ultimoMes?mesToPT(s.ultimoMes):'—'}</td>
         <td class="num"><span class="badge-pdf" style="background:${corBadge(s.cls)}">${s.label}</span></td>
-      </tr>`).join('')}</tbody></table>`;
+      </tr>`).join('')}</tbody></table>
+      <div class="obs">Os demais ${emDiaCount} contrato(s) estão com a medição em dia e não são listados aqui.</div>`
+      : `<div class="obs">Todos os ${contratos.length} contrato(s) monitorados estão com a medição em dia neste mês.</div>`;
 
     const tabelaVencendo = vencendo.length ? `
       <table><thead><tr><th>Contrato</th><th>Empresa</th><th>Vencimento</th><th>Dias restantes</th></tr></thead>
@@ -2790,21 +2931,40 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       </tr>`).join('')}</tbody></table>
     `).join('') : '<div class="obs">Nenhum item identificado precisando de aditivo ou supressão neste mês.</div>';
 
-    const tabelaRubrica = rubricasRel.length ? `
+    const graficoRubricas = rubricasRel.length ? `<div class="chart-box">
+        <div class="titulo-chart">% do teto mensal consumido por rubrica${rubricasRel.length>12?' (12 mais críticas)':''}</div>
+        ${svgBarrasHorizontaisPDF(rubricasRel.slice(0,12).map(r=>({label:`${r.rub} - ${r.desc}`, pct:r.pct})))}
+      </div>` : '';
+    const tabelaRubrica = rubricasCriticas.length ? `
       <table><thead><tr><th>Rubrica</th><th>Teto mensal aprovado</th><th>Executado no mês</th><th>% do teto</th></tr></thead>
-      <tbody>${rubricasRel.map(r => `<tr>
+      <tbody>${rubricasCriticas.map(r => `<tr>
         <td class="desc">${r.rub} - ${r.desc}</td>
-        <td class="val">R$ ${r.tetoMensal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-        <td class="val">R$ ${r.executado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+        <td class="val">${brl(r.tetoMensal)}</td>
+        <td class="val">${brl(r.executado)}</td>
         <td class="num" style="color:${r.pct>=100?'#b91c1c':'#000'}">${r.pct}%</td>
-      </tr>`).join('')}</tbody></table>` : '<div class="obs">Nenhum item com rubrica cadastrada ainda.</div>';
+      </tr>`).join('')}</tbody></table>
+      <div class="obs">As demais ${rubricasRel.length-rubricasCriticas.length} rubrica(s) com item cadastrado estão abaixo de 70% do teto mensal e não são listadas aqui.</div>`
+      : '<div class="obs">Nenhuma rubrica atingiu 70% do teto mensal aprovado neste mês.</div>';
+
+    const graficoEvolucao = `<div class="chart-box">
+      <div class="titulo-chart">Evolução do valor executado — últimos 6 meses (todos os contratos)</div>
+      ${svgLinhaEvolucaoPDF(evolucaoMensal)}
+    </div>`;
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório Mensal - ${mesRef}</title>${estilos}</head><body>
       <div class="header">${logoImg}<h3>PROJETO SOCIAL CRESCE COMUNIDADE — PRIMA QUALITÁ SAÚDE</h3></div>
       <div class="titulo-box"><h2>RELATÓRIO MENSAL DE ACOMPANHAMENTO DE CONTRATOS</h2><div style="font-size:11px;margin-top:4px">Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2025 · Referência: ${mesRef}</div></div>
 
-      <div class="sec-titulo">1. STATUS DAS MEDIÇÕES POR CONTRATO</div>
-      ${tabelaStatus}
+      <div class="sec-titulo">RESUMO EXECUTIVO</div>
+      <div class="resumo-texto">${paragrafo1}</div>
+      <div class="resumo-texto">${paragrafo2}</div>
+      <div class="resumo-texto">${paragrafo3}</div>
+      <div class="resumo-texto">${paragrafo4}</div>
+      ${kpisHtml}
+      ${graficoEvolucao}
+
+      <div class="sec-titulo">1. MEDIÇÕES QUE PRECISAM DE ATENÇÃO</div>
+      ${tabelaStatusAtencao}
 
       <div class="sec-titulo">2. CONTRATOS PRÓXIMOS DO VENCIMENTO (≤ 90 DIAS)</div>
       ${tabelaVencendo}
@@ -2813,7 +2973,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       ${tabelaAditivos}
 
       <div class="sec-titulo">4. CONSUMO POR RUBRICA ORÇAMENTÁRIA</div>
+      ${graficoRubricas}
       ${tabelaRubrica}
+
+      <div class="sec-titulo">CONSIDERAÇÕES E RECOMENDAÇÕES</div>
+      <ul class="recos">${recomendacoes.map(r=>`<li>${r}</li>`).join('')}</ul>
 
       <div class="assinaturas" style="justify-content:center">
         <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">Mírian Vicente Dias<br/>Diretora Administrativa</p></div>
@@ -2835,7 +2999,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       <div className="panel-head"><h2><i className="fa-solid fa-file-lines"/> Gerar relatório mensal para o gestor do contrato</h2></div>
       <div className="panel-body">
         <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
-          Consolida em um único documento: status das medições, contratos vencendo, itens que precisam de aditivo/supressão e consumo por rubrica — pronto para entregar a Carlos Henrique.
+          Documento executivo com resumo escrito do mês, indicadores-chave, gráfico de evolução do valor executado e gráfico de consumo por rubrica — só entra em tabela o que precisa de atenção (medições atrasadas, contratos vencendo, itens de aditivo/supressão e rubricas em alerta). Pronto para entregar a Carlos Henrique.
         </div>
         <div className="form-row">
           <div className="form-group">
