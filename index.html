@@ -2809,15 +2809,8 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     // Contratos vencendo em breve
     const vencendo = contratos.filter(c => { const d = dias(c.fim); return d<=90; }).sort((a,b)=>dias(a.fim)-dias(b.fim));
 
-    // Aditivo/supressão (reaproveita cálculo já existente por item)
-    const achadosPorContrato = contratos.map(c => {
-      const itensC = itens.filter(i => i.contrato_id === c.id);
-      const achados = itensC.map(it => ({ it, a: calcAnaliseItem(c, it) })).filter(x => x.a && x.a.acao !== 'OK');
-      return { c, achados };
-    }).filter(x => x.achados.length);
-    const totalItensAditivo = achadosPorContrato.reduce((acc,x)=>acc+x.achados.filter(y=>y.a.acao==='ADITIVO').length,0);
-    const totalItensSupressao = achadosPorContrato.reduce((acc,x)=>acc+x.achados.filter(y=>y.a.acao==='SUPRESSÃO').length,0);
-    const contratosComAditivo = new Set(achadosPorContrato.filter(x=>x.achados.some(y=>y.a.acao==='ADITIVO')).map(x=>x.c.id)).size;
+    // Aditivo/supressão: tratado à parte na aba "Aditivos e Supressões" (que já
+    // filtra só o risco real). Aqui no relatório não repetimos essa análise.
 
     // Rubrica (reaproveita a mesma lógica de renderRubrica, recalculada aqui pro mês do relatório)
     const itensComRubrica = itens.filter(it => it.rubrica);
@@ -2843,20 +2836,15 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     // ── Resumo executivo (texto corrido) ────────────────────────────────
     const paragrafo1 = `No mês de referência de ${mesRef}, o Hospital Municipal de Cordeiro executou o total de ${brl(totalExecutadoMes)} em contratos de gestão sob o Contrato de Gestão nº 196/2025, distribuídos entre ${contratos.length} contrato(s) ativo(s) acompanhados pelo sistema. Das medições esperadas para o período, ${emDiaCount} contrato(s) encontram-se em dia, ${atencaoCount} necessitam atenção por um mês de atraso e ${atrasadoCount} estão com medição em atraso superior a um mês.`;
-    const paragrafo2 = (totalItensAditivo || totalItensSupressao)
-      ? `Foram identificados ${totalItensAditivo} item(ns), em ${contratosComAditivo} contrato(s), com necessidade de aditivo por projeção de esgotamento do saldo contratado antes do fim da vigência, além de ${totalItensSupressao} item(ns) indicados para supressão por excedente de quantitativo projetado.`
-      : `Não foram identificados, neste mês, itens com necessidade de aditivo ou supressão nos contratos monitorados.`;
-    const paragrafo3 = rubricasCriticas.length
+    const paragrafo2 = rubricasCriticas.length
       ? `Em relação ao consumo orçamentário por rubrica, ${rubricasCriticas.length} rubrica(s) atingiram ou ultrapassaram 70% do teto mensal aprovado na Proposta Financeira, com destaque para "${piorRubrica.desc}" (${piorRubrica.pct}% do teto). Recomenda-se acompanhamento próximo dessas rubricas para evitar extrapolação do orçamento aprovado.`
       : `Nenhuma rubrica orçamentária atingiu 70% do teto mensal aprovado neste mês.`;
-    const paragrafo4 = vencendo.length
+    const paragrafo3 = vencendo.length
       ? `Por fim, ${vencendo.length} contrato(s) vencem em até 90 dias e requerem atenção quanto à prorrogação, renovação ou nova licitação, conforme detalhado na Seção 2 deste relatório.`
       : `Não há contratos com vencimento previsto para os próximos 90 dias.`;
 
     const recomendacoes = [];
     if (atrasadoCount>0) recomendacoes.push(`Regularizar a medição dos ${atrasadoCount} contrato(s) em atraso o quanto antes, para não comprometer o controle financeiro e a análise de saldo.`);
-    if (totalItensAditivo>0) recomendacoes.push(`Iniciar os processos de aditivo para os itens identificados na Seção 3, priorizando os de maior diferença negativa projetada.`);
-    if (totalItensSupressao>0) recomendacoes.push(`Avaliar a supressão dos itens excedentes identificados — podem ser redistribuídos via reequilíbrio dentro do próprio contrato.`);
     if (rubricasCriticas.length>0) recomendacoes.push(`Monitorar de perto as rubricas em alerta (≥70% do teto), especialmente "${piorRubrica.desc}".`);
     if (vencendo.filter(c=>dias(c.fim)<=30).length>0) recomendacoes.push(`Priorizar a prorrogação/renovação dos contratos com vencimento em até 30 dias.`);
     if (!recomendacoes.length) recomendacoes.push('Nenhuma ação crítica identificada para o período — manter o acompanhamento de rotina.');
@@ -2897,7 +2885,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const kpisHtml = `<div class="kpis">
       <div class="kpi-card"><div class="val">${brl(totalExecutadoMes)}</div><div class="lbl">EXECUTADO NO MÊS</div></div>
       <div class="kpi-card"><div class="val">${emDiaCount}/${contratos.length}</div><div class="lbl">CONTRATOS COM MEDIÇÃO EM DIA</div></div>
-      <div class="kpi-card"><div class="val">${totalItensAditivo+totalItensSupressao}</div><div class="lbl">ITENS PRECISANDO DE ADITIVO/SUPRESSÃO</div></div>
+      <div class="kpi-card"><div class="val">${vencendo.length}</div><div class="lbl">CONTRATOS VENCENDO EM ATÉ 90 DIAS</div></div>
       <div class="kpi-card"><div class="val">${rubricasCriticas.length}</div><div class="lbl">RUBRICAS EM ALERTA (≥70% DO TETO)</div></div>
     </div>`;
 
@@ -2920,16 +2908,6 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         <td class="num">${fmtD(c.fim)}</td>
         <td class="num" style="color:${dias(c.fim)<=30?'#b91c1c':'#000'}">${dias(c.fim)}</td>
       </tr>`).join('')}</tbody></table>` : '<div class="obs">Nenhum contrato vencendo nos próximos 90 dias.</div>';
-
-    const tabelaAditivos = achadosPorContrato.length ? achadosPorContrato.map(({c,achados}) => `
-      <div style="font-weight:bold;font-size:10.5px;margin:8px 0 4px">${c.numero} · ${c.empresa}</div>
-      <table><thead><tr><th>Item</th><th>Diferença projetada</th><th>Recomendação</th></tr></thead>
-      <tbody>${achados.map(({it,a}) => `<tr>
-        <td class="desc">${it.item}</td>
-        <td class="num">${a.dif>0?'+':''}${a.dif}</td>
-        <td class="num">${a.acao==='ADITIVO'?'⚠ Solicitar aditivo':'↓ Suprimir excedente'}</td>
-      </tr>`).join('')}</tbody></table>
-    `).join('') : '<div class="obs">Nenhum item identificado precisando de aditivo ou supressão neste mês.</div>';
 
     const graficoRubricas = rubricasRel.length ? `<div class="chart-box">
         <div class="titulo-chart">% do teto mensal consumido por rubrica${rubricasRel.length>12?' (12 mais críticas)':''}</div>
@@ -2959,7 +2937,6 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       <div class="resumo-texto">${paragrafo1}</div>
       <div class="resumo-texto">${paragrafo2}</div>
       <div class="resumo-texto">${paragrafo3}</div>
-      <div class="resumo-texto">${paragrafo4}</div>
       ${kpisHtml}
       ${graficoEvolucao}
 
@@ -2969,10 +2946,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       <div class="sec-titulo">2. CONTRATOS PRÓXIMOS DO VENCIMENTO (≤ 90 DIAS)</div>
       ${tabelaVencendo}
 
-      <div class="sec-titulo">3. ITENS QUE PRECISAM DE ADITIVO OU SUPRESSÃO</div>
-      ${tabelaAditivos}
-
-      <div class="sec-titulo">4. CONSUMO POR RUBRICA ORÇAMENTÁRIA</div>
+      <div class="sec-titulo">3. CONSUMO POR RUBRICA ORÇAMENTÁRIA</div>
       ${graficoRubricas}
       ${tabelaRubrica}
 
@@ -2999,7 +2973,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       <div className="panel-head"><h2><i className="fa-solid fa-file-lines"/> Gerar relatório mensal para o gestor do contrato</h2></div>
       <div className="panel-body">
         <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
-          Documento executivo com resumo escrito do mês, indicadores-chave, gráfico de evolução do valor executado e gráfico de consumo por rubrica — só entra em tabela o que precisa de atenção (medições atrasadas, contratos vencendo, itens de aditivo/supressão e rubricas em alerta). Pronto para entregar a Carlos Henrique.
+          Documento executivo com resumo escrito do mês, indicadores-chave, gráfico de evolução do valor executado e gráfico de consumo por rubrica — só entra em tabela o que precisa de atenção (medições atrasadas, contratos vencendo e rubricas em alerta). Pronto para entregar a Carlos Henrique.
         </div>
         <div className="form-row">
           <div className="form-group">
