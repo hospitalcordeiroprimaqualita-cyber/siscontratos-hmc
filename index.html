@@ -1386,6 +1386,66 @@ function App() {
     janela.print();
   };
 
+  const gerarPedidoAditivo = (contrato, itensNecessarios, totalNecessario) => {
+    const hoje = new Date();
+    const linhas = itensNecessarios.map(d => `<tr>
+      <td class="desc">${d.item.item}${d.item.lote?` · Lote ${d.item.lote}`:''}</td>
+      <td class="num">${d.item.unit||''}</td>
+      <td class="num">${Math.abs(d.dif)}</td>
+      <td class="val">R$ ${(d.faltaCobrir??d.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+    </tr>`).join('');
+
+    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
+    const estilos = `<style>
+      * { box-sizing: border-box; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; }
+      .header { text-align:center; margin-bottom:14px; }
+      .header img { width:100%; height:auto; margin-bottom:8px; }
+      .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
+      .titulo-box h2 { font-size:14px; font-weight:bold; }
+      .info { margin-bottom:14px; line-height:1.8; font-size:11px; }
+      table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+      th { background:#d0d0d0; border:1px solid #000; padding:5px 6px; font-size:9.5px; text-align:center; font-weight:bold; }
+      td { border:1px solid #000; padding:4px 6px; font-size:9.5px; }
+      td.desc{text-align:left;} td.num{text-align:center;} td.val{text-align:right;}
+      .total-geral { text-align:right; font-weight:bold; font-size:12px; border:1px solid #000; padding:6px 8px; margin-top:4px; }
+      .obs { font-size:10px; color:#333; margin:10px 0; line-height:1.6; }
+      .rodape-sistema { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema strong { color: #0F6E56; }
+      @media print { body{padding:12px;} }
+    </style>`;
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Pedido de Aditivo - ${contrato.numero}</title>${estilos}</head><body>
+      <div class="header">${logoImg}</div>
+      <div class="titulo-box"><h2>PEDIDO DE ADITIVO CONTRATUAL</h2><div style="font-size:11px;margin-top:4px">Solicitação de acréscimo de quantitativo — art. 125, Lei 14.133/2021</div></div>
+      <div class="info">
+        <strong>Contrato:</strong> ${contrato.numero} &nbsp;&nbsp; <strong>Data:</strong> ${hoje.toLocaleDateString('pt-BR')}<br/>
+        <strong>Empresa:</strong> ${contrato.empresa}<br/>
+        <strong>Fiscal do contrato:</strong> ${contrato.fiscal || 'Mírian Vicente Dias'} &nbsp;&nbsp; <strong>Gestor do contrato:</strong> ${contrato.gestor || 'Carlos Henrique Buzzi da Silva'}
+      </div>
+      <div class="obs">
+        Os itens abaixo apresentam projeção de esgotamento do saldo contratado antes do fim da vigência, sem excedente suficiente no mesmo lote para cobrir a necessidade via remanejamento interno. Solicita-se a formalização de aditivo pelo(s) valor(es) indicado(s), respeitado o limite legal de acréscimo de até 25% do valor contratado (art. 125, Lei 14.133/2021).
+      </div>
+      <table><thead><tr><th>Item</th><th>Unid.</th><th>Qtd. em falta</th><th>Valor de aditivo necessário</th></tr></thead>
+      <tbody>${linhas}</tbody></table>
+      <div class="total-geral">VALOR TOTAL DE ADITIVO SOLICITADO &nbsp;&nbsp; R$ ${totalNecessario.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      <br/><br/>
+      <div style="display:flex;gap:60px;justify-content:center;margin-top:40px">
+        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.fiscal || 'Mírian Vicente Dias'}<br/>Fiscal do Contrato</div>
+        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.gestor || 'Carlos Henrique Buzzi da Silva'}<br/>Gestor do Contrato</div>
+      </div>
+      <div class="rodape-sistema">
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2025<br/>
+        Gerado em ${hoje.toLocaleDateString('pt-BR')} às ${hoje.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+      </div>
+    </body></html>`;
+
+    const janela = window.open('', '_blank');
+    janela.document.write(html);
+    janela.document.close();
+    janela.print();
+  };
+
   const renderAditivos = () => {
     const listaFiltrada = aditivos.filter(a => {
       const c = contratos.find(x => x.id === a.contrato_id);
@@ -1517,6 +1577,9 @@ function App() {
                           <i className="fa-solid fa-file-pdf"/> Gerar Pedido de Reequilíbrio (cobertura parcial)
                         </button>
                       )}
+                      <button className="btn btn-primary btn-sm" onClick={() => gerarPedidoAditivo(contrato, deficit.filter(d=>d.faltaCobrir>0.01), valorAditivoNecessario)}>
+                        <i className="fa-solid fa-file-pdf"/> Gerar Pedido de Aditivo
+                      </button>
                       <button className="btn btn-danger btn-sm" onClick={() => { setFiltroAditivoContrato(contrato.id); openModal('aditivo'); }}>
                         <i className="fa-solid fa-triangle-exclamation"/> Registrar solicitação de aditivo ({brl(valorAditivoNecessario)})
                       </button>
