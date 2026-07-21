@@ -1375,7 +1375,16 @@ function App() {
       const totalSobra = superavit.reduce((acc,s)=>acc+s.valor,0);
       const podeReequilibrar = totalSobra >= totalFalta;
       const valorAditivoNecessario = Math.max(0, totalFalta - totalSobra);
-      return { contrato:c, deficit, superavit, totalFalta, totalSobra, podeReequilibrar, valorAditivoNecessario };
+      const alocacoes = alocarReequilibrio(deficit, superavit);
+      // Pra cada item em falta, junta as origens de sobra que já foram apontadas pra cobri-lo
+      // (em vez de listar toda a sobra do contrato solta) e o que ainda falta cobrir, se sobrar.
+      const deficitComApontamento = deficit.map(d => {
+        const origens = alocacoes.filter(a => a.itemFalta.id === d.item.id);
+        const totalCoberto = origens.reduce((acc,a)=>acc+a.valor,0);
+        const faltaCobrir = Math.max(0, d.valor - totalCoberto);
+        return { ...d, origens, faltaCobrir };
+      });
+      return { contrato:c, deficit:deficitComApontamento, superavit, totalFalta, totalSobra, podeReequilibrar, valorAditivoNecessario };
     }).filter(Boolean);
 
     return (
@@ -1387,7 +1396,7 @@ function App() {
         </div>
         <div className="panel-body" style={{paddingTop:8}}>
           <div style={{fontSize:11.5,color:'var(--text2)',marginBottom:14}}>
-            Só aparecem aqui contratos com <strong>risco real</strong> (algum item com projeção de esgotar antes do fim da vigência). Para cada um, compara em <strong>valor (R$)</strong> a falta contra a sobra em itens com excedente do mesmo contrato. Quando a sobra cobre a falta, dá pra resolver só remanejando quantidade (Termo de Redistribuição Quantitativa, sem gastar mais). Só quando não cobre é que aparece a necessidade real de aditivo.
+            Só aparecem aqui contratos com <strong>risco real</strong> (algum item com projeção de esgotar antes do fim da vigência). Para cada item em falta, já mostra <strong>de qual item sobrando</strong> ele deve ser coberto — a sobra considerada já desconta a projeção de consumo até o fim da vigência (não é o saldo bruto). Só quando não sobra o suficiente no próprio contrato é que aparece a necessidade real de aditivo.
           </div>
           {analiseReequilibrio.map(({contrato, deficit, superavit, totalFalta, totalSobra, podeReequilibrar, valorAditivoNecessario}) => (
             <div key={contrato.id} style={{marginBottom:16,border:'1px solid var(--gray-b)',borderRadius:8,overflow:'hidden'}}>
@@ -1400,26 +1409,27 @@ function App() {
                 )}
               </div>
               <div style={{padding:'10px 14px'}}>
-                <div style={{marginBottom:superavit.length?12:0}}>
-                  <div style={{fontSize:11,fontWeight:700,color:'#991b1b',marginBottom:5}}>FALTA (itens com risco de esgotar) — total {brl(totalFalta)}</div>
-                  {deficit.map((d,i) => (
-                    <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12,borderBottom:i<deficit.length-1?'1px solid var(--gray-b)':'none'}}>
-                      <span>{d.item.item}</span>
+                <div style={{fontSize:11,fontWeight:700,color:'#991b1b',marginBottom:6}}>ITENS EM FALTA — de onde cobrir</div>
+                {deficit.map((d,i) => (
+                  <div key={i} style={{padding:'6px 0',borderBottom:i<deficit.length-1?'1px solid var(--gray-b)':'none'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+                      <span style={{fontWeight:600}}>{d.item.item}</span>
                       <span style={{color:'#b91c1c',fontWeight:600}}>faltam {Math.abs(d.dif)} un. · {brl(d.valor)}</span>
                     </div>
-                  ))}
-                </div>
-                {superavit.length>0 && (
-                  <div>
-                    <div style={{fontSize:11,fontWeight:700,color:'#92400e',marginBottom:5}}>SOBRA NO MESMO CONTRATO (de onde tirar) — total {brl(totalSobra)}</div>
-                    {superavit.map((s,i) => (
-                      <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',fontSize:12,borderBottom:i<superavit.length-1?'1px solid var(--gray-b)':'none'}}>
-                        <span>{s.item.item}</span>
-                        <span style={{color:'#92400e',fontWeight:600}}>sobram {s.dif} un. · {brl(s.valor)}</span>
+                    {d.origens.length>0 && (
+                      <div style={{marginTop:3,paddingLeft:12,fontSize:11.5,color:'#92400e'}}>
+                        {d.origens.map((o,j) => (
+                          <div key={j}>↳ cobrir com <strong>{o.itemSobra.item}</strong> — usar {o.qtdSobra.toFixed(1)} un. da sobra ({brl(o.valor)})</div>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                    {d.faltaCobrir > 0.01 && (
+                      <div style={{marginTop:3,paddingLeft:12,fontSize:11.5,color:'#b91c1c',fontWeight:600}}>
+                        ↳ sem cobertura suficiente no contrato — falta {brl(d.faltaCobrir)} em aditivo real
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
                 <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap'}}>
                   {podeReequilibrar ? (
                     <>
@@ -2818,6 +2828,25 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     // Aditivo/supressão: tratado à parte na aba "Aditivos e Supressões" (que já
     // filtra só o risco real). Aqui no relatório não repetimos essa análise.
 
+    // Aditivo/supressão — indicativo condensado por contrato (mesma lógica da aba
+    // Aditivos e Supressões), pra apoiar a decisão do gestor sem virar tabela extensa.
+    const analiseReequilibrioRel = contratos.map(c => {
+      const itensC = itens.filter(i => i.contrato_id === c.id);
+      const deficit = [], superavit = [];
+      itensC.forEach(it => {
+        const a = calcAnaliseItem(c, it);
+        if (!a) return;
+        const valor = Math.abs(a.dif) * (it.vlr_unitario || 0);
+        if (a.acao === 'ADITIVO') deficit.push({ item: it, dif: a.dif, valor });
+        else if (a.acao === 'SUPRESSÃO') superavit.push({ item: it, dif: a.dif, valor });
+      });
+      if (!deficit.length) return null;
+      const totalFalta = deficit.reduce((acc,d)=>acc+d.valor,0);
+      const totalSobra = superavit.reduce((acc,s)=>acc+s.valor,0);
+      const podeReequilibrar = totalSobra >= totalFalta;
+      return { contrato:c, totalFalta, podeReequilibrar, valorAditivoNecessario: Math.max(0,totalFalta-totalSobra) };
+    }).filter(Boolean);
+
     // Rubrica (reaproveita a mesma lógica de renderRubrica, recalculada aqui pro mês do relatório)
     const itensComRubrica = itens.filter(it => it.rubrica);
     const rubricasRel = [...new Set(itensComRubrica.map(it => it.rubrica))].map(rub => {
@@ -2935,6 +2964,17 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       ${svgLinhaEvolucaoPDF(evolucaoMensal)}
     </div>`;
 
+    const tabelaAditivoSupressao = analiseReequilibrioRel.length ? `
+      <table><thead><tr><th>Contrato</th><th>Empresa</th><th>Situação</th><th>Valor</th></tr></thead>
+      <tbody>${analiseReequilibrioRel.map(a => `<tr>
+        <td class="num"><strong>${a.contrato.numero}</strong></td>
+        <td class="desc">${a.contrato.empresa}</td>
+        <td class="num"><span class="badge-pdf" style="background:${a.podeReequilibrar?'#22c55e':'#ef4444'}">${a.podeReequilibrar?'Reequilíbrio interno resolve':'Precisa de aditivo'}</span></td>
+        <td class="val">${a.podeReequilibrar?brl(a.totalFalta):brl(a.valorAditivoNecessario)}</td>
+      </tr>`).join('')}</tbody></table>
+      <div class="obs">Indicativo pra apoiar a decisão — o detalhe item a item de cada contrato está na aba Aditivos e Supressões do sistema.</div>`
+      : '<div class="obs">Nenhum contrato com necessidade real de aditivo ou supressão identificada neste mês.</div>';
+
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório Mensal - ${mesRef}</title>${estilos}</head><body>
       <div class="header">${logoImg}<h3>PROJETO SOCIAL CRESCE COMUNIDADE — PRIMA QUALITÁ SAÚDE</h3></div>
       <div class="titulo-box"><h2>RELATÓRIO MENSAL DE ACOMPANHAMENTO DE CONTRATOS</h2><div style="font-size:11px;margin-top:4px">Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2025 · Referência: ${mesRef}</div></div>
@@ -2955,6 +2995,9 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       <div class="sec-titulo">3. CONSUMO POR RUBRICA ORÇAMENTÁRIA</div>
       ${graficoRubricas}
       ${tabelaRubrica}
+
+      <div class="sec-titulo">4. ADITIVO / SUPRESSÃO — INDICATIVO PARA DECISÃO</div>
+      ${tabelaAditivoSupressao}
 
       <div class="sec-titulo">CONSIDERAÇÕES E RECOMENDAÇÕES</div>
       <ul class="recos">${recomendacoes.map(r=>`<li>${r}</li>`).join('')}</ul>
@@ -2979,7 +3022,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       <div className="panel-head"><h2><i className="fa-solid fa-file-lines"/> Gerar relatório mensal para o gestor do contrato</h2></div>
       <div className="panel-body">
         <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
-          Documento executivo com resumo escrito do mês, indicadores-chave, gráfico de evolução do valor executado e gráfico de consumo por rubrica — só entra em tabela o que precisa de atenção (medições atrasadas, contratos vencendo e rubricas em alerta). Pronto para entregar a Carlos Henrique.
+          Documento executivo com resumo escrito do mês, indicadores-chave, gráfico de evolução do valor executado, gráfico de consumo por rubrica e um indicativo condensado de aditivo/supressão por contrato — só entra em tabela o que precisa de atenção (medições atrasadas, contratos vencendo, rubricas em alerta e contratos com necessidade real de aditivo/supressão). Pronto para entregar a Carlos Henrique.
         </div>
         <div className="form-row">
           <div className="form-group">
