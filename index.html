@@ -335,6 +335,23 @@ function HorizontalBarChart({ labels, data, color, height }) {
   return <div style={{height:height||Math.max(180,labels.length*32)}}><canvas ref={canvasRef}></canvas></div>;
 }
 
+// Compara % do prazo decorrido vs % do valor consumido, lado a lado, por contrato —
+// responde direto "esse contrato está gastando mais rápido do que o prazo permite?"
+function ComparativoPrazoValorChart({ labels, prazo, valor, height }) {
+  const canvasRef = useRef(null);
+  useChart(canvasRef, {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label:'% do prazo decorrido', data:prazo, backgroundColor:'#b5d4f4', borderRadius:4, maxBarThickness:16 },
+      { label:'% do valor consumido', data:valor, backgroundColor:'#178DBB', borderRadius:4, maxBarThickness:16 },
+    ]},
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:true, position:'bottom', labels:{boxWidth:12,font:{size:11}} } },
+      scales:{ x:{ max:100, grid:{color:'#EEF2F6'} }, y:{ grid:{display:false} } } }
+  }, [JSON.stringify(labels), JSON.stringify(prazo), JSON.stringify(valor)]);
+  return <div style={{height:height||Math.max(200,labels.length*38)}}><canvas ref={canvasRef}></canvas></div>;
+}
+
 // ─── GRÁFICOS SVG PARA O RELATÓRIO IMPRESSO (PDF) ─────────────────────────
 // Não usamos Chart.js aqui porque a janela de impressão é um documento HTML
 // isolado (window.open) sem os scripts do app — SVG inline garante que o
@@ -701,11 +718,15 @@ function App() {
     const hoje = new Date();
     const fimC = new Date(c.fim);
     const inicioC = new Date(c.inicio);
-    const mesesRest = mesesCalendario(hoje.toISOString(), c.fim);
-    const mesesDec = Math.max(1, mesesCalendario(c.inicio, hoje.toISOString()));
     // vigencia_meses é a fonte confiável (evita o erro de contar 11 meses em contratos
     // tipo 16/08 a 15/08 do ano seguinte, que por conta de data pura arredonda errado).
     const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
+    // mesesDec e mesesRest são calculados a partir de datas de forma independente e,
+    // sozinhos, podem somar 11 em vez dos 12 de vigencia_meses (perde 1 mês no
+    // arredondamento). Por isso mesesRest é sempre derivado de mesesTot − mesesDec,
+    // garantindo que a soma bata exatamente com a vigência real do contrato.
+    const mesesDec = Math.max(1, Math.min(mesesTot, mesesCalendario(c.inicio, hoje.toISOString())));
+    const mesesRest = Math.max(0, mesesTot - mesesDec);
     const media = it.qtd_acum/mesesDec;
     const proj = Math.round(media*mesesRest);
     // qtd_total_contratada é a fonte confiável quando preenchida (evita ambiguidade
@@ -863,6 +884,19 @@ function App() {
 
           const topConsumo = contratos.slice().map(c=>({numero:c.numero,p:pct(c)})).sort((a,b)=>b.p-a.p).slice(0,6);
 
+          // Comparativo % prazo decorrido vs % valor consumido — mostra quais contratos
+          // estão gastando mais rápido do que o tempo de vigência permitiria.
+          const comparativoPrazoValor = contratos.map(c => {
+            if (!c.inicio || !c.fim) return null;
+            const ini = new Date(c.inicio), fim = new Date(c.fim), hoje = new Date();
+            const totalDias = fim - ini;
+            if (totalDias <= 0) return null;
+            const decorridoDias = Math.min(Math.max(hoje-ini, 0), totalDias);
+            const pPrazo = Math.round((decorridoDias/totalDias)*100);
+            const pValor = pct(c);
+            return { numero:c.numero, empresa:(c.empresa||'').split(' ')[0], pPrazo, pValor, gap: pValor-pPrazo };
+          }).filter(Boolean).sort((a,b)=>b.gap-a.gap).slice(0,6);
+
           return (
             <div className="cards-grid" style={{gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))'}}>
               <div className="panel" style={{margin:0}}>
@@ -878,9 +912,10 @@ function App() {
                 </div>
               </div>
               <div className="panel" style={{margin:0}}>
-                <div className="panel-head"><h2><i className="fa-solid fa-chart-bar"/> % consumido por contrato</h2></div>
+                <div className="panel-head"><h2><i className="fa-solid fa-gauge-high"/> Contratos consumindo mais rápido que o prazo</h2></div>
                 <div className="panel-body">
-                  {topConsumo.length ? <HorizontalBarChart labels={topConsumo.map(t=>t.numero)} data={topConsumo.map(t=>t.p)} color="#178DBB" /> : <div className="empty" style={{padding:'20px 0'}}>Sem contratos</div>}
+                  <div style={{fontSize:11.5,color:'var(--text3)',marginBottom:6}}>Barra clara = % do prazo já passado · barra escura = % do valor já gasto. Quando a escura passa da clara, o contrato está gastando mais rápido do que deveria.</div>
+                  {comparativoPrazoValor.length ? <ComparativoPrazoValorChart labels={comparativoPrazoValor.map(t=>`${t.numero} ${t.empresa}`)} prazo={comparativoPrazoValor.map(t=>t.pPrazo)} valor={comparativoPrazoValor.map(t=>t.pValor)} /> : <div className="empty" style={{padding:'20px 0'}}>Sem contratos com data de início/fim cadastradas</div>}
                 </div>
               </div>
             </div>
@@ -1009,9 +1044,9 @@ function App() {
       const hoje = new Date();
       const fimC = new Date(contrato.fim);
       const inicioC = new Date(contrato.inicio);
-      const mesesRest = mesesCalendario(hoje.toISOString(), contrato.fim);
-      const mesesDec = Math.max(1, mesesCalendario(contrato.inicio, hoje.toISOString()));
       const mesesTot = contrato.vigencia_meses || mesesCalendario(contrato.inicio, contrato.fim);
+      const mesesDec = Math.max(1, Math.min(mesesTot, mesesCalendario(contrato.inicio, hoje.toISOString())));
+      const mesesRest = Math.max(0, mesesTot - mesesDec);
       const analise = lista.map(it => {
         const media = it.qtd_acum/mesesDec;
         const proj = Math.round(media*mesesRest);
@@ -3200,9 +3235,9 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       if(!c.inicio||!c.fim) return;
       const fimC = new Date(c.fim);
       const inicioC = new Date(c.inicio);
-      const mesesRest = mesesCalendario(hoje.toISOString(), c.fim);
-const mesesDec = Math.max(1, mesesCalendario(c.inicio, hoje.toISOString()));
-const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
+      const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
+      const mesesDec = Math.max(1, Math.min(mesesTot, mesesCalendario(c.inicio, hoje.toISOString())));
+      const mesesRest = Math.max(0, mesesTot - mesesDec);
       itens.filter(i=>i.contrato_id===c.id).forEach(it=>{
         const media = it.qtd_acum/mesesDec;
         const proj = Math.round(media*mesesRest);
