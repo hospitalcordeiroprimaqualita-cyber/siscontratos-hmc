@@ -713,7 +713,12 @@ function App() {
     const qtdTot = it.qtd_total_contratada || (it.qtd_mensal*mesesTot);
     const saldo = Math.round(qtdTot-it.qtd_acum);
     const dif = Math.round(saldo-proj);
-    const acao = dif<-1?'ADITIVO':dif>it.qtd_mensal*2?'SUPRESSÃO':'OK';
+    // Taxa mensal real para o gatilho de supressão: quando qtd_total_contratada existe,
+    // é ela dividida pelos meses de vigência — não o campo qtd_mensal cru, que em vários
+    // contratos ainda guarda o valor antigo (o mesmo bug do saldo, só que aqui afetaria
+    // o gatilho de supressão em vez do saldo).
+    const mensalReal = it.qtd_total_contratada ? (it.qtd_total_contratada/mesesTot) : it.qtd_mensal;
+    const acao = dif<-1?'ADITIVO':dif>mensalReal*2?'SUPRESSÃO':'OK';
     // Dias até o saldo zerar no ritmo atual (para alerta de 30 dias de antecedência)
     const diasAteZerar = media>0 ? Math.floor((saldo/media)*30) : 9999;
     return { acao, dif, saldo, proj, media, diasAteZerar, qtdTot };
@@ -1014,7 +1019,8 @@ function App() {
         const saldo = Math.round(qtdTot-it.qtd_acum);
         const dif = Math.round(saldo-proj);
         const pctAnual = qtdTot>0?Math.min(Math.round((it.qtd_acum/qtdTot)*100),100):0;
-        const acao = dif<-1?'ADITIVO':dif>it.qtd_mensal*2?'SUPRESSÃO':'OK';
+        const mensalReal = it.qtd_total_contratada ? (it.qtd_total_contratada/mesesTot) : it.qtd_mensal;
+        const acao = dif<-1?'ADITIVO':dif>mensalReal*2?'SUPRESSÃO':'OK';
         return {item:it.item, qtdMensal:it.qtd_mensal, qtdAcum:it.qtd_acum,
           qtdTot:Math.round(qtdTot), saldo, media:media.toFixed(1),
           mesesRest, proj, dif, acao, pctAnual};
@@ -3161,7 +3167,8 @@ const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
         const saldo = Math.round(qtdTot-it.qtd_acum);
         const dif = Math.round(saldo-proj);
         const pct = qtdTot>0?Math.min(Math.round((it.qtd_acum/qtdTot)*100),100):0;
-        const acao = dif<-1?'ADITIVO':dif>it.qtd_mensal*2?'SUPRESSÃO':'OK';
+        const mensalReal = it.qtd_total_contratada ? (it.qtd_total_contratada/mesesTot) : it.qtd_mensal;
+        const acao = dif<-1?'ADITIVO':dif>mensalReal*2?'SUPRESSÃO':'OK';
         analise.push({contrato:c.numero,item:it.item,qtdMensal:it.qtd_mensal,
           qtdAcum:it.qtd_acum,qtdTot:Math.round(qtdTot),saldo,
           media:media.toFixed(1),mesesRest,proj,dif,acao,pct});
