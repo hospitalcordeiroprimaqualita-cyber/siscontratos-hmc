@@ -1311,6 +1311,8 @@ function App() {
   const gerarPedidoReequilibrio = (contrato, deficit, superavit) => {
     const alocacoes = alocarReequilibrio(deficit, superavit);
     const totalRealocado = alocacoes.reduce((acc,a)=>acc+a.valor,0);
+    const itensSemCobertura = deficit.filter(d => (d.faltaCobrir ?? 0) > 0.01);
+    const totalSemCobertura = itensSemCobertura.reduce((acc,d)=>acc+(d.faltaCobrir??0),0);
     const hoje = new Date();
 
     const linhas = alocacoes.map(a => `<tr>
@@ -1359,6 +1361,14 @@ function App() {
       <tr><th>Item</th><th>Qtd</th><th>Valor</th><th></th><th>Item</th><th>Qtd</th><th>Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table>
       <div class="total-geral">VALOR TOTAL REMANEJADO &nbsp;&nbsp; R$ ${totalRealocado.toLocaleString('pt-BR',{minimumFractionDigits:2})} &nbsp;&nbsp; (suprimido = suplementado, sem impacto no valor do contrato)</div>
+      ${itensSemCobertura.length ? `
+      <div class="obs" style="margin-top:14px;color:#991b1b">
+        <strong>Atenção:</strong> o remanejamento acima não cobre a totalidade da necessidade deste contrato — os itens abaixo não têm excedente suficiente (no mesmo lote) para suprir a falta e requerem <strong>aditivo real</strong> pelo valor indicado.
+      </div>
+      <table><thead><tr><th>Item</th><th>Valor de aditivo necessário</th></tr></thead>
+      <tbody>${itensSemCobertura.map(d => `<tr><td class="desc">${d.item.item}${d.item.lote?` · Lote ${d.item.lote}`:''}</td><td class="val">R$ ${d.faltaCobrir.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>`).join('')}</tbody></table>
+      <div class="total-geral" style="color:#991b1b">TOTAL DE ADITIVO NECESSÁRIO &nbsp;&nbsp; R$ ${totalSemCobertura.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      ` : ''}
       <br/><br/>
       <div style="display:flex;gap:60px;justify-content:center;margin-top:40px">
         <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.fiscal || 'Mírian Vicente Dias'}<br/>Fiscal do Contrato</div>
@@ -1474,6 +1484,22 @@ function App() {
                     )}
                   </div>
                 ))}
+                {valorAditivoNecessario > 0.01 && (
+                  <div style={{marginTop:10,padding:'10px 12px',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:6}}>
+                    <div style={{fontSize:11,fontWeight:700,color:'#991b1b',marginBottom:5}}>
+                      {totalSobra>0 ? 'O reequilíbrio interno não cobre tudo — gerar aditivo pelo valor necessário nos itens abaixo:' : 'Este contrato não tem sobra pra reequilibrar — gerar aditivo pelo valor necessário nos itens abaixo:'}
+                    </div>
+                    {deficit.filter(d=>d.faltaCobrir>0.01).map((d,i) => (
+                      <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:11.5,padding:'2px 0'}}>
+                        <span>{d.item.item}{d.item.lote && ` · Lote ${d.item.lote}`}</span>
+                        <span style={{fontWeight:600,color:'#b91c1c'}}>{brl(d.faltaCobrir)}</span>
+                      </div>
+                    ))}
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:11.5,paddingTop:5,marginTop:4,borderTop:'1px solid #fecaca',fontWeight:700}}>
+                      <span>Total do aditivo necessário</span><span style={{color:'#b91c1c'}}>{brl(valorAditivoNecessario)}</span>
+                    </div>
+                  </div>
+                )}
                 <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap'}}>
                   {podeReequilibrar ? (
                     <>
@@ -1485,9 +1511,16 @@ function App() {
                       </button>
                     </>
                   ) : (
-                    <button className="btn btn-danger btn-sm" onClick={() => { setFiltroAditivoContrato(contrato.id); openModal('aditivo'); }}>
-                      <i className="fa-solid fa-triangle-exclamation"/> Registrar solicitação de aditivo ({brl(valorAditivoNecessario)})
-                    </button>
+                    <>
+                      {totalSobra > 0 && (
+                        <button className="btn btn-secondary btn-sm" onClick={() => gerarPedidoReequilibrio(contrato, deficit, superavit)}>
+                          <i className="fa-solid fa-file-pdf"/> Gerar Pedido de Reequilíbrio (cobertura parcial)
+                        </button>
+                      )}
+                      <button className="btn btn-danger btn-sm" onClick={() => { setFiltroAditivoContrato(contrato.id); openModal('aditivo'); }}>
+                        <i className="fa-solid fa-triangle-exclamation"/> Registrar solicitação de aditivo ({brl(valorAditivoNecessario)})
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
