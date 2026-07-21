@@ -1281,9 +1281,13 @@ function App() {
 
   // ─── PEDIDO DE REEQUILÍBRIO (remanejamento sem alterar valor do contrato) ──
   // Casa automaticamente os itens em falta com os itens em sobra do MESMO
-  // contrato, em valor (R$), até cobrir toda a falta — sem exceder a sobra
-  // disponível. O valor total suprimido sempre fecha exatamente com o valor
-  // total complementado (é só remanejamento, não muda o valor do contrato).
+  // contrato E DO MESMO LOTE, em valor (R$), até cobrir toda a falta — sem
+  // exceder a sobra disponível. Lotes diferentes não se misturam: cada lote
+  // pode representar uma unidade técnica/econômica distinta na licitação, e
+  // remanejar entre lotes pode não ter respaldo contratual/legal (Lei
+  // 14.133/2021). Itens sem lote cadastrado (null) só casam entre si.
+  // O valor total suprimido sempre fecha exatamente com o valor total
+  // complementado (é só remanejamento, não muda o valor do contrato).
   const alocarReequilibrio = (deficit, superavit) => {
     const alocacoes = [];
     const supRestante = superavit.map(s => ({ ...s, valorDisponivel: s.valor }));
@@ -1292,6 +1296,7 @@ function App() {
       for (const s of supRestante) {
         if (valorNecessario <= 0.01) break;
         if (s.valorDisponivel <= 0.01) continue;
+        if ((d.item.lote || null) !== (s.item.lote || null)) continue;
         const usar = Math.min(valorNecessario, s.valorDisponivel);
         const qtdFalta = d.item.vlr_unitario > 0 ? usar / d.item.vlr_unitario : 0;
         const qtdSobra = s.item.vlr_unitario > 0 ? usar / s.item.vlr_unitario : 0;
@@ -1407,10 +1412,14 @@ function App() {
       // Excedente sozinho, sem risco, não aparece mais — deixa de ser ruído.
       if (!deficit.length) return null;
       const totalFalta = deficit.reduce((acc,d)=>acc+d.valor,0);
-      const totalSobra = superavit.reduce((acc,s)=>acc+s.valor,0);
-      const podeReequilibrar = totalSobra >= totalFalta;
-      const valorAditivoNecessario = Math.max(0, totalFalta - totalSobra);
       const alocacoes = alocarReequilibrio(deficit, superavit);
+      // totalSobra/podeReequilibrar refletem só a sobra que REALMENTE pode cobrir a falta
+      // (dentro do mesmo lote) — não a soma bruta de todo excedente do contrato, que
+      // pode estar em lote diferente e não pode ser usada pra suprir esse item.
+      const totalCobertoPorReequilibrio = alocacoes.reduce((acc,a)=>acc+a.valor,0);
+      const totalSobra = superavit.reduce((acc,s)=>acc+s.valor,0);
+      const podeReequilibrar = totalCobertoPorReequilibrio >= totalFalta - 0.01;
+      const valorAditivoNecessario = Math.max(0, totalFalta - totalCobertoPorReequilibrio);
       // Pra cada item em falta, junta as origens de sobra que já foram apontadas pra cobri-lo
       // (em vez de listar toda a sobra do contrato solta) e o que ainda falta cobrir, se sobrar.
       const deficitComApontamento = deficit.map(d => {
@@ -1448,7 +1457,7 @@ function App() {
                 {deficit.map((d,i) => (
                   <div key={i} style={{padding:'6px 0',borderBottom:i<deficit.length-1?'1px solid var(--gray-b)':'none'}}>
                     <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
-                      <span style={{fontWeight:600}}>{d.item.item}</span>
+                      <span style={{fontWeight:600}}>{d.item.item}{d.item.lote && <span style={{fontWeight:400,color:'var(--text3)'}}> · Lote {d.item.lote}</span>}</span>
                       <span style={{color:'#b91c1c',fontWeight:600}}>faltam {Math.abs(d.dif)} un. · {brl(d.valor)}</span>
                     </div>
                     {d.origens.length>0 && (
@@ -2877,9 +2886,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       });
       if (!deficit.length) return null;
       const totalFalta = deficit.reduce((acc,d)=>acc+d.valor,0);
-      const totalSobra = superavit.reduce((acc,s)=>acc+s.valor,0);
-      const podeReequilibrar = totalSobra >= totalFalta;
-      return { contrato:c, totalFalta, podeReequilibrar, valorAditivoNecessario: Math.max(0,totalFalta-totalSobra) };
+      const alocacoes = alocarReequilibrio(deficit, superavit);
+      const totalCobertoPorReequilibrio = alocacoes.reduce((acc,a)=>acc+a.valor,0);
+      const podeReequilibrar = totalCobertoPorReequilibrio >= totalFalta - 0.01;
+      return { contrato:c, totalFalta, podeReequilibrar, valorAditivoNecessario: Math.max(0,totalFalta-totalCobertoPorReequilibrio) };
     }).filter(Boolean);
 
     // Rubrica (reaproveita a mesma lógica de renderRubrica, recalculada aqui pro mês do relatório)
