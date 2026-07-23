@@ -748,7 +748,7 @@ function App() {
     const acao = dif<-1?'ADITIVO':dif>mensalReal*2?'SUPRESSÃO':'OK';
     // Dias até o saldo zerar no ritmo atual (para alerta de 30 dias de antecedência)
     const diasAteZerar = media>0 ? Math.floor((saldo/media)*30) : 9999;
-    return { acao, dif, saldo, proj, media, diasAteZerar, qtdTot };
+    return { acao, dif, saldo, proj, media, diasAteZerar, qtdTot, mesesTot, mesesDec, mesesRest };
   };
 
   // Contratos que precisam de atenção: financeiro OU quantitativo, com 30+ dias de antecedência
@@ -1321,6 +1321,14 @@ function App() {
     const totalSemCobertura = itensSemCobertura.reduce((acc,d)=>acc+(d.faltaCobrir??0),0);
     const hoje = new Date();
 
+    // Resumo analítico de consumo — todo item envolvido (falta e sobra), com o
+    // mesmo cálculo usado na análise do sistema, pra justificar o pedido com dados.
+    const itensEnvolvidos = [...deficit.map(d=>d.item), ...superavit.map(s=>s.item)];
+    const resumoAnalitico = itensEnvolvidos.map(it => ({ it, a: calcAnaliseItem(contrato, it) })).filter(x=>x.a);
+    const mesesTotContrato = resumoAnalitico[0]?.a.mesesTot;
+    const mesesDecContrato = resumoAnalitico[0]?.a.mesesDec;
+    const mesesRestContrato = resumoAnalitico[0]?.a.mesesRest;
+
     const linhas = alocacoes.map(a => `<tr>
       <td class="desc">${a.itemSobra.item}</td>
       <td class="num">${a.qtdSobra.toFixed(1)}</td>
@@ -1329,6 +1337,16 @@ function App() {
       <td class="desc">${a.itemFalta.item}</td>
       <td class="num">${a.qtdFalta.toFixed(1)}</td>
       <td class="val">R$ ${a.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+    </tr>`).join('');
+
+    const linhasResumo = resumoAnalitico.map(({it,a}) => `<tr>
+      <td class="desc">${it.item}${it.lote?` · Lote ${it.lote}`:''}</td>
+      <td class="num">${a.qtdTot.toLocaleString('pt-BR')}</td>
+      <td class="num">${it.qtd_acum.toLocaleString('pt-BR')}</td>
+      <td class="num">${a.saldo.toLocaleString('pt-BR')}</td>
+      <td class="num">${a.media.toFixed(1)}</td>
+      <td class="num">${a.proj}</td>
+      <td class="num" style="color:${a.dif<0?'#b91c1c':'#166534'};font-weight:bold">${a.dif>0?'+':''}${a.dif}</td>
     </tr>`).join('');
 
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
@@ -1358,11 +1376,17 @@ function App() {
       <div class="info">
         <strong>Contrato:</strong> ${contrato.numero} &nbsp;&nbsp; <strong>Data:</strong> ${hoje.toLocaleDateString('pt-BR')}<br/>
         <strong>Empresa:</strong> ${contrato.empresa}<br/>
+        <strong>Vigência:</strong> ${contrato.inicio?new Date(contrato.inicio+'T00:00:00').toLocaleDateString('pt-BR'):'—'} a ${contrato.fim?new Date(contrato.fim+'T00:00:00').toLocaleDateString('pt-BR'):'—'}${mesesTotContrato?` (${mesesTotContrato} meses — ${mesesDecContrato} decorridos, ${mesesRestContrato} restantes)`:''}<br/>
         <strong>Fiscal do contrato:</strong> ${contrato.fiscal || 'Mírian Vicente Dias'} &nbsp;&nbsp; <strong>Gestor do contrato:</strong> ${contrato.gestor || 'Carlos Henrique Buzzi da Silva'}
       </div>
       <div class="obs">
         Os itens abaixo apresentam saldo remanescente insuficiente para cobrir a demanda projetada até o fim da vigência. Para equilíbrio, propõe-se a supressão parcial dos itens com excedente e a suplementação correspondente dos itens em risco, <strong>sem alteração do valor global do contrato</strong> (art. 125, Lei 14.133/2021).
       </div>
+      <div class="grupo-titulo">RESUMO ANALÍTICO DE CONSUMO — BASE DO CÁLCULO</div>
+      <table><thead><tr><th>Item</th><th>Qtd. total contratada</th><th>Acumulado</th><th>Saldo</th><th>Média real/mês</th><th>Projeção até o fim</th><th>Diferença</th></tr></thead>
+      <tbody>${linhasResumo}</tbody></table>
+      <div class="obs">Diferença = Saldo − Projeção de consumo até o fim da vigência (baseada na média real de uso). Negativo = risco de esgotar antes do fim; positivo = excedente disponível para remanejamento.</div>
+      <div class="grupo-titulo">PROPOSTA DE REMANEJAMENTO</div>
       <table><thead><tr><th colspan="3">SUPRIMIR (item com excedente)</th><th></th><th colspan="3">SUPLEMENTAR (item em risco)</th></tr>
       <tr><th>Item</th><th>Qtd</th><th>Valor</th><th></th><th>Item</th><th>Qtd</th><th>Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table>
