@@ -239,6 +239,12 @@ const clsPrazo = d => d < 0 ? 'vermelho' : d <= 30 ? 'vermelho' : d <= 60 ? 'lar
 const brl = v => 'R$ ' + (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD = s => { if (!s) return '—'; const [y,m,d] = s.substring(0,10).split('-'); return `${d}/${m}/${y}`; };
 const uid = p => p + Date.now().toString(36).toUpperCase();
+const proximoNumeroTA = (numeroAtual) => {
+  const m = (numeroAtual||'').match(/^(.*?)(?:\s+(\d+)º\s*TA)?$/i);
+  const base = (m && m[1] ? m[1] : numeroAtual || '').trim();
+  const atual = m && m[2] ? parseInt(m[2]) : 0;
+  return `${base} ${atual+1}º TA`;
+};
 const today = () => new Date().toISOString().substring(0, 10);
 const todayMonth = () => new Date().toISOString().substring(0, 7);
 // Converte DD/MM/AAAA → YYYY-MM-DD (aceita também YYYY-MM-DD direto)
@@ -1446,6 +1452,68 @@ function App() {
     janela.print();
   };
 
+  // Aplica o reequilíbrio DE VERDADE: atualiza qtd_total_contratada dos itens
+  // envolvidos (soma nos itens em falta, subtrai nos itens em sobra, sempre
+  // dentro do mesmo lote) e sobe o número do contrato pro próximo Termo
+  // Aditivo — o mesmo registro, não um contrato novo. Valor total do contrato
+  // não muda (é só remanejamento).
+  const aplicarReequilibrio = async (contrato, deficit, superavit) => {
+    const alocacoes = alocarReequilibrio(deficit, superavit);
+    if (!alocacoes.length) { alert('Não há remanejamento possível pra aplicar.'); return; }
+    const novoNumero = proximoNumeroTA(contrato.numero);
+    if (!confirm(`Isso vai atualizar as quantidades dos itens envolvidos e mudar o número do contrato de "${contrato.numero}" para "${novoNumero}". Confirma?`)) return;
+    setSaving(true);
+    try {
+      const deltaPorItem = {};
+      alocacoes.forEach(a => {
+        deltaPorItem[a.itemFalta.id] = (deltaPorItem[a.itemFalta.id]||0) + a.qtdFalta;
+        deltaPorItem[a.itemSobra.id] = (deltaPorItem[a.itemSobra.id]||0) - a.qtdSobra;
+      });
+      await Promise.all(Object.entries(deltaPorItem).map(([itemId, delta]) => {
+        const it = itens.find(i => i.id === itemId);
+        const baseTotal = it.qtd_total_contratada ?? (it.qtd_mensal*(contrato.vigencia_meses||12));
+        const novoTotal = Math.round((baseTotal + delta)*100)/100;
+        return sb().from('itens').update({ qtd_total_contratada: novoTotal }).eq('id', itemId);
+      }));
+      await sb().from('contratos').update({ numero: novoNumero, updated_at: new Date().toISOString() }).eq('id', contrato.id);
+      await sb().from('aditivos').insert({
+        id: uid('A'), contrato_id: contrato.id, tipo: 'Reequilíbrio', data: today(),
+        justificativa: `Redistribuição quantitativa aplicada automaticamente — gerou ${novoNumero}. Remanejamento entre itens do mesmo lote, sem alteração do valor total do contrato.`,
+        vlr_acrescido: 0, vlr_suprimido: 0, novo_prazo: null, status: 'Aplicado', obs: ''
+      });
+      await loadAll();
+      setSaving(false);
+      alert(`Reequilíbrio aplicado. Contrato atualizado para ${novoNumero}.`);
+    } catch(e) { setSaving(false); alert('Erro ao aplicar reequilíbrio: ' + e.message); }
+  };
+
+  // Aplica o aditivo DE VERDADE: soma a quantidade em falta no qtd_total_contratada
+  // dos itens, soma o valor no vlr_total do contrato, e sobe o número do
+  // contrato pro próximo Termo Aditivo — mesmo registro, não um contrato novo.
+  const aplicarAditivo = async (contrato, itensNecessarios, totalNecessario) => {
+    if (!itensNecessarios.length) { alert('Não há itens pendentes de aditivo.'); return; }
+    const novoNumero = proximoNumeroTA(contrato.numero);
+    if (!confirm(`Isso vai acrescentar ${brl(totalNecessario)} ao valor do contrato, atualizar as quantidades dos itens e mudar o número de "${contrato.numero}" para "${novoNumero}". Confirma?`)) return;
+    setSaving(true);
+    try {
+      await Promise.all(itensNecessarios.map(d => {
+        const baseTotal = d.item.qtd_total_contratada ?? (d.item.qtd_mensal*(contrato.vigencia_meses||12));
+        const novoTotal = Math.round((baseTotal + Math.abs(d.dif))*100)/100;
+        return sb().from('itens').update({ qtd_total_contratada: novoTotal }).eq('id', d.item.id);
+      }));
+      const novoValorTotal = (contrato.vlr_total||0) + totalNecessario;
+      await sb().from('contratos').update({ numero: novoNumero, vlr_total: novoValorTotal, updated_at: new Date().toISOString() }).eq('id', contrato.id);
+      await sb().from('aditivos').insert({
+        id: uid('A'), contrato_id: contrato.id, tipo: 'Aditivo', data: today(),
+        justificativa: `Aditivo de valor aplicado automaticamente — gerou ${novoNumero}. Acréscimo de quantitativo em item(ns) com projeção de esgotamento antes do fim da vigência.`,
+        vlr_acrescido: totalNecessario, vlr_suprimido: 0, novo_prazo: null, status: 'Aplicado', obs: ''
+      });
+      await loadAll();
+      setSaving(false);
+      alert(`Aditivo aplicado. Contrato atualizado para ${novoNumero}, valor total +${brl(totalNecessario)}.`);
+    } catch(e) { setSaving(false); alert('Erro ao aplicar aditivo: ' + e.message); }
+  };
+
   const renderAditivos = () => {
     const listaFiltrada = aditivos.filter(a => {
       const c = contratos.find(x => x.id === a.contrato_id);
@@ -1566,8 +1634,8 @@ function App() {
                       <button className="btn btn-primary btn-sm" onClick={() => gerarPedidoReequilibrio(contrato, deficit, superavit)}>
                         <i className="fa-solid fa-file-pdf"/> Gerar Pedido de Reequilíbrio
                       </button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setFiltroAditivoContrato(contrato.id); openModal('aditivo'); }}>
-                        <i className="fa-solid fa-arrow-right-arrow-left"/> Registrar redistribuição quantitativa
+                      <button className="btn btn-secondary btn-sm" onClick={() => aplicarReequilibrio(contrato, deficit, superavit)} disabled={saving}>
+                        <i className="fa-solid fa-arrow-right-arrow-left"/> Aplicar Reequilíbrio (gera Termo Aditivo)
                       </button>
                     </>
                   ) : (
@@ -1580,8 +1648,8 @@ function App() {
                       <button className="btn btn-primary btn-sm" onClick={() => gerarPedidoAditivo(contrato, deficit.filter(d=>d.faltaCobrir>0.01), valorAditivoNecessario)}>
                         <i className="fa-solid fa-file-pdf"/> Gerar Pedido de Aditivo
                       </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => { setFiltroAditivoContrato(contrato.id); openModal('aditivo'); }}>
-                        <i className="fa-solid fa-triangle-exclamation"/> Registrar solicitação de aditivo ({brl(valorAditivoNecessario)})
+                      <button className="btn btn-danger btn-sm" onClick={() => aplicarAditivo(contrato, deficit.filter(d=>d.faltaCobrir>0.01), valorAditivoNecessario)} disabled={saving}>
+                        <i className="fa-solid fa-triangle-exclamation"/> Aplicar Aditivo (gera Termo Aditivo) · {brl(valorAditivoNecessario)}
                       </button>
                     </>
                   )}
