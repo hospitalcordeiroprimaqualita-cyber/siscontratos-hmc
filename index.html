@@ -2720,6 +2720,156 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
 
   // ─── HISTÓRICO DE MEDIÇÕES ───────────────────────────────────────────────
+  // ─── RELATÓRIO DE CIÊNCIA FINANCEIRA (fiscal → financeiro da empresa) ─────
+  // Documento por medição: dá ciência formal à área financeira da contratada
+  // sobre a execução daquele mês, com análise de saldo, comparativo de rubrica,
+  // vigência e gráficos — pensado pra ser um diferencial, não só um recibo.
+  const gerarRelatorioCienciaFinanceira = (execucao) => {
+    const c = contratos.find(x => x.id === execucao.contrato_id);
+    if (!c) return;
+    const itensC = itens.filter(i => i.contrato_id === c.id);
+    const mesRef = mesToPT(execucao.mes_referencia);
+    const numMedicao = (execucao.observacao||'').match(/^(\d+)ª/)?.[1] || '—';
+
+    const analiseItens = itensC.map(it => ({ it, a: calcAnaliseItem(c, it) })).filter(x => x.a);
+    const mesesTot = analiseItens[0]?.a.mesesTot || c.vigencia_meses || 12;
+    const mesesDec = analiseItens[0]?.a.mesesDec || 1;
+    const mesesRest = analiseItens[0]?.a.mesesRest ?? Math.max(0, mesesTot-mesesDec);
+
+    const valorTotal = c.vlr_total || 0;
+    const valorExecAcum = c.consumo_acum || 0;
+    const saldoFinanceiro = valorTotal - valorExecAcum;
+    const pctFinanceiro = valorTotal>0 ? Math.round((valorExecAcum/valorTotal)*100) : 0;
+    const pctPrazo = mesesTot>0 ? Math.round((mesesDec/mesesTot)*100) : 0;
+    const gap = pctFinanceiro - pctPrazo;
+
+    // Evolução mensal deste contrato (todas as medições já registradas, em ordem)
+    const execsContrato = execucoes.filter(e=>e.contrato_id===c.id).slice().sort((a,b)=>a.mes_referencia.localeCompare(b.mes_referencia));
+    const mesCurto = (mes) => { const [y,m] = mes.split('-'); const nomes=['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return nomes[parseInt(m)]+'/'+y.slice(2); };
+    const evolucaoContrato = execsContrato.map(e => ({ label: mesCurto(e.mes_referencia), valor: e.valor||0 }));
+
+    // Comparativo por rubrica DENTRO deste contrato, no mês da medição
+    const rubricasContrato = [...new Set(itensC.map(it=>it.rubrica).filter(Boolean))].map(rub => {
+      const info = rubricaInfo(rub);
+      const itensRub = itensC.filter(it=>it.rubrica===rub);
+      const executadoRub = itensRub.reduce((acc,it) => {
+        const hg = medicoesItensHist.filter(mi=>mi.item_id===it.id && mi.mes_referencia===execucao.mes_referencia).reduce((a,mi)=>a+(mi.qtd_executada||0)*(mi.vlr_unitario||it.vlr_unitario||0),0);
+        const hm = lancamentos.filter(l=>l.item_id===it.id && l.mes_referencia===execucao.mes_referencia).reduce((a,l)=>a+(l.quantidade||0)*(l.valor_unitario||it.vlr_unitario||0),0);
+        return acc+hg+hm;
+      }, 0);
+      return { rub, desc:info?.desc||'', tetoMensal:info?.mensal||0, executado:executadoRub };
+    });
+
+    // Itens em maior risco/maior consumo deste contrato (top 5 por % consumido)
+    const itensOrdenados = analiseItens.map(({it,a}) => ({
+      it, pct: a.qtdTot>0 ? Math.round((it.qtd_acum/a.qtdTot)*100) : 0, acao: a.acao
+    })).sort((x,y)=>y.pct-x.pct).slice(0,8);
+
+    const paragrafo1 = `O presente relatório tem por finalidade dar ciência à área financeira da ${c.empresa} quanto ao acompanhamento da execução do Contrato nº ${c.numero}, firmado com o Hospital Municipal de Cordeiro sob o Contrato de Gestão nº 196/2025, referente à ${numMedicao}ª medição, competência de ${mesRef}.`;
+    const paragrafo2 = `Do valor total contratado de ${brl(valorTotal)}, foram executados ${brl(valorExecAcum)} até a presente medição, o que representa ${pctFinanceiro}% do valor global. A vigência contratual soma ${mesesTot} meses, dos quais ${mesesDec} já decorridos e ${mesesRest} restantes até o encerramento, previsto para ${c.fim?new Date(c.fim+'T00:00:00').toLocaleDateString('pt-BR'):'—'}. O saldo financeiro remanescente é de ${brl(saldoFinanceiro)}.`;
+    const paragrafo3 = Math.abs(gap) <= 10
+      ? `O ritmo de execução financeira está compatível com o tempo decorrido de vigência (${pctFinanceiro}% do valor consumido contra ${pctPrazo}% do prazo decorrido), não havendo indicativo de descompasso relevante entre consumo e tempo contratual.`
+      : gap > 10
+        ? `Observa-se que o ritmo de execução financeira está adiantado em relação ao tempo decorrido de vigência (${pctFinanceiro}% do valor consumido contra ${pctPrazo}% do prazo decorrido) — recomenda-se acompanhamento para avaliar necessidade de aditivo antes do encerramento do contrato.`
+        : `Observa-se que o ritmo de execução financeira está abaixo do tempo decorrido de vigência (${pctFinanceiro}% do valor consumido contra ${pctPrazo}% do prazo decorrido), o que é esperado caso a demanda real seja inferior à estimativa contratual.`;
+
+    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
+    const estilos = `<style>
+      * { box-sizing: border-box; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; }
+      .header { text-align:center; margin-bottom:14px; }
+      .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
+      .titulo-box h2 { font-size:14px; font-weight:bold; }
+      .sec-titulo { background:#0F6E56; color:#fff; padding:7px 10px; font-weight:bold; font-size:12px; margin:16px 0 6px; }
+      .resumo-texto { font-size:10.5px; line-height:1.7; text-align:justify; margin-bottom:8px; }
+      .kpis { display:flex; gap:10px; margin:10px 0 6px; }
+      .kpi-card { flex:1; border:1px solid #ccc; border-radius:6px; padding:9px 6px; text-align:center; }
+      .kpi-card .val { font-size:15px; font-weight:bold; color:#0F6E56; }
+      .kpi-card .lbl { font-size:8px; color:#555; margin-top:2px; line-height:1.25; }
+      .chart-box { border:1px solid #e0e0e0; border-radius:6px; padding:10px; margin:8px 0; text-align:center; }
+      .chart-box .titulo-chart { font-size:10px; font-weight:bold; color:#333; margin-bottom:6px; text-align:left; }
+      table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+      th { background:#d0d0d0; border:1px solid #000; padding:4px 6px; font-size:9px; text-align:center; font-weight:bold; }
+      td { border:1px solid #000; padding:3.5px 6px; font-size:9px; }
+      td.desc{text-align:left;} td.num{text-align:center;} td.val{text-align:right;}
+      .obs { font-size:9.5px; color:#333; margin:5px 0 10px; line-height:1.5; }
+      .assinaturas { margin-top:36px; display:flex; gap:30px; justify-content:center; }
+      .assinatura-box { flex:1; text-align:center; max-width:250px; }
+      .assinatura-box .linha { border-top:1px solid #000; margin-bottom:4px; }
+      @media print { body{padding:12px;} }
+      .rodape-sistema { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema strong { color: #0F6E56; }
+    </style>`;
+
+    const kpisHtml = `<div class="kpis">
+      <div class="kpi-card"><div class="val">${brl(execucao.valor)}</div><div class="lbl">VALOR DESTA MEDIÇÃO</div></div>
+      <div class="kpi-card"><div class="val">${pctFinanceiro}%</div><div class="lbl">DO VALOR TOTAL JÁ EXECUTADO</div></div>
+      <div class="kpi-card"><div class="val">${brl(saldoFinanceiro)}</div><div class="lbl">SALDO FINANCEIRO REMANESCENTE</div></div>
+      <div class="kpi-card"><div class="val">${mesesRest} de ${mesesTot}</div><div class="lbl">MESES RESTANTES DE VIGÊNCIA</div></div>
+    </div>`;
+
+    const graficoEvolucao = evolucaoContrato.length>1 ? `<div class="chart-box">
+      <div class="titulo-chart">Evolução do valor executado neste contrato</div>
+      ${svgLinhaEvolucaoPDF(evolucaoContrato, {altura:140})}
+    </div>` : '';
+
+    const graficoPrazoValor = `<div class="chart-box">
+      <div class="titulo-chart">% do prazo decorrido vs % do valor consumido</div>
+      ${svgBarrasHorizontaisPDF([{label:'% do prazo decorrido', pct:pctPrazo},{label:'% do valor consumido', pct:pctFinanceiro}], {margemEsq:170})}
+    </div>`;
+
+    const tabelaItens = itensOrdenados.length ? `
+      <table><thead><tr><th>Item</th><th>Qtd. total contratada</th><th>Acumulado</th><th>% consumido</th><th>Situação</th></tr></thead>
+      <tbody>${itensOrdenados.map(({it,pct,acao}) => `<tr>
+        <td class="desc">${it.item}${it.lote?` · Lote ${it.lote}`:''}</td>
+        <td class="num">${(it.qtd_total_contratada ?? (it.qtd_mensal*mesesTot)).toLocaleString('pt-BR')}</td>
+        <td class="num">${it.qtd_acum.toLocaleString('pt-BR')}</td>
+        <td class="num" style="color:${pct>=100?'#b91c1c':pct>=85?'#b45309':'#000'}">${pct}%</td>
+        <td class="num">${acao==='ADITIVO'?'⚠ Atenção':acao==='SUPRESSÃO'?'↓ Excedente':'Regular'}</td>
+      </tr>`).join('')}</tbody></table>` : '<div class="obs">Sem itens com histórico suficiente pra análise neste mês.</div>';
+
+    const tabelaRubrica = rubricasContrato.length ? `
+      <table><thead><tr><th>Rubrica</th><th>Teto mensal aprovado</th><th>Executado neste contrato no mês</th><th>% do teto</th></tr></thead>
+      <tbody>${rubricasContrato.map(r => `<tr>
+        <td class="desc">${r.rub} - ${r.desc}</td>
+        <td class="val">${brl(r.tetoMensal)}</td>
+        <td class="val">${brl(r.executado)}</td>
+        <td class="num">${r.tetoMensal>0?Math.round((r.executado/r.tetoMensal)*100):0}%</td>
+      </tr>`).join('')}</tbody></table>` : '<div class="obs">Este contrato não tem itens com rubrica orçamentária cadastrada.</div>';
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Ciência Financeira - ${c.numero} - ${mesRef}</title>${estilos}</head><body>
+      <div class="header">${logoImg}</div>
+      <div class="titulo-box"><h2>RELATÓRIO DE ACOMPANHAMENTO CONTRATUAL — CIÊNCIA FINANCEIRA</h2><div style="font-size:11px;margin-top:4px">Contrato nº ${c.numero} · ${c.empresa} · ${numMedicao}ª Medição — ${mesRef}</div></div>
+
+      <div class="resumo-texto">${paragrafo1}</div>
+      <div class="resumo-texto">${paragrafo2}</div>
+      <div class="resumo-texto">${paragrafo3}</div>
+      ${kpisHtml}
+      ${graficoEvolucao}
+      ${graficoPrazoValor}
+
+      <div class="sec-titulo">RESUMO ANALÍTICO DE CONSUMO DO SALDO CONTRATUAL</div>
+      ${tabelaItens}
+
+      <div class="sec-titulo">COMPARATIVO POR RUBRICA ORÇAMENTÁRIA</div>
+      ${tabelaRubrica}
+
+      <div class="assinaturas">
+        <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">${c.fiscal || 'Mírian Vicente Dias'}<br/>Fiscal do Contrato</p></div>
+        <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">Ciente — Área Financeira<br/>${c.empresa}</p></div>
+      </div>
+      <div class="rodape-sistema">
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2025<br/>
+        Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+      </div>
+    </body></html>`;
+
+    const janela = window.open('', '_blank');
+    janela.document.write(html);
+    janela.document.close();
+    janela.print();
+  };
+
   const renderHistorico = () => {
     const listaExecucoes = execucoes
       .filter(e => !historicoContrato || e.contrato_id === historicoContrato)
@@ -2838,6 +2988,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                           ) : (
                             <div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
                               <ActBtn icon={aberto?'fa-chevron-up':'fa-chevron-down'} onClick={()=>setMesExpandido(aberto?null:chave)} title="Ver detalhe" />
+                              <ActBtn icon="fa-file-invoice-dollar" onClick={()=>gerarRelatorioCienciaFinanceira(e)} title="Gerar Relatório de Ciência Financeira (fiscal → financeiro da empresa)" />
                               <ActBtn icon="fa-pen" onClick={()=>{ setMedicaoContrato(e.contrato_id); setMedicaoMes(e.mes_referencia); setSection('medicao'); }} title="Corrigir esta medição" />
                               <ActBtn icon="fa-trash" danger onClick={()=>setConfirmarExclusaoChave(chave)} title="Apagar esta medição" />
                             </div>
@@ -2854,7 +3005,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                 })}</tbody>
               </table>
               <div style={{padding:'8px 16px',fontSize:11.5,color:'var(--text3)'}}>
-                <i className="fa-solid fa-circle-info"/> <strong>Corrigir</strong> abre a medição no mês certo com os valores já lançados, prontos pra ajustar e registrar de novo. <strong>Apagar</strong> remove o registro e os lançamentos daquele mês e recalcula automaticamente o saldo acumulado do item e do contrato.
+                <i className="fa-solid fa-circle-info"/> <strong>Relatório de Ciência Financeira</strong> gera um documento pra dar ciência ao financeiro da empresa sobre a medição do mês. <strong>Corrigir</strong> abre a medição no mês certo com os valores já lançados, prontos pra ajustar e registrar de novo. <strong>Apagar</strong> remove o registro e os lançamentos daquele mês e recalcula automaticamente o saldo acumulado do item e do contrato.
               </div>
             </div>
           )}
