@@ -1398,7 +1398,7 @@ function App() {
         <strong>Fiscal do contrato:</strong> ${contrato.fiscal || 'Mírian Vicente Dias'} &nbsp;&nbsp; <strong>Gestor do contrato:</strong> ${contrato.gestor || 'Carlos Henrique Buzzi da Silva'}
       </div>
       <div class="obs">
-        Os itens abaixo apresentam saldo remanescente insuficiente para cobrir a demanda projetada até o fim da vigência. Para equilíbrio, propõe-se a supressão parcial dos itens com excedente e a suplementação correspondente dos itens em risco, <strong>sem alteração do valor global do contrato</strong> (art. 125, Lei 14.133/2021).
+        Os itens abaixo apresentam saldo remanescente insuficiente para cobrir a demanda projetada até o fim da vigência. Para equilíbrio, propõe-se a supressão parcial dos itens com excedente e a suplementação correspondente dos itens em risco, <strong>sem alteração do valor global do contrato</strong>.
       </div>
       <div class="grupo-titulo">RESUMO ANALÍTICO DE CONSUMO — BASE DO CÁLCULO</div>
       <table><thead><tr><th>Item</th><th>Qtd. total contratada</th><th>Acumulado</th><th>Saldo</th><th>Média real/mês</th><th>Projeção até o fim</th><th>Diferença</th></tr></thead>
@@ -2765,7 +2765,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       it, pct: a.qtdTot>0 ? Math.round((it.qtd_acum/a.qtdTot)*100) : 0, acao: a.acao
     })).sort((x,y)=>y.pct-x.pct).slice(0,8);
 
-    const paragrafo1 = `O presente relatório tem por finalidade dar ciência à área financeira da ${c.empresa} quanto ao acompanhamento da execução do Contrato nº ${c.numero}, firmado com o Hospital Municipal de Cordeiro sob o Contrato de Gestão nº 196/2025, referente à ${numMedicao}ª medição, competência de ${mesRef}.`;
+    const paragrafo1 = `O presente relatório tem por finalidade dar ciência à área financeira da OSS Prima Qualitá Saúde quanto à execução e ao acompanhamento do Contrato nº ${c.numero}, firmado com ${c.empresa}, no âmbito do Contrato de Gestão nº 196/2025 celebrado com o Hospital Municipal de Cordeiro, referente à ${numMedicao}ª medição, competência de ${mesRef}.`;
     const paragrafo2 = `Do valor total contratado de ${brl(valorTotal)}, foram executados ${brl(valorExecAcum)} até a presente medição, o que representa ${pctFinanceiro}% do valor global. A vigência contratual soma ${mesesTot} meses, dos quais ${mesesDec} já decorridos e ${mesesRest} restantes até o encerramento, previsto para ${c.fim?new Date(c.fim+'T00:00:00').toLocaleDateString('pt-BR'):'—'}. O saldo financeiro remanescente é de ${brl(saldoFinanceiro)}.`;
     const paragrafo3 = Math.abs(gap) <= 10
       ? `O ritmo de execução financeira está compatível com o tempo decorrido de vigência (${pctFinanceiro}% do valor consumido contra ${pctPrazo}% do prazo decorrido), não havendo indicativo de descompasso relevante entre consumo e tempo contratual.`
@@ -2839,7 +2839,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Ciência Financeira - ${c.numero} - ${mesRef}</title>${estilos}</head><body>
       <div class="header">${logoImg}</div>
-      <div class="titulo-box"><h2>RELATÓRIO DE ACOMPANHAMENTO CONTRATUAL — CIÊNCIA FINANCEIRA</h2><div style="font-size:11px;margin-top:4px">Contrato nº ${c.numero} · ${c.empresa} · ${numMedicao}ª Medição — ${mesRef}</div></div>
+      <div class="titulo-box"><h2>RELATÓRIO DE ACOMPANHAMENTO CONTRATUAL — CIÊNCIA AO FINANCEIRO PRIMA QUALITÁ</h2><div style="font-size:11px;margin-top:4px">Contrato nº ${c.numero} · ${c.empresa} · ${numMedicao}ª Medição — ${mesRef}</div></div>
 
       <div class="resumo-texto">${paragrafo1}</div>
       <div class="resumo-texto">${paragrafo2}</div>
@@ -2856,7 +2856,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
       <div class="assinaturas">
         <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">${c.fiscal || 'Mírian Vicente Dias'}<br/>Fiscal do Contrato</p></div>
-        <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">Ciente — Área Financeira<br/>${c.empresa}</p></div>
+        <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">Ciente — Área Financeira<br/>OSS Prima Qualitá Saúde</p></div>
       </div>
       <div class="rodape-sistema">
         Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2025<br/>
@@ -2988,7 +2988,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                           ) : (
                             <div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
                               <ActBtn icon={aberto?'fa-chevron-up':'fa-chevron-down'} onClick={()=>setMesExpandido(aberto?null:chave)} title="Ver detalhe" />
-                              <ActBtn icon="fa-file-invoice-dollar" onClick={()=>gerarRelatorioCienciaFinanceira(e)} title="Gerar Relatório de Ciência Financeira (fiscal → financeiro da empresa)" />
+                              <ActBtn icon="fa-file-invoice-dollar" onClick={()=>gerarRelatorioCienciaFinanceira(e)} title="Gerar Relatório de Ciência Financeira (fiscal → financeiro da Prima Qualitá)" />
                               <ActBtn icon="fa-pen" onClick={()=>{ setMedicaoContrato(e.contrato_id); setMedicaoMes(e.mes_referencia); setSection('medicao'); }} title="Corrigir esta medição" />
                               <ActBtn icon="fa-trash" danger onClick={()=>setConfirmarExclusaoChave(chave)} title="Apagar esta medição" />
                             </div>
@@ -3005,7 +3005,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                 })}</tbody>
               </table>
               <div style={{padding:'8px 16px',fontSize:11.5,color:'var(--text3)'}}>
-                <i className="fa-solid fa-circle-info"/> <strong>Relatório de Ciência Financeira</strong> gera um documento pra dar ciência ao financeiro da empresa sobre a medição do mês. <strong>Corrigir</strong> abre a medição no mês certo com os valores já lançados, prontos pra ajustar e registrar de novo. <strong>Apagar</strong> remove o registro e os lançamentos daquele mês e recalcula automaticamente o saldo acumulado do item e do contrato.
+                <i className="fa-solid fa-circle-info"/> <strong>Relatório de Ciência Financeira</strong> gera um documento pra dar ciência ao financeiro da Prima Qualitá sobre a execução e o acompanhamento do contrato naquele mês. <strong>Corrigir</strong> abre a medição no mês certo com os valores já lançados, prontos pra ajustar e registrar de novo. <strong>Apagar</strong> remove o registro e os lançamentos daquele mês e recalcula automaticamente o saldo acumulado do item e do contrato.
               </div>
             </div>
           )}
