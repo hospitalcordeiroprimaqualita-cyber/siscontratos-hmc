@@ -10,6 +10,9 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
 <style>
 :root{
   --teal:#1D9E75;--teal-d:#0F6E56;--teal-l:#E1F5EE;--teal-m:#5DCAA5;
@@ -21,7 +24,7 @@
   --radius:10px;--radius-sm:6px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#EEF2F6;color:var(--text);font-size:13px;min-height:100vh}
+body{font-family:'Nunito',system-ui,-apple-system,sans-serif;background:#EEF2F6;color:var(--text);font-size:13px;min-height:100vh}
 .sidebar{position:fixed;top:0;left:0;width:224px;height:100vh;background:var(--teal-d);display:flex;flex-direction:column;z-index:100;overflow-y:auto}
 .sidebar-brand{padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,.12)}
 .sidebar-logo{width:128px;margin-bottom:10px;filter:brightness(0) invert(1)}
@@ -476,6 +479,8 @@ function App() {
   const [historicoContrato, setHistoricoContrato] = useState('');
   const [rubricaMes, setRubricaMes] = useState(todayMonth());
   const [rubricaExpandida, setRubricaExpandida] = useState(null);
+  const [tetosInvestimento, setTetosInvestimento] = useState([]);
+  const [anoInvestimento, setAnoInvestimento] = useState(new Date().getFullYear());
   const [mesExpandido, setMesExpandido] = useState(null);
   const [confirmarExclusaoChave, setConfirmarExclusaoChave] = useState(null);
   const [filtroAditivoContrato, setFiltroAditivoContrato] = useState('');
@@ -524,14 +529,15 @@ function App() {
   const loadAll = async () => {
     setSyncStatus('loading');
     try {
-      const [c, i, a, m, l, ex, mi] = await Promise.all([
+      const [c, i, a, m, l, ex, mi, ti] = await Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         sb().from('itens').select('*').order('created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
         sb().from('medicos').select('*').order('nome'),
         fetchAllRows('medicoes_lancamentos', 'created_at'),
         sb().from('execucoes').select('*').order('mes_referencia'),
-        fetchAllRows('medicoes_itens', 'mes_referencia')
+        fetchAllRows('medicoes_itens', 'mes_referencia'),
+        sb().from('tetos_investimento').select('*').order('ano')
       ]);
       if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
       setContratos(c.data || []);
@@ -539,10 +545,12 @@ function App() {
       setAditivos(a.data || []);
       if (m.error) console.error('Tabela "medicos":', m.error.message);
       if (l.error) console.error('Tabela "medicoes_lancamentos":', l.error.message);
+      if (ti.error) console.error('Tabela "tetos_investimento":', ti.error.message);
       setMedicos(m.data || []); // se a tabela ainda não existir ou o RLS bloquear, m.error fica setado e usamos []
       setLancamentos(l.data || []);
       setExecucoes(ex.data || []);
       setMedicoesItensHist(mi.data || []);
+      setTetosInvestimento(ti.data || []);
       setSyncStatus('ok');
     } catch(e) {
       setSyncStatus('err');
@@ -791,6 +799,98 @@ function App() {
       });
     });
     return setIds;
+  };
+
+  // ─── IMPACTO DO PROJETO (vitrine para o Prêmio Melhores do Ano) ───────────
+  const renderImpacto = () => {
+    const valorSobGestao = contratos.reduce((acc,c)=>acc+(c.vlr_total||0),0);
+    const totalExecutado = contratos.reduce((acc,c)=>acc+(c.consumo_acum||0),0);
+    const totalMedicoes = execucoes.length;
+    const totalItensMonitorados = itens.length;
+
+    const marcos = [
+      { titulo:'Da planilha ao sistema', texto:'O controle de contratos, medições e saldo do Contrato de Gestão nº 196/2025 saiu de planilhas soltas e passou a ser um sistema único, com banco de dados real, histórico auditável e cálculo automático — usado no dia a dia pela Direção Administrativa.' },
+      { titulo:'Bug sistêmico de saldo identificado e corrigido', texto:'Uma auditoria detectou que 186 itens, em 9 contratos de fornecimento, tinham o saldo contratual calculado errado — o campo de quantidade mensal guardava, na verdade, o total do período inteiro. O sistema agora distingue os dois e recalcula o saldo real de cada item.' },
+      { titulo:'R$ 412 mil recuperados de uma medição sem lastro', texto:'Uma medição do contrato de plantões médicos tinha o valor lançado, mas nenhum registro de quem trabalhou em cada dia por trás dele. O sistema passou a bloquear esse tipo de lançamento incompleto antes de acontecer de novo, e o histórico foi reconstruído a partir da escala original.' },
+      { titulo:'Duplicidade de cadastro eliminada', texto:'Um contrato ativo estava cadastrado duas vezes no sistema, cada cópia com parte do histórico de medições. Foi identificado, consolidado num único registro, sem perda de nenhuma medição já lançada.' },
+      { titulo:'Da correção pontual à automação do processo', texto:'Aditivos e reequilíbrios contratuais deixaram de ser só um registro em papel: o sistema já aplica a redistribuição de quantidade entre itens do mesmo lote, atualiza o saldo e sobe a numeração do Termo Aditivo automaticamente.' },
+    ];
+
+    const diferenciais = [
+      { icon:'fa-scale-balanced', titulo:'Saldo real, não estimado', texto:'Cálculo prioriza a quantidade total contratada real de cada item, não uma estimativa por multiplicação simples — elimina o erro que inflava saldo artificialmente.' },
+      { icon:'fa-shield-halved', titulo:'Trava contra dado incompleto', texto:'Se o sistema detecta um valor de medição sem lançamento detalhado por trás, ele bloqueia o registro e avisa — em vez de deixar passar silenciosamente.' },
+      { icon:'fa-clock-rotate-left', titulo:'Histórico 100% auditável', texto:'Toda medição pode ser corrigida ou removida com recálculo automático do saldo — sem perder rastreabilidade de quem mudou o quê.' },
+      { icon:'fa-file-invoice-dollar', titulo:'Documentos institucionais automáticos', texto:'Relatório mensal ao gestor, pedidos de aditivo/reequilíbrio e ciência ao financeiro são gerados com um clique, já com gráficos e texto explicativo — não é planilha impressa.' },
+      { icon:'fa-chart-line', titulo:'Visão executiva de verdade', texto:'Painel mostra se um contrato está gastando mais rápido do que o prazo permite — não só quanto já foi gasto, mas se isso é ou não motivo de atenção.' },
+      { icon:'fa-object-ungroup', titulo:'Respeita a estrutura legal do contrato', texto:'Remanejamento de quantidade só acontece dentro do mesmo lote — lotes diferentes não se misturam, preservando a estrutura da licitação original.' },
+    ];
+
+    return (
+      <div>
+        <div style={{background:'linear-gradient(135deg, var(--teal-d), var(--teal))', borderRadius:14, padding:'40px 36px', color:'#fff', marginBottom:24, position:'relative', overflow:'hidden'}}>
+          <div style={{position:'relative', zIndex:1}}>
+            <div style={{fontSize:12, fontWeight:700, letterSpacing:'.08em', opacity:.85, marginBottom:8}}>HOSPITAL MUNICIPAL DE CORDEIRO · OSS PRIMA QUALITÁ SAÚDE</div>
+            <h1 style={{fontSize:30, fontWeight:800, marginBottom:10, lineHeight:1.15}}>SisContratos HMC</h1>
+            <div style={{fontSize:15, fontWeight:500, opacity:.95, maxWidth:640, lineHeight:1.5}}>Da planilha ao sistema: gestão de contratos, medições e saldo do Contrato de Gestão nº 196/2025, construído do zero para uso real no dia a dia da Direção Administrativa.</div>
+          </div>
+        </div>
+
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:14, marginBottom:26}}>
+          {[
+            {v:contratos.length, l:'CONTRATOS ATIVOS GERENCIADOS'},
+            {v:brl(valorSobGestao), l:'VALOR TOTAL SOB GESTÃO'},
+            {v:totalItensMonitorados, l:'ITENS MONITORADOS INDIVIDUALMENTE'},
+            {v:totalMedicoes, l:'MEDIÇÕES MENSAIS REGISTRADAS'},
+          ].map((k,i) => (
+            <div key={i} className="panel" style={{margin:0, textAlign:'center', padding:'20px 12px'}}>
+              <div style={{fontSize:24, fontWeight:800, color:'var(--teal-d)'}}>{k.v}</div>
+              <div style={{fontSize:11, color:'var(--text3)', marginTop:5, fontWeight:600, letterSpacing:'.02em'}}>{k.l}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="panel" style={{marginBottom:20}}>
+          <div className="panel-head"><h2><i className="fa-solid fa-star"/> Diferenciais técnicos</h2></div>
+          <div className="panel-body">
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:18}}>
+              {diferenciais.map((d,i) => (
+                <div key={i} style={{display:'flex', gap:12}}>
+                  <div style={{width:38, height:38, borderRadius:10, background:'var(--teal-l)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                    <i className={`fa-solid ${d.icon}`} style={{color:'var(--teal-d)', fontSize:15}}/>
+                  </div>
+                  <div>
+                    <div style={{fontWeight:700, fontSize:13, marginBottom:3}}>{d.titulo}</div>
+                    <div style={{fontSize:12, color:'var(--text2)', lineHeight:1.45}}>{d.texto}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head"><h2><i className="fa-solid fa-timeline"/> Casos reais resolvidos</h2></div>
+          <div className="panel-body">
+            {marcos.map((m,i) => (
+              <div key={i} style={{display:'flex', gap:14, marginBottom:i<marcos.length-1?18:0}}>
+                <div style={{display:'flex', flexDirection:'column', alignItems:'center', flexShrink:0}}>
+                  <div style={{width:12, height:12, borderRadius:'50%', background:'var(--teal)'}}/>
+                  {i<marcos.length-1 && <div style={{width:2, flex:1, background:'var(--gray-b)', marginTop:2}}/>}
+                </div>
+                <div style={{paddingBottom:i<marcos.length-1?4:0}}>
+                  <div style={{fontWeight:700, fontSize:13, marginBottom:3}}>{m.titulo}</div>
+                  <div style={{fontSize:12.5, color:'var(--text2)', lineHeight:1.55, maxWidth:720}}>{m.texto}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{textAlign:'center', fontSize:11.5, color:'var(--text3)', marginTop:20, padding:'10px 0'}}>
+          Projeto concebido, especificado e conduzido por Mírian Vicente Dias — Diretora Administrativa · Hospital Municipal de Cordeiro
+        </div>
+      </div>
+    );
   };
 
   const renderPainel = () => {
@@ -1789,7 +1889,7 @@ function App() {
         <div className="form-row"><div className="sec-label">Identificação</div></div>
         <div className="form-row">
           <FG label="Nº do contrato *"><FI k="numero" placeholder="000/2025" disabled={ro} /></FG>
-          <FG label="Tipo de contrato"><FS k="tipo" opts={['Serviço continuado','Fornecimento','Gestão','Obra','Serviço','Locação']} disabled={ro} /></FG>
+          <FG label="Tipo de contrato"><FS k="tipo" opts={['Serviço continuado','Fornecimento','Gestão','Obra','Serviço','Locação','Investimento']} disabled={ro} /></FG>
           <FG label="Empresa contratada *" full><FI k="empresa" placeholder="Razão social" disabled={ro} /></FG>
           <FG label="Objeto do contrato *" full><FI k="objeto" placeholder="Descrição do objeto" disabled={ro} /></FG>
           <FG label="Segmento"><FI k="segmento" placeholder="Ex: Diagnóstico por imagem" disabled={ro} /></FG>
@@ -3419,6 +3519,88 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     janela.print();
   };
 
+  // ─── INVESTIMENTOS (teto anual compartilhado entre vários contratos) ──────
+  const salvarTetoInvestimento = async (ano, valor) => {
+    const { error } = await sb().from('tetos_investimento').upsert({ ano, valor, updated_at: new Date().toISOString() });
+    if (error) { alert('Erro ao salvar teto: ' + error.message + ' — confirma que a tabela tetos_investimento existe (SQL enviado no chat).'); return; }
+    await loadAll();
+  };
+
+  const renderInvestimentos = () => {
+    const contratosInvestimento = contratos.filter(c => c.tipo === 'Investimento' && c.inicio && new Date(c.inicio+'T00:00:00').getFullYear() === anoInvestimento);
+    const tetoAtual = tetosInvestimento.find(t => t.ano === anoInvestimento)?.valor ?? 0;
+    const totalEmpenhado = contratosInvestimento.reduce((acc,c) => acc + (c.vlr_total||0), 0);
+    const saldo = tetoAtual - totalEmpenhado;
+    const pctUsado = tetoAtual>0 ? Math.min(Math.round((totalEmpenhado/tetoAtual)*100),100) : 0;
+    const anosDisponiveis = [...new Set([anoInvestimento, ...tetosInvestimento.map(t=>t.ano), ...contratos.filter(c=>c.tipo==='Investimento'&&c.inicio).map(c=>new Date(c.inicio+'T00:00:00').getFullYear())])].sort((a,b)=>b-a);
+
+    return (
+      <div className="panel">
+        <div className="panel-head">
+          <h2><i className="fa-solid fa-piggy-bank"/> Investimentos — teto anual (Contrato de Gestão, reajuste INPC)</h2>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <select value={anoInvestimento} onChange={e=>setAnoInvestimento(parseInt(e.target.value))} style={{padding:'6px 10px'}}>
+              {anosDisponiveis.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <button className="btn btn-primary btn-sm" onClick={() => openModal('novo')}><i className="fa-solid fa-plus"/> Novo contrato de investimento</button>
+          </div>
+        </div>
+        <div className="panel-body">
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:12,fontWeight:600}}>Teto anual de {anoInvestimento} (ajustado pelo INPC no Contrato de Gestão)</label>
+            <div style={{display:'flex',gap:8,marginTop:4,maxWidth:280}}>
+              <input type="number" step="0.01" defaultValue={tetoAtual} id="input-teto-investimento" style={{flex:1}} />
+              <button className="btn btn-secondary btn-sm" onClick={() => {
+                const v = parseFloat(document.getElementById('input-teto-investimento').value) || 0;
+                salvarTetoInvestimento(anoInvestimento, v);
+              }}>Salvar</button>
+            </div>
+          </div>
+
+          <div className="kpis-row" style={{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap'}}>
+            <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
+              <div style={{fontSize:20,fontWeight:700,color:'var(--teal-d)'}}>{brl(totalEmpenhado)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>VALOR EMPENHADO</div>
+            </div></div>
+            <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
+              <div style={{fontSize:20,fontWeight:700}}>{brl(tetoAtual)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>TETO ANUAL</div>
+            </div></div>
+            <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
+              <div style={{fontSize:20,fontWeight:700,color:saldo<0?'#b91c1c':'#16a34a'}}>{brl(saldo)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>{saldo<0?'ESTOURADO EM':'SALDO A MAIOR'}</div>
+            </div></div>
+          </div>
+
+          <div style={{marginBottom:16}}>
+            <ProgBar p={pctUsado} />
+            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{pctUsado}% do teto anual já empenhado em {anoInvestimento}</div>
+          </div>
+
+          <div className="tbl-wrap">
+            <table>
+              <thead><tr><th>Contrato</th><th>Empresa</th><th>Data da entrega/medição</th><th>Valor total</th><th>% do teto</th></tr></thead>
+              <tbody>{contratosInvestimento.length ? contratosInvestimento.map(c => (
+                <tr key={c.id}>
+                  <td className="mono"><strong>{c.numero}</strong></td>
+                  <td>{c.empresa}</td>
+                  <td>{fmtD(c.inicio)}</td>
+                  <td style={{fontWeight:600}}>{brl(c.vlr_total)}</td>
+                  <td>{tetoAtual>0?Math.round((c.vlr_total/tetoAtual)*100):0}%</td>
+                </tr>
+              )) : (
+                <tr><td colSpan={5} style={{textAlign:'center',padding:20,color:'var(--text3)'}}>Nenhum contrato de investimento cadastrado em {anoInvestimento} ainda.</td></tr>
+              )}</tbody>
+            </table>
+          </div>
+          <div style={{padding:'8px 4px',fontSize:11.5,color:'var(--text3)'}}>
+            <i className="fa-solid fa-circle-info"/> Contratos de investimento são cadastrados como qualquer outro contrato (Contratos → Novo contrato → Tipo = Investimento), usando a data de início como data da entrega/medição. O teto anual muda conforme o reajuste do INPC no Contrato de Gestão — atualize aqui a cada novo ano.
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderRelatorio = () => (
     <div className="panel">
       <div className="panel-head"><h2><i className="fa-solid fa-file-lines"/> Gerar relatório mensal para o gestor do contrato</h2></div>
@@ -3659,6 +3841,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   };
 
   const navItems = [
+    { sec:'impacto', icon:'fa-star', label:'Impacto do projeto', group:'main' },
     { sec:'painel', icon:'fa-gauge-high', label:'Painel executivo', group:'main' },
     { sec:'contratos', icon:'fa-file-contract', label:'Contratos', group:'main' },
     { sec:'financeiro', icon:'fa-circle-dollar-to-slot', label:'Controle financeiro', group:'controles' },
@@ -3668,11 +3851,12 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     { sec:'medicao', icon:'fa-file-invoice-dollar', label:'Medições mensais', group:'gestao' },
     { sec:'historico', icon:'fa-clock-rotate-left', label:'Histórico de medições', group:'gestao' },
     { sec:'rubrica', icon:'fa-scale-balanced', label:'Consumo por rubrica', group:'gestao' },
+    { sec:'investimentos', icon:'fa-piggy-bank', label:'Investimentos', group:'gestao' },
     { sec:'relatorio', icon:'fa-file-lines', label:'Relatório mensal', group:'gestao' },
     { sec:'pedido', icon:'fa-cart-shopping', label:'Pedido de compra', group:'gestao' },
   ];
 
-  const sectionTitles = { painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais', historico:'Histórico de Medições', rubrica:'Consumo por Rubrica', relatorio:'Relatório Mensal', pedido:'Pedido de Compra' };
+  const sectionTitles = { impacto:'Impacto do Projeto', painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais', historico:'Histórico de Medições', rubrica:'Consumo por Rubrica', investimentos:'Investimentos', relatorio:'Relatório Mensal', pedido:'Pedido de Compra' };
 
   if (!configured) return (
     <div style={{minHeight:'100vh',background:'#EEF2F6'}}>
@@ -3736,6 +3920,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         </div>
 
         <div className="content">
+          {section === 'impacto' && renderImpacto()}
           {section === 'painel' && renderPainel()}
           {section === 'contratos' && renderContratos()}
           {section === 'financeiro' && (
@@ -3762,6 +3947,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           {section === 'medicao' && renderMedicao()}
           {section === 'historico' && renderHistorico()}
           {section === 'rubrica' && renderRubrica()}
+          {section === 'investimentos' && renderInvestimentos()}
           {section === 'relatorio' && renderRelatorio()}
           {section === 'pedido' && renderPedido()}
         </div>
