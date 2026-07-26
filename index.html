@@ -482,6 +482,8 @@ function App() {
   const [rubricaExpandida, setRubricaExpandida] = useState(null);
   const [tetosInvestimento, setTetosInvestimento] = useState([]);
   const [anoInvestimento, setAnoInvestimento] = useState(new Date().getFullYear());
+  const [repassesInvestimento, setRepassesInvestimento] = useState([]);
+  const [contratoRepasseAberto, setContratoRepasseAberto] = useState(null);
   const [mesExpandido, setMesExpandido] = useState(null);
   const [confirmarExclusaoChave, setConfirmarExclusaoChave] = useState(null);
   const [filtroAditivoContrato, setFiltroAditivoContrato] = useState('');
@@ -530,7 +532,7 @@ function App() {
   const loadAll = async () => {
     setSyncStatus('loading');
     try {
-      const [c, i, a, m, l, ex, mi, ti] = await Promise.all([
+      const [c, i, a, m, l, ex, mi, ti, ri] = await Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         sb().from('itens').select('*').order('created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
@@ -538,7 +540,8 @@ function App() {
         fetchAllRows('medicoes_lancamentos', 'created_at'),
         sb().from('execucoes').select('*').order('mes_referencia'),
         fetchAllRows('medicoes_itens', 'mes_referencia'),
-        sb().from('tetos_investimento').select('*').order('ano')
+        sb().from('tetos_investimento').select('*').order('ano'),
+        sb().from('investimento_repasses').select('*').order('data')
       ]);
       if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
       setContratos(c.data || []);
@@ -547,11 +550,13 @@ function App() {
       if (m.error) console.error('Tabela "medicos":', m.error.message);
       if (l.error) console.error('Tabela "medicoes_lancamentos":', l.error.message);
       if (ti.error) console.error('Tabela "tetos_investimento":', ti.error.message);
+      if (ri.error) console.error('Tabela "investimento_repasses":', ri.error.message);
       setMedicos(m.data || []); // se a tabela ainda não existir ou o RLS bloquear, m.error fica setado e usamos []
       setLancamentos(l.data || []);
       setExecucoes(ex.data || []);
       setMedicoesItensHist(mi.data || []);
       setTetosInvestimento(ti.data || []);
+      setRepassesInvestimento(ri.data || []);
       setSyncStatus('ok');
     } catch(e) {
       setSyncStatus('err');
@@ -3556,13 +3561,32 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     await loadAll();
   };
 
+  const salvarRepasse = async (contratoId, data, valor) => {
+    if (!data || !valor) { alert('Preencha data e valor.'); return; }
+    const { error } = await sb().from('investimento_repasses').insert({
+      id: uid('R'), contrato_id: contratoId, data, valor: parseFloat(valor)
+    });
+    if (error) { alert('Erro ao lançar repasse: ' + error.message + ' — confirma que a tabela investimento_repasses existe (SQL enviado no chat).'); return; }
+    await loadAll();
+  };
+
+  const excluirRepasse = async (id) => {
+    if (!confirm('Excluir este repasse?')) return;
+    await sb().from('investimento_repasses').delete().eq('id', id);
+    await loadAll();
+  };
+
   const renderInvestimentos = () => {
     const contratosInvestimento = contratos.filter(c => c.tipo === 'Investimento' && c.inicio && new Date(c.inicio+'T00:00:00').getFullYear() === anoInvestimento);
     const tetoAtual = tetosInvestimento.find(t => t.ano === anoInvestimento)?.valor ?? 0;
     const totalEmpenhado = contratosInvestimento.reduce((acc,c) => acc + (c.vlr_total||0), 0);
-    const saldo = tetoAtual - totalEmpenhado;
+    const saldoTeto = tetoAtual - totalEmpenhado;
     const pctUsado = tetoAtual>0 ? Math.min(Math.round((totalEmpenhado/tetoAtual)*100),100) : 0;
     const anosDisponiveis = [...new Set([anoInvestimento, ...tetosInvestimento.map(t=>t.ano), ...contratos.filter(c=>c.tipo==='Investimento'&&c.inicio).map(c=>new Date(c.inicio+'T00:00:00').getFullYear())])].sort((a,b)=>b-a);
+
+    const repassesPorContrato = cid => repassesInvestimento.filter(r => r.contrato_id === cid).sort((a,b)=>a.data.localeCompare(b.data));
+    const totalRecebidoGeral = contratosInvestimento.reduce((acc,c) => acc + repassesPorContrato(c.id).reduce((a,r)=>a+(r.valor||0),0), 0);
+    const saldoAReceber = totalEmpenhado - totalRecebidoGeral;
 
     return (
       <div className="panel">
@@ -3587,44 +3611,98 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             </div>
           </div>
 
-          <div className="kpis-row" style={{display:'flex',gap:12,marginBottom:16,flexWrap:'wrap'}}>
+          <div className="s-label" style={{marginBottom:6}}>Teto anual x contratado</div>
+          <div className="kpis-row" style={{display:'flex',gap:12,marginBottom:10,flexWrap:'wrap'}}>
             <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
               <div style={{fontSize:20,fontWeight:700,color:'var(--teal-d)'}}>{brl(totalEmpenhado)}</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>VALOR EMPENHADO</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>VALOR EMPENHADO (CONTRATADO)</div>
             </div></div>
             <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
               <div style={{fontSize:20,fontWeight:700}}>{brl(tetoAtual)}</div>
               <div style={{fontSize:11,color:'var(--text3)'}}>TETO ANUAL</div>
             </div></div>
             <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
-              <div style={{fontSize:20,fontWeight:700,color:saldo<0?'#b91c1c':'#16a34a'}}>{brl(saldo)}</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>{saldo<0?'ESTOURADO EM':'SALDO A MAIOR'}</div>
+              <div style={{fontSize:20,fontWeight:700,color:saldoTeto<0?'#b91c1c':'#16a34a'}}>{brl(saldoTeto)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>{saldoTeto<0?'ESTOURADO EM':'SALDO A MAIOR (P/ NOVOS CONTRATOS)'}</div>
             </div></div>
           </div>
-
           <div style={{marginBottom:16}}>
             <ProgBar p={pctUsado} />
             <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{pctUsado}% do teto anual já empenhado em {anoInvestimento}</div>
           </div>
 
+          <div className="s-label" style={{marginBottom:6}}>Repasse recebido x pendente (o município pode atrasar o repasse à empresa)</div>
+          <div className="kpis-row" style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+            <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
+              <div style={{fontSize:20,fontWeight:700,color:'#16a34a'}}>{brl(totalRecebidoGeral)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>TOTAL RECEBIDO/REPASSADO</div>
+            </div></div>
+            <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
+              <div style={{fontSize:20,fontWeight:700,color:saldoAReceber>0?'#b45309':'#16a34a'}}>{brl(saldoAReceber)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>SALDO REMANESCENTE A RECEBER</div>
+            </div></div>
+          </div>
+
           <div className="tbl-wrap">
             <table>
-              <thead><tr><th>Contrato</th><th>Empresa</th><th>Data da entrega/medição</th><th>Valor total</th><th>% do teto</th></tr></thead>
-              <tbody>{contratosInvestimento.length ? contratosInvestimento.map(c => (
-                <tr key={c.id}>
-                  <td className="mono"><strong>{c.numero}</strong></td>
-                  <td>{c.empresa}</td>
-                  <td>{fmtD(c.inicio)}</td>
-                  <td style={{fontWeight:600}}>{brl(c.vlr_total)}</td>
-                  <td>{tetoAtual>0?Math.round((c.vlr_total/tetoAtual)*100):0}%</td>
-                </tr>
-              )) : (
-                <tr><td colSpan={5} style={{textAlign:'center',padding:20,color:'var(--text3)'}}>Nenhum contrato de investimento cadastrado em {anoInvestimento} ainda.</td></tr>
+              <thead><tr><th>Contrato</th><th>Empresa</th><th>Empenhado</th><th>Recebido</th><th>Saldo a receber</th><th></th></tr></thead>
+              <tbody>{contratosInvestimento.length ? contratosInvestimento.map(c => {
+                const reps = repassesPorContrato(c.id);
+                const recebido = reps.reduce((a,r)=>a+(r.valor||0),0);
+                const saldoContrato = (c.vlr_total||0) - recebido;
+                const aberto = contratoRepasseAberto === c.id;
+                return (
+                  <React.Fragment key={c.id}>
+                    <tr>
+                      <td className="mono"><strong>{c.numero}</strong></td>
+                      <td>{c.empresa}</td>
+                      <td style={{fontWeight:600}}>{brl(c.vlr_total)}</td>
+                      <td style={{fontWeight:600,color:'#16a34a'}}>{brl(recebido)}</td>
+                      <td style={{fontWeight:600,color:saldoContrato>0?'#b45309':'#16a34a'}}>{brl(saldoContrato)}</td>
+                      <td><ActBtn icon={aberto?'fa-chevron-up':'fa-chevron-down'} onClick={()=>setContratoRepasseAberto(aberto?null:c.id)} title="Ver/lançar repasses" /></td>
+                    </tr>
+                    {aberto && (
+                      <tr><td colSpan={6} style={{padding:0,background:'#FAFBFD'}}>
+                        <div style={{padding:'12px 16px'}}>
+                          {reps.length>0 && (
+                            <table style={{marginBottom:10}}>
+                              <thead><tr><th>Data</th><th>Valor</th><th></th></tr></thead>
+                              <tbody>{reps.map(r => (
+                                <tr key={r.id}>
+                                  <td className="num">{fmtD(r.data)}</td>
+                                  <td className="val" style={{fontWeight:600}}>{brl(r.valor)}</td>
+                                  <td><ActBtn icon="fa-trash" danger onClick={()=>excluirRepasse(r.id)} title="Excluir repasse" /></td>
+                                </tr>
+                              ))}</tbody>
+                            </table>
+                          )}
+                          <div style={{display:'flex',gap:8,alignItems:'end',flexWrap:'wrap'}}>
+                            <div>
+                              <label style={{fontSize:11,display:'block',marginBottom:3}}>Data do repasse</label>
+                              <input type="date" id={`repasse-data-${c.id}`} />
+                            </div>
+                            <div>
+                              <label style={{fontSize:11,display:'block',marginBottom:3}}>Valor recebido</label>
+                              <input type="number" step="0.01" placeholder="0,00" id={`repasse-valor-${c.id}`} style={{width:140}} />
+                            </div>
+                            <button className="btn btn-primary btn-sm" onClick={() => {
+                              const data = document.getElementById(`repasse-data-${c.id}`).value;
+                              const valor = document.getElementById(`repasse-valor-${c.id}`).value;
+                              salvarRepasse(c.id, data, valor);
+                            }}><i className="fa-solid fa-plus"/> Lançar repasse</button>
+                          </div>
+                        </div>
+                      </td></tr>
+                    )}
+                  </React.Fragment>
+                );
+              }) : (
+                <tr><td colSpan={6} style={{textAlign:'center',padding:20,color:'var(--text3)'}}>Nenhum contrato de investimento cadastrado em {anoInvestimento} ainda.</td></tr>
               )}</tbody>
             </table>
           </div>
           <div style={{padding:'8px 4px',fontSize:11.5,color:'var(--text3)'}}>
-            <i className="fa-solid fa-circle-info"/> Contratos de investimento são cadastrados como qualquer outro contrato (Contratos → Novo contrato → Tipo = Investimento), usando a data de início como data da entrega/medição. O teto anual muda conforme o reajuste do INPC no Contrato de Gestão — atualize aqui a cada novo ano.
+            <i className="fa-solid fa-circle-info"/> Contratos de investimento são cadastrados como qualquer outro contrato (Contratos → Novo contrato → Tipo = Investimento). Os repasses (data + valor) são lançados avulsos aqui, um por um — não precisam ser mensais nem seguir ordem, já que o repasse do município pra empresa pode atrasar. O teto anual muda conforme o reajuste do INPC no Contrato de Gestão — atualize aqui a cada novo ano.
           </div>
         </div>
       </div>
