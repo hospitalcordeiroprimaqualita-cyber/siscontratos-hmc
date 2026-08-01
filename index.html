@@ -501,6 +501,7 @@ function App() {
   const [tetosInvestimento, setTetosInvestimento] = useState([]);
   const [anoInvestimento, setAnoInvestimento] = useState(new Date().getFullYear());
   const [repassesInvestimento, setRepassesInvestimento] = useState([]);
+  const [pagamentosInvestimento, setPagamentosInvestimento] = useState([]);
   const [contratoRepasseAberto, setContratoRepasseAberto] = useState(null);
   const [mesExpandido, setMesExpandido] = useState(null);
   const [confirmarExclusaoChave, setConfirmarExclusaoChave] = useState(null);
@@ -550,7 +551,7 @@ function App() {
   const loadAll = async () => {
     setSyncStatus('loading');
     try {
-      const [c, i, a, m, l, ex, mi, ti, ri] = await Promise.all([
+      const [c, i, a, m, l, ex, mi, ti, ri, pi] = await Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         sb().from('itens').select('*').order('created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
@@ -559,7 +560,8 @@ function App() {
         sb().from('execucoes').select('*').order('mes_referencia'),
         fetchAllRows('medicoes_itens', 'mes_referencia'),
         sb().from('tetos_investimento').select('*').order('ano'),
-        sb().from('investimento_repasses').select('*').order('data')
+        sb().from('investimento_repasses').select('*').order('data'),
+        sb().from('investimento_pagamentos').select('*').order('data')
       ]);
       if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
       setContratos(c.data || []);
@@ -569,12 +571,14 @@ function App() {
       if (l.error) console.error('Tabela "medicoes_lancamentos":', l.error.message);
       if (ti.error) console.error('Tabela "tetos_investimento":', ti.error.message);
       if (ri.error) console.error('Tabela "investimento_repasses":', ri.error.message);
+      if (pi.error) console.error('Tabela "investimento_pagamentos":', pi.error.message);
       setMedicos(m.data || []); // se a tabela ainda não existir ou o RLS bloquear, m.error fica setado e usamos []
       setLancamentos(l.data || []);
       setExecucoes(ex.data || []);
       setMedicoesItensHist(mi.data || []);
       setTetosInvestimento(ti.data || []);
       setRepassesInvestimento(ri.data || []);
+      setPagamentosInvestimento(pi.data || []);
       setSyncStatus('ok');
     } catch(e) {
       setSyncStatus('err');
@@ -2125,6 +2129,7 @@ function App() {
     if(['019/2024'].includes(numero)) return 'exames_lote';
     if(['008/2024','008/2024 2º TA'].includes(numero)) return 'esterilizacao';
     if(['002/2024','002/2024 1º TA'].includes(numero)) return 'medicos';
+    if(['016/2024','016/2024 1º TA'].includes(numero)) return 'medicos';
     return 'fixo'; // A4PM, Labtec, LS Toledo e demais
   };
 
@@ -3592,6 +3597,21 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     await loadAll();
   };
 
+  const salvarPagamento = async (contratoId, data, valor) => {
+    if (!data || !valor) { alert('Preencha data e valor.'); return; }
+    const { error } = await sb().from('investimento_pagamentos').insert({
+      id: uid('P'), contrato_id: contratoId, data, valor: parseFloat(valor)
+    });
+    if (error) { alert('Erro ao lançar pagamento: ' + error.message + ' — confirma que a tabela investimento_pagamentos existe (SQL enviado no chat).'); return; }
+    await loadAll();
+  };
+
+  const excluirPagamento = async (id) => {
+    if (!confirm('Excluir este pagamento?')) return;
+    await sb().from('investimento_pagamentos').delete().eq('id', id);
+    await loadAll();
+  };
+
   const renderInvestimentos = () => {
     const contratosInvestimento = contratos.filter(c => c.tipo === 'Investimento' && c.inicio && new Date(c.inicio+'T00:00:00').getFullYear() === anoInvestimento);
     const tetoAtual = tetosInvestimento.find(t => t.ano === anoInvestimento)?.valor ?? 0;
@@ -3601,8 +3621,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const anosDisponiveis = [...new Set([anoInvestimento, ...tetosInvestimento.map(t=>t.ano), ...contratos.filter(c=>c.tipo==='Investimento'&&c.inicio).map(c=>new Date(c.inicio+'T00:00:00').getFullYear())])].sort((a,b)=>b-a);
 
     const repassesPorContrato = cid => repassesInvestimento.filter(r => r.contrato_id === cid).sort((a,b)=>a.data.localeCompare(b.data));
+    const pagamentosPorContrato = cid => pagamentosInvestimento.filter(p => p.contrato_id === cid).sort((a,b)=>a.data.localeCompare(b.data));
     const totalRecebidoGeral = contratosInvestimento.reduce((acc,c) => acc + repassesPorContrato(c.id).reduce((a,r)=>a+(r.valor||0),0), 0);
-    const saldoAReceber = totalEmpenhado - totalRecebidoGeral;
+    const totalPagoGeral = contratosInvestimento.reduce((acc,c) => acc + pagamentosPorContrato(c.id).reduce((a,p)=>a+(p.valor||0),0), 0);
+    const saldoCaixaGeral = totalRecebidoGeral - totalPagoGeral;
 
     return (
       <div className="panel">
@@ -3647,25 +3669,31 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{pctUsado}% do teto anual já empenhado em {anoInvestimento}</div>
           </div>
 
-          <div className="s-label" style={{marginBottom:6}}>Repasse recebido x pendente (o município pode atrasar o repasse à empresa)</div>
+          <div className="s-label" style={{marginBottom:6}}>Movimento de caixa — entrada (repasse do município) x saída (pagamento ao fornecedor)</div>
           <div className="kpis-row" style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
             <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
               <div style={{fontSize:20,fontWeight:700,color:'#16a34a'}}>{brl(totalRecebidoGeral)}</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>TOTAL RECEBIDO/REPASSADO</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>↓ ENTRADA — RECEBIDO DO MUNICÍPIO</div>
             </div></div>
             <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
-              <div style={{fontSize:20,fontWeight:700,color:saldoAReceber>0?'#b45309':'#16a34a'}}>{brl(saldoAReceber)}</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>SALDO REMANESCENTE A RECEBER</div>
+              <div style={{fontSize:20,fontWeight:700,color:'#b45309'}}>{brl(totalPagoGeral)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>↑ SAÍDA — PAGO AO FORNECEDOR</div>
+            </div></div>
+            <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
+              <div style={{fontSize:20,fontWeight:700,color:saldoCaixaGeral<0?'#b91c1c':'var(--teal-d)'}}>{brl(saldoCaixaGeral)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>SALDO EM CAIXA (ENTRADA − SAÍDA)</div>
             </div></div>
           </div>
 
           <div className="tbl-wrap">
             <table>
-              <thead><tr><th>Contrato</th><th>Empresa</th><th>Empenhado</th><th>Recebido</th><th>Saldo a receber</th><th></th></tr></thead>
+              <thead><tr><th>Contrato</th><th>Empresa</th><th>Empenhado</th><th>Entrada</th><th>Saída</th><th>Saldo em caixa</th><th></th></tr></thead>
               <tbody>{contratosInvestimento.length ? contratosInvestimento.map(c => {
                 const reps = repassesPorContrato(c.id);
+                const pags = pagamentosPorContrato(c.id);
                 const recebido = reps.reduce((a,r)=>a+(r.valor||0),0);
-                const saldoContrato = (c.vlr_total||0) - recebido;
+                const pago = pags.reduce((a,p)=>a+(p.valor||0),0);
+                const saldoCaixaContrato = recebido - pago;
                 const aberto = contratoRepasseAberto === c.id;
                 return (
                   <React.Fragment key={c.id}>
@@ -3674,38 +3702,72 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                       <td>{c.empresa}</td>
                       <td style={{fontWeight:600}}>{brl(c.vlr_total)}</td>
                       <td style={{fontWeight:600,color:'#16a34a'}}>{brl(recebido)}</td>
-                      <td style={{fontWeight:600,color:saldoContrato>0?'#b45309':'#16a34a'}}>{brl(saldoContrato)}</td>
-                      <td><ActBtn icon={aberto?'fa-chevron-up':'fa-chevron-down'} onClick={()=>setContratoRepasseAberto(aberto?null:c.id)} title="Ver/lançar repasses" /></td>
+                      <td style={{fontWeight:600,color:'#b45309'}}>{brl(pago)}</td>
+                      <td style={{fontWeight:600,color:saldoCaixaContrato<0?'#b91c1c':'var(--teal-d)'}}>{brl(saldoCaixaContrato)}</td>
+                      <td><ActBtn icon={aberto?'fa-chevron-up':'fa-chevron-down'} onClick={()=>setContratoRepasseAberto(aberto?null:c.id)} title="Ver/lançar entrada e saída" /></td>
                     </tr>
                     {aberto && (
-                      <tr><td colSpan={6} style={{padding:0,background:'#FAFBFD'}}>
-                        <div style={{padding:'12px 16px'}}>
-                          {reps.length>0 && (
-                            <table style={{marginBottom:10}}>
-                              <thead><tr><th>Data</th><th>Valor</th><th></th></tr></thead>
-                              <tbody>{reps.map(r => (
-                                <tr key={r.id}>
-                                  <td className="num">{fmtD(r.data)}</td>
-                                  <td className="val" style={{fontWeight:600}}>{brl(r.valor)}</td>
-                                  <td><ActBtn icon="fa-trash" danger onClick={()=>excluirRepasse(r.id)} title="Excluir repasse" /></td>
-                                </tr>
-                              ))}</tbody>
-                            </table>
-                          )}
-                          <div style={{display:'flex',gap:8,alignItems:'end',flexWrap:'wrap'}}>
-                            <div>
-                              <label style={{fontSize:11,display:'block',marginBottom:3}}>Data do repasse</label>
-                              <input type="date" id={`repasse-data-${c.id}`} />
+                      <tr><td colSpan={7} style={{padding:0,background:'#FAFBFD'}}>
+                        <div style={{padding:'12px 16px',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:20}}>
+                          <div>
+                            <div style={{fontSize:11,fontWeight:700,color:'#166534',marginBottom:6}}>↓ ENTRADA — Repasse do município</div>
+                            {reps.length>0 && (
+                              <table style={{marginBottom:10}}>
+                                <thead><tr><th>Data</th><th>Valor</th><th></th></tr></thead>
+                                <tbody>{reps.map(r => (
+                                  <tr key={r.id}>
+                                    <td className="num">{fmtD(r.data)}</td>
+                                    <td className="val" style={{fontWeight:600}}>{brl(r.valor)}</td>
+                                    <td><ActBtn icon="fa-trash" danger onClick={()=>excluirRepasse(r.id)} title="Excluir repasse" /></td>
+                                  </tr>
+                                ))}</tbody>
+                              </table>
+                            )}
+                            <div style={{display:'flex',gap:8,alignItems:'end',flexWrap:'wrap'}}>
+                              <div>
+                                <label style={{fontSize:11,display:'block',marginBottom:3}}>Data</label>
+                                <input type="date" id={`repasse-data-${c.id}`} />
+                              </div>
+                              <div>
+                                <label style={{fontSize:11,display:'block',marginBottom:3}}>Valor recebido</label>
+                                <input type="number" step="0.01" placeholder="0,00" id={`repasse-valor-${c.id}`} style={{width:120}} />
+                              </div>
+                              <button className="btn btn-primary btn-sm" onClick={() => {
+                                const data = document.getElementById(`repasse-data-${c.id}`).value;
+                                const valor = document.getElementById(`repasse-valor-${c.id}`).value;
+                                salvarRepasse(c.id, data, valor);
+                              }}><i className="fa-solid fa-plus"/> Lançar entrada</button>
                             </div>
-                            <div>
-                              <label style={{fontSize:11,display:'block',marginBottom:3}}>Valor recebido</label>
-                              <input type="number" step="0.01" placeholder="0,00" id={`repasse-valor-${c.id}`} style={{width:140}} />
+                          </div>
+                          <div>
+                            <div style={{fontSize:11,fontWeight:700,color:'#92400e',marginBottom:6}}>↑ SAÍDA — Pagamento ao fornecedor</div>
+                            {pags.length>0 && (
+                              <table style={{marginBottom:10}}>
+                                <thead><tr><th>Data</th><th>Valor</th><th></th></tr></thead>
+                                <tbody>{pags.map(p => (
+                                  <tr key={p.id}>
+                                    <td className="num">{fmtD(p.data)}</td>
+                                    <td className="val" style={{fontWeight:600}}>{brl(p.valor)}</td>
+                                    <td><ActBtn icon="fa-trash" danger onClick={()=>excluirPagamento(p.id)} title="Excluir pagamento" /></td>
+                                  </tr>
+                                ))}</tbody>
+                              </table>
+                            )}
+                            <div style={{display:'flex',gap:8,alignItems:'end',flexWrap:'wrap'}}>
+                              <div>
+                                <label style={{fontSize:11,display:'block',marginBottom:3}}>Data</label>
+                                <input type="date" id={`pagamento-data-${c.id}`} />
+                              </div>
+                              <div>
+                                <label style={{fontSize:11,display:'block',marginBottom:3}}>Valor pago</label>
+                                <input type="number" step="0.01" placeholder="0,00" id={`pagamento-valor-${c.id}`} style={{width:120}} />
+                              </div>
+                              <button className="btn btn-secondary btn-sm" onClick={() => {
+                                const data = document.getElementById(`pagamento-data-${c.id}`).value;
+                                const valor = document.getElementById(`pagamento-valor-${c.id}`).value;
+                                salvarPagamento(c.id, data, valor);
+                              }}><i className="fa-solid fa-plus"/> Lançar saída</button>
                             </div>
-                            <button className="btn btn-primary btn-sm" onClick={() => {
-                              const data = document.getElementById(`repasse-data-${c.id}`).value;
-                              const valor = document.getElementById(`repasse-valor-${c.id}`).value;
-                              salvarRepasse(c.id, data, valor);
-                            }}><i className="fa-solid fa-plus"/> Lançar repasse</button>
                           </div>
                         </div>
                       </td></tr>
@@ -3713,12 +3775,12 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                   </React.Fragment>
                 );
               }) : (
-                <tr><td colSpan={6} style={{textAlign:'center',padding:20,color:'var(--text3)'}}>Nenhum contrato de investimento cadastrado em {anoInvestimento} ainda.</td></tr>
+                <tr><td colSpan={7} style={{textAlign:'center',padding:20,color:'var(--text3)'}}>Nenhum contrato de investimento cadastrado em {anoInvestimento} ainda.</td></tr>
               )}</tbody>
             </table>
           </div>
           <div style={{padding:'8px 4px',fontSize:11.5,color:'var(--text3)'}}>
-            <i className="fa-solid fa-circle-info"/> Contratos de investimento são cadastrados como qualquer outro contrato (Contratos → Novo contrato → Tipo = Investimento). Os repasses (data + valor) são lançados avulsos aqui, um por um — não precisam ser mensais nem seguir ordem, já que o repasse do município pra empresa pode atrasar. O teto anual muda conforme o reajuste do INPC no Contrato de Gestão — atualize aqui a cada novo ano.
+            <i className="fa-solid fa-circle-info"/> Contratos de investimento são cadastrados como qualquer outro contrato (Contratos → Novo contrato → Tipo = Investimento). Entrada (repasse do município) e saída (pagamento ao fornecedor) são lançadas avulsas, cada uma com data e valor livres — não precisam ser mensais nem seguir ordem, já que os dois fluxos podem atrasar de forma independente. O teto anual muda conforme o reajuste do INPC no Contrato de Gestão — atualize aqui a cada novo ano.
           </div>
         </div>
       </div>
