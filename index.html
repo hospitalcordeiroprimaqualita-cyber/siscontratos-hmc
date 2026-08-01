@@ -3626,6 +3626,16 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const totalPagoGeral = contratosInvestimento.reduce((acc,c) => acc + pagamentosPorContrato(c.id).reduce((a,p)=>a+(p.valor||0),0), 0);
     const saldoCaixaGeral = totalRecebidoGeral - totalPagoGeral;
 
+    // Acumulado de entrada por ano — visão histórica, independente do ano
+    // selecionado no filtro acima (mostra todos os anos com repasse lançado).
+    const anosComRepasse = [...new Set(repassesInvestimento.map(r => r.data.slice(0,4)))].sort();
+    let corrido = 0;
+    const acumuladoPorAno = anosComRepasse.map(ano => {
+      const totalAno = repassesInvestimento.filter(r => r.data.slice(0,4) === ano).reduce((a,r)=>a+(r.valor||0),0);
+      corrido += totalAno;
+      return { ano, totalAno, acumulado: corrido };
+    });
+
     return (
       <div className="panel">
         <div className="panel-head">
@@ -3684,6 +3694,24 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
               <div style={{fontSize:11,color:'var(--text3)'}}>SALDO EM CAIXA (ENTRADA − SAÍDA)</div>
             </div></div>
           </div>
+
+          {acumuladoPorAno.length>0 && (
+            <div style={{marginBottom:20}}>
+              <div className="s-label" style={{marginBottom:6}}>Acumulado de entrada por ano (todas as entradas já lançadas, qualquer ano)</div>
+              <div className="tbl-wrap">
+                <table>
+                  <thead><tr><th>Ano</th><th>Total recebido</th><th>Acumulado</th></tr></thead>
+                  <tbody>{acumuladoPorAno.map(a => (
+                    <tr key={a.ano}>
+                      <td className="mono"><strong>{a.ano}</strong></td>
+                      <td style={{fontWeight:600,color:'#16a34a'}}>{brl(a.totalAno)}</td>
+                      <td style={{fontWeight:600}}>{brl(a.acumulado)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="tbl-wrap">
             <table>
