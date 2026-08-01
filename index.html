@@ -163,6 +163,24 @@ const DIAS_SEMANA_LABEL = { SEGUNDA:'Segunda', TERCA:'Terca', QUARTA:'Quarta', Q
 // ─── RUBRICAS ORÇAMENTÁRIAS (Proposta Financeira aprovada) ─────────────────
 // Código, descrição, teto mensal e teto anual aprovados. Serve de referência fixa
 // para a análise de Consumo por Rubrica e para o seletor de rubrica nos itens.
+// ═══════════════════════════════════════════════════════════════════════
+// CONFIGURAÇÃO DA UNIDADE — único bloco que precisa mudar pra replicar este
+// sistema em outra unidade/Contrato de Gestão da Prima Qualitá Saúde.
+// Edite os valores abaixo, troque a logo (LOGO_B64/LOGO_PDF_B64, mais abaixo
+// no arquivo), ajuste a lista RUBRICAS_ORCAMENTARIAS logo a seguir com a
+// Proposta Financeira aprovada da nova unidade, e conecte a um novo projeto
+// Supabase (variável SUPABASE_URL/SUPABASE_KEY, mais abaixo). Nada além
+// disso deveria precisar de alteração.
+// ═══════════════════════════════════════════════════════════════════════
+const UNIDADE_CONFIG = {
+  nomeUnidade: 'Hospital Municipal de Cordeiro',
+  ossNome: 'OSS Prima Qualitá Saúde',
+  contratoGestao: '196/2024',
+  fiscalPadrao: 'Mírian Vicente Dias',
+  fiscalCargo: 'Diretora Administrativa',
+  gestorPadrao: 'Carlos Henrique Buzzi da Silva',
+};
+
 const RUBRICAS_ORCAMENTARIAS = [
   { cod:'1.1', desc:'Salários (CLT)', mensal:230730.99, anual:2768771.88 },
   { cod:'1.2', desc:'Encargos mensais (CLT)', mensal:82601.70, anual:991220.40 },
@@ -575,7 +593,7 @@ function App() {
 
   const openModal = (tipo, id) => {
     if (tipo === 'novo') {
-      setForm({ fiscal:'Mírian Vicente Dias', gestor:'Carlos Henrique Buzzi da Silva', status:'vigente', tipo:'Serviço continuado', medicao:'Por produção' });
+      setForm({ fiscal:UNIDADE_CONFIG.fiscalPadrao, gestor:UNIDADE_CONFIG.gestorPadrao, status:'vigente', tipo:'Serviço continuado', medicao:'Por produção' });
     } else if (tipo === 'editar' || tipo === 'ver') {
       const c = contratos.find(x => x.id === id);
       setForm({ ...c, inicio: c.inicio?.substring(0,10), fim: c.fim?.substring(0,10) });
@@ -602,6 +620,7 @@ function App() {
     setSaving(true);
     const data = {
       id: modal.id || uid('C'), numero: fv('numero'), empresa: fv('empresa'), objeto: fv('objeto'),
+      cnpj: fv('cnpj'), representante: fv('representante'),
       segmento: fv('segmento'), setor: fv('setor'), fiscal: fv('fiscal'), gestor: fv('gestor'),
       inicio: toISO(fv('inicio')) || null, fim: toISO(fv('fim')) || null,
       vlr_mensal: parseFloat(fv('vlr_mensal')) || 0,
@@ -815,7 +834,7 @@ function App() {
     const totalItensMonitorados = itens.length;
 
     const marcos = [
-      { titulo:'Da planilha ao sistema', texto:'O controle de contratos, medições e saldo do Contrato de Gestão nº 196/2024 saiu de planilhas soltas e passou a ser um sistema único, com banco de dados real, histórico auditável e cálculo automático — usado no dia a dia pela Direção Administrativa.',
+      { titulo:'Da planilha ao sistema', texto:`O controle de contratos, medições e saldo do Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao} saiu de planilhas soltas e passou a ser um sistema único, com banco de dados real, histórico auditável e cálculo automático — usado no dia a dia pela Direção Administrativa.`,
         antes:'Planilhas soltas, sem histórico centralizado', depois:'Sistema único, com banco de dados e histórico auditável' },
       { titulo:'Bug sistêmico de saldo identificado e corrigido', texto:'Uma auditoria detectou que 186 itens, em 9 contratos de fornecimento, tinham o saldo contratual calculado errado — o campo de quantidade mensal guardava, na verdade, o total do período inteiro. O sistema agora distingue os dois e recalcula o saldo real de cada item.',
         antes:'186 itens com saldo calculado errado em 9 contratos', depois:'100% dos itens corrigidos, com trava permanente contra o mesmo erro', sustentacao:'Novo campo de dado + validação automática — o erro não pode mais se repetir silenciosamente.' },
@@ -840,9 +859,9 @@ function App() {
       <div>
         <div style={{background:'linear-gradient(135deg, var(--teal-d), var(--teal))', borderRadius:14, padding:'40px 36px', color:'#fff', marginBottom:24, position:'relative', overflow:'hidden'}}>
           <div style={{position:'relative', zIndex:1}}>
-            <div style={{fontSize:12, fontWeight:700, letterSpacing:'.08em', opacity:.85, marginBottom:8}}>HOSPITAL MUNICIPAL DE CORDEIRO · OSS PRIMA QUALITÁ SAÚDE</div>
+            <div style={{fontSize:12, fontWeight:700, letterSpacing:'.08em', opacity:.85, marginBottom:8}}>{UNIDADE_CONFIG.nomeUnidade.toUpperCase()} · {UNIDADE_CONFIG.ossNome.toUpperCase()}</div>
             <h1 style={{fontSize:30, fontWeight:800, marginBottom:10, lineHeight:1.15}}>SisContratos HMC</h1>
-            <div style={{fontSize:15, fontWeight:500, opacity:.95, maxWidth:640, lineHeight:1.5}}>Da planilha ao sistema: gestão de contratos, medições e saldo do Contrato de Gestão nº 196/2024, construído do zero para uso real no dia a dia da Direção Administrativa.</div>
+            <div style={{fontSize:15, fontWeight:500, opacity:.95, maxWidth:640, lineHeight:1.5}}>Da planilha ao sistema: gestão de contratos, medições e saldo do Contrato de Gestão nº {UNIDADE_CONFIG.contratoGestao}, construído do zero para uso real no dia a dia da Direção Administrativa.</div>
           </div>
         </div>
 
@@ -853,7 +872,7 @@ function App() {
             </div>
             <div>
               <div style={{fontWeight:700, fontSize:13, marginBottom:4}}>A origem do projeto</div>
-              <div style={{fontSize:12.5, color:'var(--text2)', lineHeight:1.6}}>A ideia nasceu de uma necessidade real trazida por <strong>Camila Valadares Heringer Quindeler</strong>, Assistente Administrativa do Hospital Municipal de Cordeiro: ter um controle que ajudasse na gestão dos quantitativos e saldos dos contratos, além de facilitar a rotina diária com pedidos de compra e outros controles. A partir dessa necessidade, <strong>Mírian Vicente Dias</strong>, Diretora Administrativa, projetou e construiu o SisContratos HMC, reunindo em um só lugar tudo que fosse possível controlar no dia a dia da gestão contratual.</div>
+              <div style={{fontSize:12.5, color:'var(--text2)', lineHeight:1.6}}>A ideia nasceu de uma necessidade real trazida por <strong>Camila Valadares Heringer Quindeler</strong>, Assistente Administrativa do {UNIDADE_CONFIG.nomeUnidade}: ter um controle que ajudasse na gestão dos quantitativos e saldos dos contratos, além de facilitar a rotina diária com pedidos de compra e outros controles. A partir dessa necessidade, <strong>Mírian Vicente Dias</strong>, Diretora Administrativa, projetou e construiu o SisContratos HMC, reunindo em um só lugar tudo que fosse possível controlar no dia a dia da gestão contratual.</div>
             </div>
           </div>
         </div>
@@ -922,7 +941,7 @@ function App() {
         </div>
 
         <div style={{textAlign:'center', fontSize:11.5, color:'var(--text3)', marginTop:20, padding:'10px 0'}}>
-          Ideia original de Camila Valadares Heringer Quindeler — Assistente Administrativa · Concebido e construído por Mírian Vicente Dias — Diretora Administrativa · Hospital Municipal de Cordeiro
+          Ideia original de Camila Valadares Heringer Quindeler — Assistente Administrativa · Concebido e construído por Mírian Vicente Dias — Diretora Administrativa · {UNIDADE_CONFIG.nomeUnidade}
         </div>
       </div>
     );
@@ -1530,7 +1549,7 @@ function App() {
         <strong>Contrato:</strong> ${contrato.numero} &nbsp;&nbsp; <strong>Data:</strong> ${hoje.toLocaleDateString('pt-BR')}<br/>
         <strong>Empresa:</strong> ${contrato.empresa}<br/>
         <strong>Vigência:</strong> ${contrato.inicio?new Date(contrato.inicio+'T00:00:00').toLocaleDateString('pt-BR'):'—'} a ${contrato.fim?new Date(contrato.fim+'T00:00:00').toLocaleDateString('pt-BR'):'—'}${mesesTotContrato?` (${mesesTotContrato} meses — ${mesesDecContrato} decorridos, ${mesesRestContrato} restantes)`:''}<br/>
-        <strong>Fiscal do contrato:</strong> ${contrato.fiscal || 'Mírian Vicente Dias'} &nbsp;&nbsp; <strong>Gestor do contrato:</strong> ${contrato.gestor || 'Carlos Henrique Buzzi da Silva'}
+        <strong>Fiscal do contrato:</strong> ${contrato.fiscal || UNIDADE_CONFIG.fiscalPadrao} &nbsp;&nbsp; <strong>Gestor do contrato:</strong> ${contrato.gestor || UNIDADE_CONFIG.gestorPadrao}
       </div>
       <div class="obs">
         Os itens abaixo apresentam saldo remanescente insuficiente para cobrir a demanda projetada até o fim da vigência. Para equilíbrio, propõe-se a supressão parcial dos itens com excedente e a suplementação correspondente dos itens em risco, <strong>sem alteração do valor global do contrato</strong>.
@@ -1554,11 +1573,11 @@ function App() {
       ` : ''}
       <br/><br/>
       <div style="display:flex;gap:60px;justify-content:center;margin-top:40px">
-        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.fiscal || 'Mírian Vicente Dias'}<br/>Fiscal do Contrato</div>
-        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.gestor || 'Carlos Henrique Buzzi da Silva'}<br/>Gestor do Contrato</div>
+        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.fiscal || UNIDADE_CONFIG.fiscalPadrao}<br/>Fiscal do Contrato</div>
+        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.gestor || UNIDADE_CONFIG.gestorPadrao}<br/>Gestor do Contrato</div>
       </div>
       <div class="rodape-sistema">
-        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2024<br/>
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · ${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
         Gerado em ${hoje.toLocaleDateString('pt-BR')} às ${hoje.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
       </div>
     </body></html>`;
@@ -1604,7 +1623,7 @@ function App() {
       <div class="info">
         <strong>Contrato:</strong> ${contrato.numero} &nbsp;&nbsp; <strong>Data:</strong> ${hoje.toLocaleDateString('pt-BR')}<br/>
         <strong>Empresa:</strong> ${contrato.empresa}<br/>
-        <strong>Fiscal do contrato:</strong> ${contrato.fiscal || 'Mírian Vicente Dias'} &nbsp;&nbsp; <strong>Gestor do contrato:</strong> ${contrato.gestor || 'Carlos Henrique Buzzi da Silva'}
+        <strong>Fiscal do contrato:</strong> ${contrato.fiscal || UNIDADE_CONFIG.fiscalPadrao} &nbsp;&nbsp; <strong>Gestor do contrato:</strong> ${contrato.gestor || UNIDADE_CONFIG.gestorPadrao}
       </div>
       <div class="obs">
         Os itens abaixo apresentam projeção de esgotamento do saldo contratado antes do fim da vigência, sem excedente suficiente no mesmo lote para cobrir a necessidade via remanejamento interno. Solicita-se a formalização de aditivo pelo(s) valor(es) indicado(s), respeitado o limite legal de acréscimo de até 25% do valor contratado (art. 125, Lei 14.133/2021).
@@ -1614,11 +1633,11 @@ function App() {
       <div class="total-geral">VALOR TOTAL DE ADITIVO SOLICITADO &nbsp;&nbsp; R$ ${totalNecessario.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       <br/><br/>
       <div style="display:flex;gap:60px;justify-content:center;margin-top:40px">
-        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.fiscal || 'Mírian Vicente Dias'}<br/>Fiscal do Contrato</div>
-        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.gestor || 'Carlos Henrique Buzzi da Silva'}<br/>Gestor do Contrato</div>
+        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.fiscal || UNIDADE_CONFIG.fiscalPadrao}<br/>Fiscal do Contrato</div>
+        <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>${contrato.gestor || UNIDADE_CONFIG.gestorPadrao}<br/>Gestor do Contrato</div>
       </div>
       <div class="rodape-sistema">
-        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2024<br/>
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · ${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
         Gerado em ${hoje.toLocaleDateString('pt-BR')} às ${hoje.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
       </div>
     </body></html>`;
@@ -1889,28 +1908,23 @@ function App() {
 
   // ─── MODAL CONTENTS ────────────────────────────────────────────────────────
   const FG = ({ label, children, full }) => <div className={`form-group${full?' full':''}`}><label>{label}</label>{children}</div>;
-  // Inputs não controlados — sem re-render ao digitar, salva no onChange via ref
+  // Inputs não controlados — o formulário inteiro remonta (via key) quando troca
+  // de contrato/registro, então o valor inicial já nasce certo. Sem useEffect
+  // de resincronização a cada render (isso é o que causava o campo ser apagado
+  // durante a digitação, quando qualquer re-render acontecia no momento errado).
   const FI = ({ k, disabled, type, placeholder, style }) => {
-    const r = useRef(null);
-    useEffect(() => { if(r.current && document.activeElement !== r.current) r.current.value = fv(k)||''; });
-    return <input ref={r} defaultValue={fv(k)||''} onBlur={e=>sf(k,e.target.value)} onChange={e=>sf(k,e.target.value)} disabled={disabled} type={type} placeholder={placeholder} style={style} />;
+    return <input defaultValue={fv(k)||''} onBlur={e=>sf(k,e.target.value)} onChange={e=>sf(k,e.target.value)} disabled={disabled} type={type} placeholder={placeholder} style={style} />;
   };
   const FS = ({ k, opts, disabled }) => {
-    const r = useRef(null);
-    useEffect(() => { if(r.current) r.current.value = fv(k)||''; });
-    return <select ref={r} defaultValue={fv(k)||''} onChange={e=>sf(k,e.target.value)} disabled={disabled}>{opts.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}</select>;
+    return <select defaultValue={fv(k)||''} onChange={e=>sf(k,e.target.value)} disabled={disabled}>{opts.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}</select>;
   };
   const FT = ({ k, disabled, placeholder }) => {
-    const r = useRef(null);
-    useEffect(() => { if(r.current && document.activeElement !== r.current) r.current.value = fv(k)||''; });
-    return <textarea ref={r} defaultValue={fv(k)||''} onBlur={e=>sf(k,e.target.value)} onChange={e=>sf(k,e.target.value)} disabled={disabled} placeholder={placeholder} />;
+    return <textarea defaultValue={fv(k)||''} onBlur={e=>sf(k,e.target.value)} onChange={e=>sf(k,e.target.value)} disabled={disabled} placeholder={placeholder} />;
   };
 
   // Campo de data não controlado
   const FD = ({ k, disabled }) => {
-    const r = useRef(null);
-    useEffect(() => { if(r.current && document.activeElement !== r.current) r.current.value = fromISO(fv(k))||''; });
-    return <input ref={r} defaultValue={fromISO(fv(k))||''} onChange={e=>sf(k,e.target.value)} onBlur={e=>sf(k,e.target.value)} placeholder="DD/MM/AAAA" maxLength={10} disabled={disabled} style={{letterSpacing:'0.05em'}} />;
+    return <input defaultValue={fromISO(fv(k))||''} onChange={e=>sf(k,e.target.value)} onBlur={e=>sf(k,e.target.value)} placeholder="DD/MM/AAAA" maxLength={10} disabled={disabled} style={{letterSpacing:'0.05em'}} />;
   };
 
   const renderModalContent = () => {
@@ -1926,6 +1940,8 @@ function App() {
           <FG label="Nº do contrato *"><FI k="numero" placeholder="000/2025" disabled={ro} /></FG>
           <FG label="Tipo de contrato"><FS k="tipo" opts={['Serviço continuado','Fornecimento','Gestão','Obra','Serviço','Locação','Investimento']} disabled={ro} /></FG>
           <FG label="Empresa contratada *" full><FI k="empresa" placeholder="Razão social" disabled={ro} /></FG>
+          <FG label="CNPJ"><FI k="cnpj" placeholder="00.000.000/0000-00" disabled={ro} /></FG>
+          <FG label="Representante legal"><FI k="representante" placeholder="Nome do representante" disabled={ro} /></FG>
           <FG label="Objeto do contrato *" full><FI k="objeto" placeholder="Descrição do objeto" disabled={ro} /></FG>
           <FG label="Segmento"><FI k="segmento" placeholder="Ex: Diagnóstico por imagem" disabled={ro} /></FG>
           <FG label="Setor responsável"><FI k="setor" placeholder="Ex: CME, Laboratório" disabled={ro} /></FG>
@@ -2200,7 +2216,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const rodape = () => `
       <div class="rodape-sistema">
-        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2024<br/>
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · ${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
         Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
       </div>
     `;
@@ -2438,7 +2454,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       ${blocos}
       <div class="total-geral">TOTAL GERAL &nbsp;&nbsp; R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       <div class="rodape-sistema">
-        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2024<br/>
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · ${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
         Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
       </div>
 </body></html>`;
@@ -2900,7 +2916,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       it, pct: a.qtdTot>0 ? Math.round((it.qtd_acum/a.qtdTot)*100) : 0, acao: a.acao
     })).sort((x,y)=>y.pct-x.pct).slice(0,8);
 
-    const paragrafo1 = `O presente relatório tem por finalidade dar ciência à área financeira da OSS Prima Qualitá Saúde quanto à execução e ao acompanhamento do Contrato nº ${c.numero}, firmado com ${c.empresa}, no âmbito do Contrato de Gestão nº 196/2024 celebrado com o Hospital Municipal de Cordeiro, referente à ${numMedicao}ª medição, competência de ${mesRef}.`;
+    const paragrafo1 = `O presente relatório tem por finalidade dar ciência à área financeira da ${UNIDADE_CONFIG.ossNome} quanto à execução e ao acompanhamento do Contrato nº ${c.numero}, firmado com ${c.empresa}, no âmbito do Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao} celebrado com o ${UNIDADE_CONFIG.nomeUnidade}, referente à ${numMedicao}ª medição, competência de ${mesRef}.`;
     const paragrafo2 = `Do valor total contratado de ${brl(valorTotal)}, foram executados ${brl(valorExecAcum)} até a presente medição, o que representa ${pctFinanceiro}% do valor global. A vigência contratual soma ${mesesTot} meses, dos quais ${mesesDec} já decorridos e ${mesesRest} restantes até o encerramento, previsto para ${c.fim?new Date(c.fim+'T00:00:00').toLocaleDateString('pt-BR'):'—'}. O saldo financeiro remanescente é de ${brl(saldoFinanceiro)}.`;
     const paragrafo3 = Math.abs(gap) <= 10
       ? `O ritmo de execução financeira está compatível com o tempo decorrido de vigência (${pctFinanceiro}% do valor consumido contra ${pctPrazo}% do prazo decorrido), não havendo indicativo de descompasso relevante entre consumo e tempo contratual.`
@@ -2990,11 +3006,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       ${tabelaRubrica}
 
       <div class="assinaturas">
-        <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">${c.fiscal || 'Mírian Vicente Dias'}<br/>Fiscal do Contrato</p></div>
-        <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">Ciente — Área Financeira<br/>OSS Prima Qualitá Saúde</p></div>
+        <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">${c.fiscal || UNIDADE_CONFIG.fiscalPadrao}<br/>Fiscal do Contrato</p></div>
+        <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">Ciente — Área Financeira<br/>${UNIDADE_CONFIG.ossNome}</p></div>
       </div>
       <div class="rodape-sistema">
-        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2024<br/>
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · ${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
         Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
       </div>
     </body></html>`;
@@ -3407,7 +3423,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const totalExecutadoMes = execucoes.filter(e=>e.mes_referencia===relatorioMes).reduce((a,e)=>a+(e.valor||0),0);
 
     // ── Resumo executivo (texto corrido) ────────────────────────────────
-    const paragrafo1 = `No mês de referência de ${mesRef}, o Hospital Municipal de Cordeiro executou o total de ${brl(totalExecutadoMes)} em contratos de gestão sob o Contrato de Gestão nº 196/2024, distribuídos entre ${contratos.length} contrato(s) ativo(s) acompanhados pelo sistema. Das medições esperadas para o período, ${emDiaCount} contrato(s) encontram-se em dia, ${atencaoCount} necessitam atenção por um mês de atraso e ${atrasadoCount} estão com medição em atraso superior a um mês.`;
+    const paragrafo1 = `No mês de referência de ${mesRef}, o ${UNIDADE_CONFIG.nomeUnidade} executou o total de ${brl(totalExecutadoMes)} em contratos de gestão sob o Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}, distribuídos entre ${contratos.length} contrato(s) ativo(s) acompanhados pelo sistema. Das medições esperadas para o período, ${emDiaCount} contrato(s) encontram-se em dia, ${atencaoCount} necessitam atenção por um mês de atraso e ${atrasadoCount} estão com medição em atraso superior a um mês.`;
     const paragrafo2 = rubricasCriticas.length
       ? `Em relação ao consumo orçamentário por rubrica, ${rubricasCriticas.length} rubrica(s) atingiram ou ultrapassaram 70% do teto mensal aprovado na Proposta Financeira, com destaque para "${piorRubrica.desc}" (${piorRubrica.pct}% do teto). Recomenda-se acompanhamento próximo dessas rubricas para evitar extrapolação do orçamento aprovado.`
       : `Nenhuma rubrica orçamentária atingiu 70% do teto mensal aprovado neste mês.`;
@@ -3514,7 +3530,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório Mensal - ${mesRef}</title>${estilos}</head><body>
       <div class="header">${logoImg}<h3>PROJETO SOCIAL CRESCE COMUNIDADE — PRIMA QUALITÁ SAÚDE</h3></div>
-      <div class="titulo-box"><h2>RELATÓRIO MENSAL DE ACOMPANHAMENTO DE CONTRATOS</h2><div style="font-size:11px;margin-top:4px">Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2024 · Referência: ${mesRef}</div></div>
+      <div class="titulo-box"><h2>RELATÓRIO MENSAL DE ACOMPANHAMENTO DE CONTRATOS</h2><div style="font-size:11px;margin-top:4px">${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao} · Referência: ${mesRef}</div></div>
 
       <div class="sec-titulo">RESUMO EXECUTIVO</div>
       <div class="resumo-texto">${paragrafo1}</div>
@@ -3543,7 +3559,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         <div class="assinatura-box"><div class="linha"></div><p style="font-size:10px">Mírian Vicente Dias<br/>Diretora Administrativa</p></div>
       </div>
       <div class="rodape-sistema">
-        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2024<br/>
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · ${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
         Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
       </div>
     </body></html>`;
@@ -3787,7 +3803,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         <div style="text-align:center;font-size:10px"><div style="border-top:1px solid #000;width:220px;margin-bottom:4px"></div>Aprovação</div>
       </div>
       <div class="rodape-sistema">
-        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2024<br/>
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · ${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
         Gerado em ${hoje.toLocaleDateString('pt-BR')} às ${hoje.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
       </div>
     </body></html>`;
@@ -3970,7 +3986,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     <div style={{minHeight:'100vh',background:'#EEF2F6'}}>
       <div style={{background:'var(--teal-d)',padding:'16px 20px',display:'flex',alignItems:'center',gap:10}}>
         <img src={`data:image/png;base64,${LOGO_B64}`} style={{width:100,filter:'brightness(0) invert(1)'}} alt="Logo" />
-        <div style={{color:'rgba(255,255,255,.7)',fontSize:12}}>SisContratos HMC · Hospital Municipal de Cordeiro</div>
+        <div style={{color:'rgba(255,255,255,.7)',fontSize:12}}>SisContratos HMC · {UNIDADE_CONFIG.nomeUnidade}</div>
       </div>
       <ConfigScreen onSave={handleConfig} />
     </div>
@@ -4014,7 +4030,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
       <div className="main">
         <div className="topbar">
-          <div><h1>{sectionTitles[section]}</h1><p>Hospital Municipal de Cordeiro · Contrato de Gestão nº 196/2024</p></div>
+          <div><h1>{sectionTitles[section]}</h1><p>{UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº {UNIDADE_CONFIG.contratoGestao}</p></div>
           <div className="topbar-right">
             <div className={`sync-indicator ${syncStatus}`}>
               {syncStatus==='loading' && <i className="fa-solid fa-rotate spin" />}
@@ -4091,7 +4107,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             </>
           }
         >
-          {renderModalContent()}
+          <div key={`${modal.tipo}_${modal.id||'novo'}`}>{renderModalContent()}</div>
         </Modal>
       )}
     </>
