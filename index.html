@@ -3616,8 +3616,13 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const contratosInvestimento = contratos.filter(c => c.tipo === 'Investimento' && c.inicio && new Date(c.inicio+'T00:00:00').getFullYear() === anoInvestimento);
     const tetoAtual = tetosInvestimento.find(t => t.ano === anoInvestimento)?.valor ?? 0;
     const totalEmpenhado = contratosInvestimento.reduce((acc,c) => acc + (c.vlr_total||0), 0);
-    const saldoTeto = tetoAtual - totalEmpenhado;
-    const pctUsado = tetoAtual>0 ? Math.min(Math.round((totalEmpenhado/tetoAtual)*100),100) : 0;
+    // Saldo acumulado: soma de todos os tetos e de todo o empenhado desde o
+    // primeiro ano com dado até o ano selecionado — sobra de um ano continua
+    // disponível no seguinte, não reseta a cada 1º de janeiro.
+    const tetoAcumulado = tetosInvestimento.filter(t => t.ano <= anoInvestimento).reduce((acc,t)=>acc+(t.valor||0), 0);
+    const empenhadoAcumulado = contratos.filter(c => c.tipo === 'Investimento' && c.inicio && new Date(c.inicio+'T00:00:00').getFullYear() <= anoInvestimento).reduce((acc,c)=>acc+(c.vlr_total||0), 0);
+    const saldoTeto = tetoAcumulado - empenhadoAcumulado;
+    const pctUsado = tetoAcumulado>0 ? Math.min(Math.round((empenhadoAcumulado/tetoAcumulado)*100),100) : 0;
     const anosDisponiveis = [...new Set([anoInvestimento, ...tetosInvestimento.map(t=>t.ano), ...contratos.filter(c=>c.tipo==='Investimento'&&c.inicio).map(c=>new Date(c.inicio+'T00:00:00').getFullYear())])].sort((a,b)=>b-a);
 
     const repassesPorContrato = cid => repassesInvestimento.filter(r => r.contrato_id === cid).sort((a,b)=>a.data.localeCompare(b.data));
@@ -3659,24 +3664,24 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             </div>
           </div>
 
-          <div className="s-label" style={{marginBottom:6}}>Teto anual x contratado</div>
+          <div className="s-label" style={{marginBottom:6}}>Teto acumulado x contratado (soma de todos os anos até {anoInvestimento})</div>
           <div className="kpis-row" style={{display:'flex',gap:12,marginBottom:10,flexWrap:'wrap'}}>
             <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
-              <div style={{fontSize:20,fontWeight:700,color:'var(--teal-d)'}}>{brl(totalEmpenhado)}</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>VALOR EMPENHADO (CONTRATADO)</div>
+              <div style={{fontSize:20,fontWeight:700,color:'var(--teal-d)'}}>{brl(empenhadoAcumulado)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>EMPENHADO ACUMULADO ATÉ {anoInvestimento}</div>
             </div></div>
             <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
-              <div style={{fontSize:20,fontWeight:700}}>{brl(tetoAtual)}</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>TETO ANUAL</div>
+              <div style={{fontSize:20,fontWeight:700}}>{brl(tetoAcumulado)}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>TETO ACUMULADO ATÉ {anoInvestimento}</div>
             </div></div>
             <div className="panel" style={{margin:0,flex:1,minWidth:160}}><div className="panel-body" style={{textAlign:'center',padding:14}}>
               <div style={{fontSize:20,fontWeight:700,color:saldoTeto<0?'#b91c1c':'#16a34a'}}>{brl(saldoTeto)}</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>{saldoTeto<0?'ESTOURADO EM':'SALDO A MAIOR (P/ NOVOS CONTRATOS)'}</div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>{saldoTeto<0?'ESTOURADO EM':'SALDO ACUMULADO (P/ NOVOS CONTRATOS)'}</div>
             </div></div>
           </div>
           <div style={{marginBottom:16}}>
             <ProgBar p={pctUsado} />
-            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{pctUsado}% do teto anual já empenhado em {anoInvestimento}</div>
+            <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{pctUsado}% do teto acumulado já empenhado até {anoInvestimento} · empenhado só em {anoInvestimento}: {brl(totalEmpenhado)} de {brl(tetoAtual)} de teto daquele ano</div>
           </div>
 
           <div className="s-label" style={{marginBottom:6}}>Movimento de caixa — entrada (repasse do município) x saída (pagamento ao fornecedor)</div>
