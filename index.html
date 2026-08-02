@@ -380,6 +380,24 @@ function ComparativoPrazoValorChart({ labels, prazo, valor, height }) {
   return <div style={{height:height||Math.max(200,labels.length*38)}}><canvas ref={canvasRef}></canvas></div>;
 }
 
+// Barras empilhadas por ano: consumido (empenhado) x saldo restante, até o teto —
+// a visão mais direta de "quanto já foi usado, quanto ainda sobra".
+function ConsumoSaldoChart({ labels, consumido, saldo, height }) {
+  const canvasRef = useRef(null);
+  useChart(canvasRef, {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label:'Consumido (empenhado)', data:consumido, backgroundColor:'#178DBB', borderRadius:4, maxBarThickness:52 },
+      { label:'Saldo disponível', data:saldo, backgroundColor:'#8CD9B3', borderRadius:4, maxBarThickness:52 },
+    ]},
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:true, position:'bottom', labels:{boxWidth:12,font:{size:11}} },
+        tooltip:{ callbacks:{ label: (ctx) => `${ctx.dataset.label}: R$ ${ctx.parsed.y.toLocaleString('pt-BR',{minimumFractionDigits:2})}` } } },
+      scales:{ x:{ stacked:true, grid:{display:false} }, y:{ stacked:true, grid:{color:'#EEF2F6'}, ticks:{ callback:(v)=>'R$ '+(v/1000).toLocaleString('pt-BR')+'k' } } } }
+  }, [JSON.stringify(labels), JSON.stringify(consumido), JSON.stringify(saldo)]);
+  return <div style={{height:height||260}}><canvas ref={canvasRef}></canvas></div>;
+}
+
 // ─── GRÁFICOS SVG PARA O RELATÓRIO IMPRESSO (PDF) ─────────────────────────
 // Não usamos Chart.js aqui porque a janela de impressão é um documento HTML
 // isolado (window.open) sem os scripts do app — SVG inline garante que o
@@ -3625,6 +3643,16 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const pctUsado = tetoAcumulado>0 ? Math.min(Math.round((empenhadoAcumulado/tetoAcumulado)*100),100) : 0;
     const anosDisponiveis = [...new Set([anoInvestimento, ...tetosInvestimento.map(t=>t.ano), ...contratos.filter(c=>c.tipo==='Investimento'&&c.inicio).map(c=>new Date(c.inicio+'T00:00:00').getFullYear())])].sort((a,b)=>b-a);
 
+    // Gráfico consumo x saldo: um ponto por ano (não acumulado — cada ano
+    // isolado), mostrando teto do ano, quanto foi empenhado nele, e o saldo
+    // que sobrou. Fácil de ver de cara quanto foi usado a cada ano.
+    const anosGrafico = anosDisponiveis.slice().sort((a,b)=>a-b);
+    const dadosGrafico = anosGrafico.map(ano => {
+      const tetoDoAno = tetosInvestimento.find(t=>t.ano===ano)?.valor ?? 0;
+      const empenhadoDoAno = contratos.filter(c=>c.tipo==='Investimento' && c.inicio && new Date(c.inicio+'T00:00:00').getFullYear()===ano).reduce((acc,c)=>acc+(c.vlr_total||0),0);
+      return { ano, consumido: empenhadoDoAno, saldo: Math.max(0, tetoDoAno-empenhadoDoAno) };
+    });
+
     const repassesPorContrato = cid => repassesInvestimento.filter(r => r.contrato_id === cid).sort((a,b)=>a.data.localeCompare(b.data));
     const pagamentosPorContrato = cid => pagamentosInvestimento.filter(p => p.contrato_id === cid).sort((a,b)=>a.data.localeCompare(b.data));
     const totalRecebidoGeral = contratosInvestimento.reduce((acc,c) => acc + repassesPorContrato(c.id).reduce((a,r)=>a+(r.valor||0),0), 0);
@@ -3683,6 +3711,13 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             <ProgBar p={pctUsado} />
             <div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>{pctUsado}% do teto acumulado já empenhado até {anoInvestimento} · empenhado só em {anoInvestimento}: {brl(totalEmpenhado)} de {brl(tetoAtual)} de teto daquele ano</div>
           </div>
+
+          {dadosGrafico.length>0 && (
+            <div style={{marginBottom:20}}>
+              <div className="s-label" style={{marginBottom:6}}>Consumo x saldo, por ano</div>
+              <ConsumoSaldoChart labels={dadosGrafico.map(d=>String(d.ano))} consumido={dadosGrafico.map(d=>d.consumido)} saldo={dadosGrafico.map(d=>d.saldo)} />
+            </div>
+          )}
 
           <div className="s-label" style={{marginBottom:6}}>Movimento de caixa — entrada (repasse do município) x saída (pagamento ao fornecedor)</div>
           <div className="kpis-row" style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
