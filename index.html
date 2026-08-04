@@ -445,6 +445,37 @@ function svgLinhaEvolucaoPDF(pontos, opts={}) {
   </svg>`;
 }
 
+// Barras empilhadas por ano (consumido x saldo) — versão SVG pro relatório
+// impresso, no mesmo espírito do gráfico de Investimentos dentro do app.
+function svgBarrasEmpilhadasPDF(dados, opts={}) {
+  const largura = opts.largura || 680, altura = opts.altura || 220;
+  const margemEsq = 50, margemDir = 20, margemTopo = 26, margemBase = 30;
+  const maxValor = Math.max(...dados.map(d=>d.consumido+d.saldo), 1);
+  const escalaY = (altura-margemTopo-margemBase)/maxValor;
+  const passoX = (largura-margemEsq-margemDir)/dados.length;
+  const larguraBarra = Math.min(70, passoX*0.55);
+  const linhasGrade = [0.25,0.5,0.75,1].map(f => {
+    const y = altura-margemBase-(maxValor*f)*escalaY;
+    return `<line x1="${margemEsq}" y1="${y.toFixed(1)}" x2="${largura-margemDir}" y2="${y.toFixed(1)}" stroke="#EEF2F6" stroke-width="1"/>`;
+  }).join('');
+  const barras = dados.map((d,i) => {
+    const x = margemEsq + i*passoX + (passoX-larguraBarra)/2;
+    const alturaConsumido = d.consumido*escalaY;
+    const alturaSaldo = d.saldo*escalaY;
+    const yConsumido = altura-margemBase-alturaConsumido;
+    const ySaldo = yConsumido-alturaSaldo;
+    return `<rect x="${x.toFixed(1)}" y="${yConsumido.toFixed(1)}" width="${larguraBarra}" height="${alturaConsumido.toFixed(1)}" fill="#178DBB" rx="2"/>
+      <rect x="${x.toFixed(1)}" y="${ySaldo.toFixed(1)}" width="${larguraBarra}" height="${alturaSaldo.toFixed(1)}" fill="#8CD9B3" rx="2"/>
+      <text x="${(x+larguraBarra/2).toFixed(1)}" y="${altura-margemBase+14}" text-anchor="middle" font-size="9" font-family="Arial">${d.label}</text>`;
+  }).join('');
+  return `<svg width="${largura}" height="${altura}" xmlns="http://www.w3.org/2000/svg">
+    <rect x="${margemEsq}" y="4" width="10" height="10" fill="#178DBB"/><text x="${margemEsq+14}" y="13" font-size="9" font-family="Arial">Consumido (empenhado)</text>
+    <rect x="${margemEsq+140}" y="4" width="10" height="10" fill="#8CD9B3"/><text x="${margemEsq+154}" y="13" font-size="9" font-family="Arial">Saldo disponível</text>
+    ${linhasGrade}
+    ${barras}
+  </svg>`;
+}
+
 // ─── CONFIG SCREEN ────────────────────────────────────────────────────────────
 function ConfigScreen({ onSave }) {
   const [url, setUrl] = useState(localStorage.getItem(STORAGE_KEYS.url)||'');
@@ -642,7 +673,7 @@ function App() {
     setSaving(true);
     const data = {
       id: modal.id || uid('C'), numero: fv('numero'), empresa: fv('empresa'), objeto: fv('objeto'),
-      cnpj: fv('cnpj'), representante: fv('representante'),
+      cnpj: fv('cnpj'), representante: fv('representante'), processo: fv('processo'),
       segmento: fv('segmento'), setor: fv('setor'), fiscal: fv('fiscal'), gestor: fv('gestor'),
       inicio: toISO(fv('inicio')) || null, fim: toISO(fv('fim')) || null,
       vlr_mensal: parseFloat(fv('vlr_mensal')) || 0,
@@ -772,15 +803,18 @@ function App() {
     if (!fv('novo_prazo') || !fv('justificativa')) { alert('Informe o novo prazo e a justificativa.'); return; }
     setSaving(true);
     const cId = fv('contrato_id');
+    const contrato = contratos.find(x => x.id === cId);
     const novoPrazoISO = toISO(fv('novo_prazo')) || fv('novo_prazo');
-    await sb().from('contratos').update({ fim: novoPrazoISO, status: 'em renovacao', updated_at: new Date().toISOString() }).eq('id', cId);
+    const novoNumero = proximoNumeroTA(contrato.numero);
+    await sb().from('contratos').update({ fim: novoPrazoISO, numero: novoNumero, status: 'vigente', updated_at: new Date().toISOString() }).eq('id', cId);
     await sb().from('aditivos').insert({
       id: uid('A'), contrato_id: cId, tipo:'Prorrogação de prazo', data: today(),
-      justificativa: fv('justificativa'), vlr_acrescido:0, vlr_suprimido:0,
-      novo_prazo: novoPrazoISO, status:'Em análise', obs: fv('obs')||''
+      justificativa: fv('justificativa') + ` — gerou ${novoNumero}.`, vlr_acrescido:0, vlr_suprimido:0,
+      novo_prazo: novoPrazoISO, status:'Aplicado', obs: fv('obs')||''
     });
     setSaving(false);
     await loadAll(); closeModal();
+    alert(`Prazo prorrogado até ${fv('novo_prazo')}. Contrato atualizado para ${novoNumero}.`);
   };
 
   // EXCLUIR
@@ -827,7 +861,7 @@ function App() {
   // Contratos que precisam de atenção: financeiro OU quantitativo, com 30+ dias de antecedência
   const contratosPrecisamAtencao = () => {
     const setIds = new Set();
-    contratos.forEach(c => {
+    contratos.filter(c => c.status !== 'finalizado').forEach(c => {
       const p = pct(c);
       const d = dias(c.fim);
       const saldoRestante = c.vlr_total - c.consumo_acum;
@@ -979,7 +1013,7 @@ function App() {
     // Status de medição por contrato: compara o último mês medido com o mês atual.
     const mesAtual = todayMonth();
     const [anoAtual, mesAtualNum] = mesAtual.split('-').map(Number);
-    const statusMedicoes = contratos.map(c => {
+    const statusMedicoes = contratos.filter(c => c.status !== 'finalizado').map(c => {
       const execsContrato = execucoes.filter(e => e.contrato_id === c.id);
       const ultimoMes = execsContrato.length ? execsContrato.map(e=>e.mes_referencia).sort().slice(-1)[0] : null;
       let mesesAtraso = null, cls = 'vermelho', label = 'Nunca medido';
@@ -1178,6 +1212,7 @@ function App() {
             <td>
               <ActBtn icon="fa-eye" onClick={() => openModal('ver', c.id)} title="Ver" />
               <ActBtn icon="fa-pen" onClick={() => openModal('editar', c.id)} title="Editar" />
+              <ActBtn icon="fa-calendar-plus" onClick={() => openModal('prorrog', c.id)} title="Prorrogar prazo (novo Termo Aditivo)" />
               <ActBtn icon="fa-trash" onClick={() => excluir('contratos', c.id)} title="Excluir" danger />
             </td>
           </tr>
@@ -1964,6 +1999,7 @@ function App() {
           <FG label="Empresa contratada *" full><FI k="empresa" placeholder="Razão social" disabled={ro} /></FG>
           <FG label="CNPJ"><FI k="cnpj" placeholder="00.000.000/0000-00" disabled={ro} /></FG>
           <FG label="Representante legal"><FI k="representante" placeholder="Nome do representante" disabled={ro} /></FG>
+          <FG label="Nº do processo interno"><FI k="processo" placeholder="Ex: 0123/2026" disabled={ro} /></FG>
           <FG label="Objeto do contrato *" full><FI k="objeto" placeholder="Descrição do objeto" disabled={ro} /></FG>
           <FG label="Segmento"><FI k="segmento" placeholder="Ex: Diagnóstico por imagem" disabled={ro} /></FG>
           <FG label="Setor responsável"><FI k="setor" placeholder="Ex: CME, Laboratório" disabled={ro} /></FG>
@@ -1981,7 +2017,7 @@ function App() {
           <FG label="Forma de medição"><FS k="medicao" opts={['Por produção','Por ciclo','Por consumo','Por indicadores','Mensal fixo']} disabled={ro} /></FG>
           <FG label="Valor mensal (R$)"><FI k="vlr_mensal" type="number" placeholder="0,00" disabled={ro} /></FG>
           <FG label="Valor total contratado (R$)"><FI k="vlr_total" type="number" placeholder="0,00" disabled={ro} /></FG>
-          <FG label="Status"><FS k="status" opts={[{v:'vigente',l:'Vigente'},{v:'proximo',l:'Próx. vencimento'},{v:'vencido',l:'Vencido'},{v:'em renovacao',l:'Em renovação'}]} disabled={ro} /></FG>
+          <FG label="Status"><FS k="status" opts={[{v:'vigente',l:'Vigente'},{v:'proximo',l:'Próx. vencimento'},{v:'vencido',l:'Vencido'},{v:'em renovacao',l:'Em renovação'},{v:'finalizado',l:'Finalizado (entrega única concluída)'}]} disabled={ro} /></FG>
         </div>
         <div className="cell-m" style={{fontSize:11,marginTop:-6,marginBottom:8}}>Usada no cálculo de saldo e análise preditiva — evita erro de contar 11 ou 13 meses por causa da data exata. Deixe em branco pra calcular automaticamente pelas datas (menos confiável).</div>
         {!ro && <><div className="form-row"><div className="sec-label">Controle financeiro</div></div>
@@ -2076,10 +2112,12 @@ function App() {
     if (tipo === 'prorrog') {
       const c = contratos.find(x => x.id === id);
       const d = c ? dias(c.fim) : 0;
+      const novoNumeroPreview = c ? proximoNumeroTA(c.numero) : '';
       return (
         <>
           <AlertBox cls={d<0?'vermelho':'amarelo'} icon="fa-calendar-days">
-            Vencimento atual: <strong>{fmtD(c?.fim)}</strong> · {d<0?`Vencido há ${Math.abs(d)} dia(s)`:`${d} dia(s) restantes`}
+            Vencimento atual: <strong>{fmtD(c?.fim)}</strong> · {d<0?`Vencido há ${Math.abs(d)} dia(s)`:`${d} dia(s) restantes`}<br/>
+            Ao salvar, o contrato <strong>{c?.numero}</strong> vira <strong>{novoNumeroPreview}</strong>.
           </AlertBox>
           <div className="form-row" style={{marginTop:12}}>
             <FG label="Novo prazo final *"><FD k="novo_prazo" /></FG>
@@ -3379,7 +3417,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const mesCurto = (mes) => { const [y,m] = mes.split('-'); const nomes=['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return nomes[parseInt(m)]+'/'+y.slice(2); };
 
     // Status das medições (mesma lógica do Painel)
-    const statusMedicoesRel = contratos.map(c => {
+    const statusMedicoesRel = contratos.filter(c => c.status !== 'finalizado').map(c => {
       const execsContrato = execucoes.filter(e => e.contrato_id === c.id && e.mes_referencia <= relatorioMes);
       const ultimoMes = execsContrato.length ? execsContrato.map(e=>e.mes_referencia).sort().slice(-1)[0] : null;
       let cls='vermelho', label='Nunca medido', mesesAtraso=null;
@@ -3540,6 +3578,27 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       ${svgLinhaEvolucaoPDF(evolucaoMensal)}
     </div>`;
 
+    // Investimentos — consumo x saldo do teto anual, por ano (dá ciência do
+    // saldo existente ao gestor, mesma visão da aba Investimentos do sistema).
+    const anosInvestimentoRel = [...new Set([...tetosInvestimento.map(t=>t.ano), ...contratos.filter(c=>c.tipo==='Investimento'&&c.inicio).map(c=>new Date(c.inicio+'T00:00:00').getFullYear())])].sort((a,b)=>a-b);
+    const dadosInvestimentoRel = anosInvestimentoRel.map(ano => {
+      const tetoDoAno = tetosInvestimento.find(t=>t.ano===ano)?.valor ?? 0;
+      const empenhadoDoAno = contratos.filter(c=>c.tipo==='Investimento' && c.inicio && new Date(c.inicio+'T00:00:00').getFullYear()===ano).reduce((acc,c)=>acc+(c.vlr_total||0),0);
+      return { label:String(ano), consumido: empenhadoDoAno, saldo: Math.max(0, tetoDoAno-empenhadoDoAno), teto: tetoDoAno };
+    });
+    const graficoInvestimentos = dadosInvestimentoRel.length ? `<div class="chart-box">
+      <div class="titulo-chart">Investimentos — consumo x saldo do teto anual, por ano</div>
+      ${svgBarrasEmpilhadasPDF(dadosInvestimentoRel)}
+    </div>
+    <table><thead><tr><th>Ano</th><th>Teto anual</th><th>Empenhado</th><th>Saldo disponível</th></tr></thead>
+    <tbody>${dadosInvestimentoRel.map(d => `<tr>
+      <td class="num"><strong>${d.label}</strong></td>
+      <td class="val">${brl(d.teto)}</td>
+      <td class="val">${brl(d.consumido)}</td>
+      <td class="val" style="color:${d.saldo<=0?'#b91c1c':'#166534'};font-weight:bold">${brl(d.saldo)}</td>
+    </tr>`).join('')}</tbody></table>`
+      : '<div class="obs">Nenhum teto de investimento cadastrado ainda.</div>';
+
     const tabelaAditivoSupressao = analiseReequilibrioRel.length ? `
       <table><thead><tr><th>Contrato</th><th>Empresa</th><th>Situação</th><th>Valor</th></tr></thead>
       <tbody>${analiseReequilibrioRel.map(a => `<tr>
@@ -3574,6 +3633,9 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
       <div class="sec-titulo">4. ADITIVO / SUPRESSÃO — INDICATIVO PARA DECISÃO</div>
       ${tabelaAditivoSupressao}
+
+      <div class="sec-titulo">5. INVESTIMENTOS — TETO E SALDO</div>
+      ${graficoInvestimentos}
 
       <div class="sec-titulo">CONSIDERAÇÕES E RECOMENDAÇÕES</div>
       <ul class="recos">${recomendacoes.map(r=>`<li>${r}</li>`).join('')}</ul>
