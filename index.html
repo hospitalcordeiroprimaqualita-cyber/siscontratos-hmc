@@ -659,7 +659,7 @@ function App() {
       setForm({ ...it });
     } else if (tipo === 'prorrog') {
       const c = contratos.find(x => x.id === id);
-      setForm({ contrato_id: id, fim_atual: c.fim?.substring(0,10), novo_prazo: c.fim?.substring(0,10) });
+      setForm({ contrato_id: id, fim_atual: c.fim?.substring(0,10), novo_prazo: c.fim?.substring(0,10), nova_vigencia_meses: c.vigencia_meses||12 });
     } else if (tipo === 'execucao') {
       setForm({ contrato_id: id, mes_referencia: todayMonth() });
     }
@@ -802,19 +802,58 @@ function App() {
   const salvarProrrog = async () => {
     if (!fv('novo_prazo') || !fv('justificativa')) { alert('Informe o novo prazo e a justificativa.'); return; }
     setSaving(true);
-    const cId = fv('contrato_id');
-    const contrato = contratos.find(x => x.id === cId);
-    const novoPrazoISO = toISO(fv('novo_prazo')) || fv('novo_prazo');
-    const novoNumero = proximoNumeroTA(contrato.numero);
-    await sb().from('contratos').update({ fim: novoPrazoISO, numero: novoNumero, status: 'vigente', updated_at: new Date().toISOString() }).eq('id', cId);
-    await sb().from('aditivos').insert({
-      id: uid('A'), contrato_id: cId, tipo:'Prorrogação de prazo', data: today(),
-      justificativa: fv('justificativa') + ` — gerou ${novoNumero}.`, vlr_acrescido:0, vlr_suprimido:0,
-      novo_prazo: novoPrazoISO, status:'Aplicado', obs: fv('obs')||''
-    });
-    setSaving(false);
-    await loadAll(); closeModal();
-    alert(`Prazo prorrogado até ${fv('novo_prazo')}. Contrato atualizado para ${novoNumero}.`);
+    try {
+      const cId = fv('contrato_id');
+      const contratoAntigo = contratos.find(x => x.id === cId);
+      const novoPrazoISO = toISO(fv('novo_prazo')) || fv('novo_prazo');
+      const novaVigencia = parseInt(fv('nova_vigencia_meses')) || contratoAntigo.vigencia_meses || 12;
+      const novoNumero = proximoNumeroTA(contratoAntigo.numero);
+      const novoContratoId = uid('C');
+
+      // 1. Novo contrato — mesmo objeto/empresa, período novo, saldo zerado
+      const { error: errC } = await sb().from('contratos').insert({
+        id: novoContratoId, numero: novoNumero, empresa: contratoAntigo.empresa, objeto: contratoAntigo.objeto,
+        cnpj: contratoAntigo.cnpj, representante: contratoAntigo.representante, processo: contratoAntigo.processo,
+        segmento: contratoAntigo.segmento, setor: contratoAntigo.setor, fiscal: contratoAntigo.fiscal, gestor: contratoAntigo.gestor,
+        inicio: contratoAntigo.fim, fim: novoPrazoISO, vigencia_meses: novaVigencia,
+        vlr_mensal: contratoAntigo.vlr_mensal || 0, vlr_total: Math.round((contratoAntigo.vlr_mensal||0)*novaVigencia*100)/100,
+        tipo: contratoAntigo.tipo, medicao: contratoAntigo.medicao, status: 'vigente', consumo_acum: 0
+      });
+      if (errC) throw errC;
+
+      // 2. Duplica os itens — mesma composição, acumulado e execução zerados
+      const itensAntigos = itens.filter(i => i.contrato_id === cId);
+      const novosItens = itensAntigos.map(it => ({
+        id: uid('I'), contrato_id: novoContratoId, item: it.item, categoria: it.categoria, ordem: it.ordem,
+        lote: it.lote, rubrica: it.rubrica, tipo_calculo: it.tipo_calculo, unit: it.unit,
+        qtd_mensal: it.qtd_mensal, qtd_exec: 0, qtd_acum: 0,
+        qtd_total_contratada: it.qtd_mensal ? Math.round(it.qtd_mensal*novaVigencia*100)/100 : null,
+        vlr_unitario: it.vlr_unitario, vlr_unit_semana: it.vlr_unit_semana, vlr_unit_fds: it.vlr_unit_fds,
+        qtd_semana: it.qtd_semana, qtd_fds: it.qtd_fds, quadro: it.quadro, carga_horaria: it.carga_horaria,
+        vaga: it.vaga, medico_padrao: it.medico_padrao, dias_aplicaveis: it.dias_aplicaveis, tipo_lancamento: it.tipo_lancamento
+      }));
+      if (novosItens.length) {
+        const { error: errI } = await sb().from('itens').insert(novosItens);
+        if (errI) throw errI;
+      }
+
+      // 3. Arquiva o contrato antigo — congelado, não entra mais em pendência de medição
+      await sb().from('contratos').update({ status: 'arquivado', updated_at: new Date().toISOString() }).eq('id', cId);
+
+      // 4. Log do aditivo, no contrato novo, citando o antigo
+      await sb().from('aditivos').insert({
+        id: uid('A'), contrato_id: novoContratoId, tipo: 'Prorrogação de prazo', data: today(),
+        justificativa: fv('justificativa') + ` — contrato ${contratoAntigo.numero} arquivado e substituído por ${novoNumero} (novo período de ${novaVigencia} meses, ${novosItens.length} item(ns) duplicado(s) com saldo zerado).`,
+        vlr_acrescido: 0, vlr_suprimido: 0, novo_prazo: novoPrazoISO, status: 'Aplicado', obs: fv('obs')||''
+      });
+
+      setSaving(false);
+      await loadAll(); closeModal();
+      alert(`Prazo prorrogado. "${contratoAntigo.numero}" foi arquivado; o novo contrato "${novoNumero}" já está ativo, com ${novosItens.length} item(ns) e saldo zerado pro novo período.`);
+    } catch(e) {
+      setSaving(false);
+      alert('Erro ao prorrogar: ' + e.message);
+    }
   };
 
   // EXCLUIR
@@ -861,7 +900,7 @@ function App() {
   // Contratos que precisam de atenção: financeiro OU quantitativo, com 30+ dias de antecedência
   const contratosPrecisamAtencao = () => {
     const setIds = new Set();
-    contratos.filter(c => c.status !== 'finalizado').forEach(c => {
+    contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).forEach(c => {
       const p = pct(c);
       const d = dias(c.fim);
       const saldoRestante = c.vlr_total - c.consumo_acum;
@@ -1013,7 +1052,7 @@ function App() {
     // Status de medição por contrato: compara o último mês medido com o mês atual.
     const mesAtual = todayMonth();
     const [anoAtual, mesAtualNum] = mesAtual.split('-').map(Number);
-    const statusMedicoes = contratos.filter(c => c.status !== 'finalizado').map(c => {
+    const statusMedicoes = contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).map(c => {
       const execsContrato = execucoes.filter(e => e.contrato_id === c.id);
       const ultimoMes = execsContrato.length ? execsContrato.map(e=>e.mes_referencia).sort().slice(-1)[0] : null;
       let mesesAtraso = null, cls = 'vermelho', label = 'Nunca medido';
@@ -1789,7 +1828,7 @@ function App() {
     // Se a sobra cobre a falta → dá pra reequilibrar só remanejando quantidade entre
     // itens do mesmo contrato (Termo de Redistribuição Quantitativa, sem custo extra).
     // Só quando a sobra não é suficiente é que sinaliza necessidade de aditivo real.
-    const analiseReequilibrio = contratos.map(c => {
+    const analiseReequilibrio = contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).map(c => {
       const itensContrato = itens.filter(i => i.contrato_id === c.id);
       const deficit = [], superavit = [];
       itensContrato.forEach(it => {
@@ -2017,7 +2056,7 @@ function App() {
           <FG label="Forma de medição"><FS k="medicao" opts={['Por produção','Por ciclo','Por consumo','Por indicadores','Mensal fixo']} disabled={ro} /></FG>
           <FG label="Valor mensal (R$)"><FI k="vlr_mensal" type="number" placeholder="0,00" disabled={ro} /></FG>
           <FG label="Valor total contratado (R$)"><FI k="vlr_total" type="number" placeholder="0,00" disabled={ro} /></FG>
-          <FG label="Status"><FS k="status" opts={[{v:'vigente',l:'Vigente'},{v:'proximo',l:'Próx. vencimento'},{v:'vencido',l:'Vencido'},{v:'em renovacao',l:'Em renovação'},{v:'finalizado',l:'Finalizado (entrega única concluída)'}]} disabled={ro} /></FG>
+          <FG label="Status"><FS k="status" opts={[{v:'vigente',l:'Vigente'},{v:'proximo',l:'Próx. vencimento'},{v:'vencido',l:'Vencido'},{v:'em renovacao',l:'Em renovação'},{v:'finalizado',l:'Finalizado (entrega única concluída)'},{v:'arquivado',l:'Arquivado (substituído por Termo Aditivo)'}]} disabled={ro} /></FG>
         </div>
         <div className="cell-m" style={{fontSize:11,marginTop:-6,marginBottom:8}}>Usada no cálculo de saldo e análise preditiva — evita erro de contar 11 ou 13 meses por causa da data exata. Deixe em branco pra calcular automaticamente pelas datas (menos confiável).</div>
         {!ro && <><div className="form-row"><div className="sec-label">Controle financeiro</div></div>
@@ -2113,14 +2152,16 @@ function App() {
       const c = contratos.find(x => x.id === id);
       const d = c ? dias(c.fim) : 0;
       const novoNumeroPreview = c ? proximoNumeroTA(c.numero) : '';
+      const nItens = itens.filter(i => i.contrato_id === id).length;
       return (
         <>
           <AlertBox cls={d<0?'vermelho':'amarelo'} icon="fa-calendar-days">
             Vencimento atual: <strong>{fmtD(c?.fim)}</strong> · {d<0?`Vencido há ${Math.abs(d)} dia(s)`:`${d} dia(s) restantes`}<br/>
-            Ao salvar, o contrato <strong>{c?.numero}</strong> vira <strong>{novoNumeroPreview}</strong>.
+            Ao salvar: o contrato <strong>{c?.numero}</strong> fica <strong>arquivado</strong> (congelado, com o histórico como está hoje), e nasce um contrato novo <strong>{novoNumeroPreview}</strong> com os {nItens} item(ns) duplicados e o acumulado zerado, pronto pro novo período.
           </AlertBox>
           <div className="form-row" style={{marginTop:12}}>
             <FG label="Novo prazo final *"><FD k="novo_prazo" /></FG>
+            <FG label="Vigência do novo período (meses) *"><FI k="nova_vigencia_meses" type="number" placeholder="12" /></FG>
             <FG label="Nº do processo SEI"><FI k="sei" placeholder="2026.XXXXXX" /></FG>
             <FG label="Justificativa *" full><FT k="justificativa" placeholder="Ex: art. 107 da Lei 14.133/2021 — necessidade de continuidade do serviço..." /></FG>
             <FG label="Observações" full><FT k="obs" placeholder="Informações adicionais..." /></FG>
@@ -2633,27 +2674,28 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     }
   };
 
-  // Prefill dos valores lançados quando o usuário reabre um mês já registrado
-  // (contratos genéricos) — permite corrigir sem perder o que já foi digitado.
-  // Radiocom já tem o equivalente no useEffect de radiocomRows acima.
+  // Preenchimento dos valores lançados ao trocar de contrato/mês (contratos
+  // genéricos). SEMPRE parte de um objeto limpo — nunca mescla com o que
+  // estava no estado antes, porque isso deixava valor de um mês "grudado"
+  // por trás dos panos ao trocar de mês/contrato sem recarregar a página,
+  // inflando o total da medição seguinte com um item que não devia estar lá.
+  // Se o mês já tem medição salva (reabrindo via "Corrigir"), prefila com o
+  // que já foi registrado; senão, nasce em branco de verdade.
   useEffect(() => {
-    if (!medicaoContrato || !medicaoMes) return;
+    if (!medicaoContrato || !medicaoMes) { setMedicaoItens({}); return; }
     const c = contratos.find(x => x.id === medicaoContrato);
     if (!c || tipoContrato(c.numero) === 'medicos') return;
     const itensDoContrato = itens.filter(i => i.contrato_id === medicaoContrato);
     const existentes = medicoesItensHist.filter(mi => mi.contrato_id === medicaoContrato && mi.mes_referencia === medicaoMes);
-    if (!existentes.length) return;
-    setMedicaoItens(prev => {
-      const novo = { ...prev };
-      itensDoContrato.forEach(it => {
-        const mi = existentes.find(m => m.item_id === it.id);
-        if (mi) {
-          novo[it.id] = mi.qtd_executada ?? 0;
-          novo['vu_'+it.id] = mi.vlr_unitario ?? it.vlr_unitario ?? 0;
-        }
-      });
-      return novo;
+    const novo = {};
+    itensDoContrato.forEach(it => {
+      const mi = existentes.find(m => m.item_id === it.id);
+      if (mi) {
+        novo[it.id] = mi.qtd_executada ?? 0;
+        novo['vu_'+it.id] = mi.vlr_unitario ?? it.vlr_unitario ?? 0;
+      }
     });
+    setMedicaoItens(novo);
     const execExistente = execucoes.find(e => e.contrato_id === medicaoContrato && e.mes_referencia === medicaoMes);
     if (execExistente) {
       const m = (execExistente.observacao||'').match(/^(\d+)ª/);
@@ -3417,7 +3459,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const mesCurto = (mes) => { const [y,m] = mes.split('-'); const nomes=['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return nomes[parseInt(m)]+'/'+y.slice(2); };
 
     // Status das medições (mesma lógica do Painel)
-    const statusMedicoesRel = contratos.filter(c => c.status !== 'finalizado').map(c => {
+    const statusMedicoesRel = contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).map(c => {
       const execsContrato = execucoes.filter(e => e.contrato_id === c.id && e.mes_referencia <= relatorioMes);
       const ultimoMes = execsContrato.length ? execsContrato.map(e=>e.mes_referencia).sort().slice(-1)[0] : null;
       let cls='vermelho', label='Nunca medido', mesesAtraso=null;
@@ -3443,7 +3485,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     // Aditivo/supressão — indicativo condensado por contrato (mesma lógica da aba
     // Aditivos e Supressões), pra apoiar a decisão do gestor sem virar tabela extensa.
-    const analiseReequilibrioRel = contratos.map(c => {
+    const analiseReequilibrioRel = contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).map(c => {
       const itensC = itens.filter(i => i.contrato_id === c.id);
       const deficit = [], superavit = [];
       itensC.forEach(it => {
