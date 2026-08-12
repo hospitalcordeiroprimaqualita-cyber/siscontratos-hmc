@@ -2338,7 +2338,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const temLotes = itensOrdenados.some(it => nomeGrupo(it));
 
     const linhaItem = (it) => {
-      const qtd = parseFloat(medicaoItens[it.id] ?? it.qtd_exec ?? 0);
+      // Campo em branco = zero de verdade. NUNCA cair pro qtd_exec salvo (isso
+      // reaproveitava silenciosamente a quantidade da medição anterior pra
+      // qualquer item que o usuário deixasse vazio, inflando o total sem avisar.
+      const qtd = parseFloat(medicaoItens[it.id] || 0);
       const vuState = medicaoItens['vu_'+it.id];
       const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
       const total = qtd * vu;
