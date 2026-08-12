@@ -2726,10 +2726,19 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       const lotesUI = temLotesUI ? [...new Set(itensOrd.map(it => nomeGrupoUI(it) || 'Itens sem lote'))] : ['__flat__'];
 
       const linhaTabela = (it, idx) => {
+        const posGlobal = itensOrd.findIndex(x => x.id === it.id);
         const qtd = parseFloat(medicaoItens[it.id]||0);
         const vuState = medicaoItens['vu_'+it.id];
         const vu = parseFloat(vuState !== undefined ? vuState : (it.vlr_unitario||0));
         const total = qtd * vu;
+        const focarCampo = (id) => { const el = document.getElementById(id); if (el) { el.focus(); el.select?.(); } };
+        const irProximaQtd = () => {
+          const idsQtd = itensOrd.map(x => `qtd-${x.id}`);
+          const posAtual = idsQtd.indexOf(`qtd-${it.id}`);
+          if (posAtual >= 0 && posAtual < idsQtd.length-1) focarCampo(idsQtd[posAtual+1]);
+        };
+        const onEnterQtd = (e) => { if (e.key === 'Enter') { e.preventDefault(); focarCampo(`vu-${it.id}`); } };
+        const onEnterVu = (e) => { if (e.key === 'Enter') { e.preventDefault(); irProximaQtd(); } };
         return (
           <tr key={it.id} style={{background:qtd>0?'#f9fffe':'transparent'}}>
             <td className="mono" style={{textAlign:'center'}}>{it.ordem || (idx+1)}</td>
@@ -2737,15 +2746,17 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             <td style={{textAlign:'center'}}>{it.unit||'un.'}</td>
             <td style={{textAlign:'center'}}>{it.qtd_mensal}</td>
             <td style={{width:80}}>
-              <input type="number" min="0"
+              <input type="number" min="0" id={`qtd-${it.id}`} tabIndex={posGlobal*2+1}
                 value={medicaoItens[it.id]||''}
                 onChange={e=>setMedicaoItens(prev=>({...prev,[it.id]:e.target.value}))}
+                onKeyDown={onEnterQtd}
                 style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}}/>
             </td>
             <td style={{width:110}}>
-              <input type="number" min="0" step="0.01"
+              <input type="number" min="0" step="0.01" id={`vu-${it.id}`} tabIndex={posGlobal*2+2}
                 value={medicaoItens['vu_'+it.id] !== undefined ? medicaoItens['vu_'+it.id] : (it.vlr_unitario||'')}
                 onChange={e=>setMedicaoItens(prev=>({...prev,['vu_'+it.id]:e.target.value}))}
+                onKeyDown={onEnterVu}
                 style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,background:it.vlr_unitario?'#f0fff4':'#fff'}}/>
             </td>
             <td style={{textAlign:'right',fontWeight:700,fontSize:13,
