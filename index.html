@@ -1597,7 +1597,7 @@ function App() {
     const mesesDecContrato = resumoAnalitico[0]?.a.mesesDec;
     const mesesRestContrato = resumoAnalitico[0]?.a.mesesRest;
 
-    const linhas = alocacoes.map(a => `<tr>
+    const linhas = alocacoes.map(a => `<tr style="page-break-inside:avoid;break-inside:avoid;">
       <td class="desc">${a.itemSobra.item}</td>
       <td class="num">${a.qtdSobra.toFixed(1)}</td>
       <td class="val">R$ ${a.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
@@ -1607,7 +1607,7 @@ function App() {
       <td class="val">R$ ${a.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
     </tr>`).join('');
 
-    const linhasResumo = resumoAnalitico.map(({it,a}) => `<tr>
+    const linhasResumo = resumoAnalitico.map(({it,a}) => `<tr style="page-break-inside:avoid;break-inside:avoid;">
       <td class="desc">${it.item}${it.lote?` · Lote ${it.lote}`:''}</td>
       <td class="num">${a.qtdTot.toLocaleString('pt-BR')}</td>
       <td class="num">${it.qtd_acum.toLocaleString('pt-BR')}</td>
@@ -1667,7 +1667,7 @@ function App() {
         <strong>Atenção:</strong> o remanejamento acima não cobre a totalidade da necessidade deste contrato — os itens abaixo não têm excedente suficiente (no mesmo lote) para suprir a falta e requerem <strong>aditivo real</strong> pelo valor indicado.
       </div>
       <table><thead><tr><th>Item</th><th>Valor de aditivo necessário</th></tr></thead>
-      <tbody>${itensSemCobertura.map(d => `<tr><td class="desc">${d.item.item}${d.item.lote?` · Lote ${d.item.lote}`:''}</td><td class="val">R$ ${d.faltaCobrir.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>`).join('')}</tbody></table>
+      <tbody>${itensSemCobertura.map(d => `<tr style="page-break-inside:avoid;break-inside:avoid;"><td class="desc">${d.item.item}${d.item.lote?` · Lote ${d.item.lote}`:''}</td><td class="val">R$ ${d.faltaCobrir.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>`).join('')}</tbody></table>
       <div class="total-geral" style="color:#991b1b">TOTAL DE ADITIVO NECESSÁRIO &nbsp;&nbsp; R$ ${totalSemCobertura.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       ` : ''}
       <br/><br/>
@@ -1689,7 +1689,7 @@ function App() {
 
   const gerarPedidoAditivo = (contrato, itensNecessarios, totalNecessario) => {
     const hoje = new Date();
-    const linhas = itensNecessarios.map(d => `<tr>
+    const linhas = itensNecessarios.map(d => `<tr style="page-break-inside:avoid;break-inside:avoid;">
       <td class="desc">${d.item.item}${d.item.lote?` · Lote ${d.item.lote}`:''}</td>
       <td class="num">${d.item.unit||''}</td>
       <td class="num">${Math.abs(d.dif)}</td>
@@ -2354,7 +2354,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       const vuState = medicaoItens['vu_'+it.id];
       const vu = parseFloat(vuState !== undefined && vuState !== '' ? vuState : (it.vlr_unitario || 0));
       const total = qtd * vu;
-      return { total, html: `<tr>
+      return { total, html: `<tr style="page-break-inside:avoid;break-inside:avoid;">
           <td class="num">${it.ordemExibir}</td>
           <td class="desc">${it.item}</td>
           <td class="num">${it.unit||'un.'}</td>
@@ -2500,13 +2500,13 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         const rows = radiocomRows[it.id] || [];
         const isDia = isDiaSemanaItem(it);
         if (!rows.length) {
-          return `<tr><td class="num">${it.ordem}</td><td class="desc">${it.item}</td><td class="num">${it.carga_horaria||'—'}</td><td class="num">${it.vaga||''}</td><td class="desc">—</td><td class="desc">—</td><td class="num">0</td><td class="val">R$ ${(it.vlr_unitario||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td class="val">R$ 0,00</td></tr>`;
+          return `<tr style="page-break-inside:avoid;break-inside:avoid;"><td class="num">${it.ordem}</td><td class="desc">${it.item}</td><td class="num">${it.carga_horaria||'—'}</td><td class="num">${it.vaga||''}</td><td class="desc">—</td><td class="desc">—</td><td class="num">0</td><td class="val">R$ ${(it.vlr_unitario||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td class="val">R$ 0,00</td></tr>`;
         }
         return rows.map(r => {
           const qtd = parseFloat(r.quantidade) || 0;
           const total = qtd * (it.vlr_unitario||0);
           totalQuadro += total;
-          return `<tr>
+          return `<tr style="page-break-inside:avoid;break-inside:avoid;">
             <td class="num">${it.ordem}</td>
             <td class="desc">${it.item}</td>
             <td class="num">${it.carga_horaria||'—'}</td>
@@ -2520,10 +2520,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         }).join('');
       }).join('');
       totalGeral += totalQuadro;
-      return `<div class="lote-titulo">${quadroNome}</div>
-        <table><thead><tr><th>Item</th><th>Descrição</th><th>Carga Horária</th><th>Vaga</th><th>Dia</th><th>Profissional Médico</th><th>Quant. Plantões</th><th>Valor Plantão</th><th>Valor Bruto</th></tr></thead>
+      return `<div class="lote-titulo" style="page-break-after:avoid;break-after:avoid;">${quadroNome}</div>
+        <table style="page-break-inside:auto;"><thead><tr><th>Item</th><th>Descrição</th><th>Carga Horária</th><th>Vaga</th><th>Dia</th><th>Profissional Médico</th><th>Quant. Plantões</th><th>Valor Plantão</th><th>Valor Bruto</th></tr></thead>
         <tbody>${linhas}
-        <tr class="total-row"><td colspan="8" style="text-align:right">TOTAL DO QUADRO</td><td class="val">R$ ${totalQuadro.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>
+        <tr class="total-row" style="page-break-inside:avoid;break-inside:avoid;"><td colspan="8" style="text-align:right">TOTAL DO QUADRO</td><td class="val">R$ ${totalQuadro.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>
         </tbody></table>`;
     }).join('');
 
@@ -3103,7 +3103,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const tabelaItens = itensOrdenados.length ? `
       <table><thead><tr><th>Item</th><th>Qtd. total contratada</th><th>Acumulado</th><th>% consumido</th><th>Situação</th></tr></thead>
-      <tbody>${itensOrdenados.map(({it,pct,acao}) => `<tr>
+      <tbody>${itensOrdenados.map(({it,pct,acao}) => `<tr style="page-break-inside:avoid;break-inside:avoid;">
         <td class="desc">${it.item}${it.lote?` · Lote ${it.lote}`:''}</td>
         <td class="num">${(it.qtd_total_contratada ?? (it.qtd_mensal*mesesTot)).toLocaleString('pt-BR')}</td>
         <td class="num">${it.qtd_acum.toLocaleString('pt-BR')}</td>
@@ -3113,7 +3113,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const tabelaRubrica = rubricasContrato.length ? `
       <table><thead><tr><th>Rubrica</th><th>Teto mensal aprovado</th><th>Executado neste contrato no mês</th><th>% do teto</th></tr></thead>
-      <tbody>${rubricasContrato.map(r => `<tr>
+      <tbody>${rubricasContrato.map(r => `<tr style="page-break-inside:avoid;break-inside:avoid;">
         <td class="desc">${r.rub} - ${r.desc}</td>
         <td class="val">${brl(r.tetoMensal)}</td>
         <td class="val">${brl(r.executado)}</td>
@@ -3614,7 +3614,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const tabelaStatusAtencao = statusAtencao.length ? `
       <table><thead><tr><th>Contrato</th><th>Empresa</th><th>Última medição</th><th>Status</th></tr></thead>
-      <tbody>${statusAtencao.map(s => `<tr>
+      <tbody>${statusAtencao.map(s => `<tr style="page-break-inside:avoid;break-inside:avoid;">
         <td class="num"><strong>${s.c.numero}</strong></td>
         <td class="desc">${s.c.empresa}</td>
         <td class="num">${s.ultimoMes?mesToPT(s.ultimoMes):'—'}</td>
@@ -3625,7 +3625,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const tabelaVencendo = vencendo.length ? `
       <table><thead><tr><th>Contrato</th><th>Empresa</th><th>Vencimento</th><th>Dias restantes</th></tr></thead>
-      <tbody>${vencendo.map(c => `<tr>
+      <tbody>${vencendo.map(c => `<tr style="page-break-inside:avoid;break-inside:avoid;">
         <td class="num"><strong>${c.numero}</strong></td>
         <td class="desc">${c.empresa}</td>
         <td class="num">${fmtD(c.fim)}</td>
@@ -3638,7 +3638,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       </div>` : '';
     const tabelaRubrica = rubricasCriticas.length ? `
       <table><thead><tr><th>Rubrica</th><th>Teto mensal aprovado</th><th>Executado no mês</th><th>% do teto</th></tr></thead>
-      <tbody>${rubricasCriticas.map(r => `<tr>
+      <tbody>${rubricasCriticas.map(r => `<tr style="page-break-inside:avoid;break-inside:avoid;">
         <td class="desc">${r.rub} - ${r.desc}</td>
         <td class="val">${brl(r.tetoMensal)}</td>
         <td class="val">${brl(r.executado)}</td>
@@ -3665,7 +3665,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       ${svgBarrasEmpilhadasPDF(dadosInvestimentoRel)}
     </div>
     <table><thead><tr><th>Ano</th><th>Teto anual</th><th>Empenhado</th><th>Saldo disponível</th></tr></thead>
-    <tbody>${dadosInvestimentoRel.map(d => `<tr>
+    <tbody>${dadosInvestimentoRel.map(d => `<tr style="page-break-inside:avoid;break-inside:avoid;">
       <td class="num"><strong>${d.label}</strong></td>
       <td class="val">${brl(d.teto)}</td>
       <td class="val">${brl(d.consumido)}</td>
@@ -3675,7 +3675,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const tabelaAditivoSupressao = analiseReequilibrioRel.length ? `
       <table><thead><tr><th>Contrato</th><th>Empresa</th><th>Situação</th><th>Valor</th></tr></thead>
-      <tbody>${analiseReequilibrioRel.map(a => `<tr>
+      <tbody>${analiseReequilibrioRel.map(a => `<tr style="page-break-inside:avoid;break-inside:avoid;">
         <td class="num"><strong>${a.contrato.numero}</strong></td>
         <td class="desc">${a.contrato.empresa}</td>
         <td class="num"><span class="badge-pdf" style="background:${a.podeReequilibrar?'#22c55e':'#ef4444'}">${a.podeReequilibrar?'Reequilíbrio interno resolve':'Precisa de aditivo'}</span></td>
@@ -4022,7 +4022,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       const qtd = parseFloat(pedidoQtds[it.id] || 0);
       const total = qtd * (it.vlr_unitario || 0);
       totalGeral += total;
-      return `<tr>
+      return `<tr style="page-break-inside:avoid;break-inside:avoid;">
         <td class="num">${it.ordem||''}</td>
         <td class="desc">${it.item}</td>
         <td class="num">${it.unit||'un.'}</td>
