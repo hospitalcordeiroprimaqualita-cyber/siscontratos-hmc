@@ -1572,8 +1572,8 @@ function App() {
         if (s.valorDisponivel <= 0.01) continue;
         if ((d.item.lote || null) !== (s.item.lote || null)) continue;
         const usar = Math.min(valorNecessario, s.valorDisponivel);
-        const qtdFalta = d.item.vlr_unitario > 0 ? usar / d.item.vlr_unitario : 0;
-        const qtdSobra = s.item.vlr_unitario > 0 ? usar / s.item.vlr_unitario : 0;
+        const qtdFalta = Math.round(d.item.vlr_unitario > 0 ? usar / d.item.vlr_unitario : 0);
+        const qtdSobra = Math.round(s.item.vlr_unitario > 0 ? usar / s.item.vlr_unitario : 0);
         alocacoes.push({ itemFalta: d.item, itemSobra: s.item, valor: usar, qtdFalta, qtdSobra });
         s.valorDisponivel -= usar;
         valorNecessario -= usar;
@@ -1598,21 +1598,24 @@ function App() {
     const mesesRestContrato = resumoAnalitico[0]?.a.mesesRest;
 
     const linhas = alocacoes.map(a => `<tr style="page-break-inside:avoid;break-inside:avoid;">
+      <td class="num">${a.itemSobra.ordem??'—'}</td>
       <td class="desc">${a.itemSobra.item}</td>
-      <td class="num">${a.qtdSobra.toFixed(1)}</td>
+      <td class="num">${a.qtdSobra}</td>
       <td class="val">R$ ${a.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
       <td class="num" style="font-weight:bold">→</td>
+      <td class="num">${a.itemFalta.ordem??'—'}</td>
       <td class="desc">${a.itemFalta.item}</td>
-      <td class="num">${a.qtdFalta.toFixed(1)}</td>
+      <td class="num">${a.qtdFalta}</td>
       <td class="val">R$ ${a.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
     </tr>`).join('');
 
     const linhasResumo = resumoAnalitico.map(({it,a}) => `<tr style="page-break-inside:avoid;break-inside:avoid;">
+      <td class="num">${it.ordem??'—'}</td>
       <td class="desc">${it.item}${it.lote?` · Lote ${it.lote}`:''}</td>
       <td class="num">${a.qtdTot.toLocaleString('pt-BR')}</td>
       <td class="num">${it.qtd_acum.toLocaleString('pt-BR')}</td>
       <td class="num">${a.saldo.toLocaleString('pt-BR')}</td>
-      <td class="num">${a.media.toFixed(1)}</td>
+      <td class="num">${Math.round(a.media)}</td>
       <td class="num">${a.proj}</td>
       <td class="num" style="color:${a.dif<0?'#b91c1c':'#166534'};font-weight:bold">${a.dif>0?'+':''}${a.dif}</td>
     </tr>`).join('');
@@ -1654,12 +1657,12 @@ function App() {
         Os itens abaixo apresentam saldo remanescente insuficiente para cobrir a demanda projetada até o fim da vigência. Para equilíbrio, propõe-se a supressão parcial dos itens com excedente e a suplementação correspondente dos itens em risco, <strong>sem alteração do valor global do contrato</strong>.
       </div>
       <div class="grupo-titulo">RESUMO ANALÍTICO DE CONSUMO — BASE DO CÁLCULO</div>
-      <table><thead><tr><th>Item</th><th>Qtd. total contratada</th><th>Acumulado</th><th>Saldo</th><th>Média real/mês</th><th>Projeção até o fim</th><th>Diferença</th></tr></thead>
+      <table><thead><tr><th>Nº</th><th>Item</th><th>Qtd. total contratada</th><th>Acumulado</th><th>Saldo</th><th>Média real/mês</th><th>Projeção até o fim</th><th>Diferença</th></tr></thead>
       <tbody>${linhasResumo}</tbody></table>
       <div class="obs">Diferença = Saldo − Projeção de consumo até o fim da vigência (baseada na média real de uso). Negativo = risco de esgotar antes do fim; positivo = excedente disponível para remanejamento.</div>
       <div class="grupo-titulo">PROPOSTA DE REMANEJAMENTO</div>
-      <table><thead><tr><th colspan="3">SUPRIMIR (item com excedente)</th><th></th><th colspan="3">SUPLEMENTAR (item em risco)</th></tr>
-      <tr><th>Item</th><th>Qtd</th><th>Valor</th><th></th><th>Item</th><th>Qtd</th><th>Valor</th></tr></thead>
+      <table><thead><tr><th colspan="4">SUPRIMIR (item com excedente)</th><th></th><th colspan="4">SUPLEMENTAR (item em risco)</th></tr>
+      <tr><th>Nº</th><th>Item</th><th>Qtd</th><th>Valor</th><th></th><th>Nº</th><th>Item</th><th>Qtd</th><th>Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table>
       <div class="total-geral">VALOR TOTAL REMANEJADO &nbsp;&nbsp; R$ ${totalRealocado.toLocaleString('pt-BR',{minimumFractionDigits:2})} &nbsp;&nbsp; (suprimido = suplementado, sem impacto no valor do contrato)</div>
       ${itensSemCobertura.length ? `
@@ -1893,13 +1896,13 @@ function App() {
                 {deficit.map((d,i) => (
                   <div key={i} style={{padding:'6px 0',borderBottom:i<deficit.length-1?'1px solid var(--gray-b)':'none'}}>
                     <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
-                      <span style={{fontWeight:600}}>{d.item.item}{d.item.lote && <span style={{fontWeight:400,color:'var(--text3)'}}> · Lote {d.item.lote}</span>}</span>
+                      <span style={{fontWeight:600}}>{d.item.ordem??'—'}. {d.item.item}{d.item.lote && <span style={{fontWeight:400,color:'var(--text3)'}}> · Lote {d.item.lote}</span>}</span>
                       <span style={{color:'#b91c1c',fontWeight:600}}>faltam {Math.abs(d.dif)} un. · {brl(d.valor)}</span>
                     </div>
                     {d.origens.length>0 && (
                       <div style={{marginTop:3,paddingLeft:12,fontSize:11.5,color:'#92400e'}}>
                         {d.origens.map((o,j) => (
-                          <div key={j}>↳ cobrir com <strong>{o.itemSobra.item}</strong> — usar {o.qtdSobra.toFixed(1)} un. da sobra ({brl(o.valor)})</div>
+                          <div key={j}>↳ cobrir com <strong>{o.itemSobra.ordem??'—'}. {o.itemSobra.item}</strong> — usar {o.qtdSobra} un. da sobra ({brl(o.valor)})</div>
                         ))}
                       </div>
                     )}
