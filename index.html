@@ -1657,19 +1657,19 @@ function App() {
         Os itens abaixo apresentam saldo remanescente insuficiente para cobrir a demanda projetada até o fim da vigência. Para equilíbrio, propõe-se a supressão parcial dos itens com excedente e a suplementação correspondente dos itens em risco, <strong>sem alteração do valor global do contrato</strong>.
       </div>
       <div class="grupo-titulo">RESUMO ANALÍTICO DE CONSUMO — BASE DO CÁLCULO</div>
-      <table><thead><tr><th>Nº</th><th>Item</th><th>Qtd. total contratada</th><th>Acumulado</th><th>Saldo</th><th>Média real/mês</th><th>Projeção até o fim</th><th>Diferença</th></tr></thead>
+      <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. total contratada</th><th>Acumulado</th><th>Saldo</th><th>Média real/mês</th><th>Projeção até o fim</th><th>Diferença</th></tr></thead>
       <tbody>${linhasResumo}</tbody></table>
       <div class="obs">Diferença = Saldo − Projeção de consumo até o fim da vigência (baseada na média real de uso). Negativo = risco de esgotar antes do fim; positivo = excedente disponível para remanejamento.</div>
       <div class="grupo-titulo">PROPOSTA DE REMANEJAMENTO</div>
       <table><thead><tr><th colspan="4">SUPRIMIR (item com excedente)</th><th></th><th colspan="4">SUPLEMENTAR (item em risco)</th></tr>
-      <tr><th>Nº</th><th>Item</th><th>Qtd</th><th>Valor</th><th></th><th>Nº</th><th>Item</th><th>Qtd</th><th>Valor</th></tr></thead>
+      <tr><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th><th></th><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table>
       <div class="total-geral">VALOR TOTAL REMANEJADO &nbsp;&nbsp; R$ ${totalRealocado.toLocaleString('pt-BR',{minimumFractionDigits:2})} &nbsp;&nbsp; (suprimido = suplementado, sem impacto no valor do contrato)</div>
       ${itensSemCobertura.length ? `
       <div class="obs" style="margin-top:14px;color:#991b1b">
         <strong>Atenção:</strong> o remanejamento acima não cobre a totalidade da necessidade deste contrato — os itens abaixo não têm excedente suficiente (no mesmo lote) para suprir a falta e requerem <strong>aditivo real</strong> pelo valor indicado.
       </div>
-      <table><thead><tr><th>Item</th><th>Valor de aditivo necessário</th></tr></thead>
+      <table><thead><tr><th>Descrição</th><th>Valor de aditivo necessário</th></tr></thead>
       <tbody>${itensSemCobertura.map(d => `<tr style="page-break-inside:avoid;break-inside:avoid;"><td class="desc">${d.item.item}${d.item.lote?` · Lote ${d.item.lote}`:''}</td><td class="val">R$ ${d.faltaCobrir.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td></tr>`).join('')}</tbody></table>
       <div class="total-geral" style="color:#991b1b">TOTAL DE ADITIVO NECESSÁRIO &nbsp;&nbsp; R$ ${totalSemCobertura.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       ` : ''}
@@ -1733,7 +1733,7 @@ function App() {
       <div class="obs">
         Os itens abaixo apresentam projeção de esgotamento do saldo contratado antes do fim da vigência, sem excedente suficiente no mesmo lote para cobrir a necessidade via remanejamento interno. Solicita-se a formalização de aditivo pelo(s) valor(es) indicado(s), respeitado o limite legal de acréscimo de até 25% do valor contratado (art. 125, Lei 14.133/2021).
       </div>
-      <table><thead><tr><th>Item</th><th>Unid.</th><th>Qtd. em falta</th><th>Valor de aditivo necessário</th></tr></thead>
+      <table><thead><tr><th>Descrição</th><th>Unid.</th><th>Qtd. em falta</th><th>Valor de aditivo necessário</th></tr></thead>
       <tbody>${linhas}</tbody></table>
       <div class="total-geral">VALOR TOTAL DE ADITIVO SOLICITADO &nbsp;&nbsp; R$ ${totalNecessario.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       <br/><br/>
@@ -2797,7 +2797,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                 {temLotesUI && <div style={{fontWeight:700,fontSize:12.5,padding:'6px 10px',background:'var(--gray)',borderRadius:5,marginBottom:6}}>{loteNome}</div>}
                 <div className="tbl-wrap">
                   <table>
-                    <thead><tr><th>Nº</th><th>Item</th><th>Unidade</th><th>Qtd contratada/mês</th><th>Qtd executada *</th><th>Valor unitário (R$) *</th><th>Total mês</th></tr></thead>
+                    <thead><tr><th>Item</th><th>Descrição</th><th>Unidade</th><th>Qtd contratada/mês</th><th>Qtd executada *</th><th>Valor unitário (R$) *</th><th>Total mês</th></tr></thead>
                     <tbody>{itensLote.map((it, idx) => linhaTabela(it, idx))}</tbody>
                   </table>
                 </div>
@@ -3105,7 +3105,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     </div>`;
 
     const tabelaItens = itensOrdenados.length ? `
-      <table><thead><tr><th>Item</th><th>Qtd. total contratada</th><th>Acumulado</th><th>% consumido</th><th>Situação</th></tr></thead>
+      <table><thead><tr><th>Descrição</th><th>Qtd. total contratada</th><th>Acumulado</th><th>% consumido</th><th>Situação</th></tr></thead>
       <tbody>${itensOrdenados.map(({it,pct,acao}) => `<tr style="page-break-inside:avoid;break-inside:avoid;">
         <td class="desc">${it.item}${it.lote?` · Lote ${it.lote}`:''}</td>
         <td class="num">${(it.qtd_total_contratada ?? (it.qtd_mensal*mesesTot)).toLocaleString('pt-BR')}</td>
