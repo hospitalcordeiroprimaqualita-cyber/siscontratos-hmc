@@ -1471,17 +1471,34 @@ function App() {
       );
     }
 
+    const removerLoteDoContrato = async () => {
+      if (!confirm('Remover o lote de todos os itens deste contrato? Isso tira o agrupamento por lote nas telas e nos PDFs (Medição, Reequilíbrio, Relatórios) — use quando o contrato não é dividido em lotes.')) return;
+      setSaving(true);
+      const { error } = await sb().from('itens').update({ lote: null }).eq('contrato_id', selQtd);
+      setSaving(false);
+      if (error) { alert('Erro ao remover lote: ' + error.message); return; }
+      await loadAll();
+    };
+    const temLoteNesteContrato = lista.some(it => it.lote);
+
     return (
       <>
       <div className="panel">
         <div className="panel-head"><h2><i className="fa-solid fa-list-check" /> Itens contratados</h2>
-          <button className="btn btn-primary btn-sm" onClick={() => openModal('item', selQtd)}><i className="fa-solid fa-plus" /> Adicionar item</button>
+          <div style={{display:'flex',gap:8}}>
+            {temLoteNesteContrato && (
+              <button className="btn btn-secondary btn-sm" onClick={removerLoteDoContrato} disabled={saving}>
+                <i className="fa-solid fa-object-ungroup" /> Remover lote deste contrato
+              </button>
+            )}
+            <button className="btn btn-primary btn-sm" onClick={() => openModal('item', selQtd)}><i className="fa-solid fa-plus" /> Adicionar item</button>
+          </div>
         </div>
         <div style={{fontSize:11.5,color:'var(--text2)',padding:'0 17px 10px'}}>
           <i className="fa-solid fa-circle-info"/> "Saldo real" já considera o total contratado pra toda a vigência (não só o mês) — é o número certo pra saber se precisa de aditivo ou pode suprimir.
         </div>
         <div className="tbl-wrap">
-          <table><thead><tr><th>Nº</th><th>Lote</th><th>Item / serviço</th><th>Qtd/mês</th><th>Total contratado</th><th>Acumulado</th><th>Saldo real</th><th>% consumido</th><th>Status</th><th></th></tr></thead>
+          <table><thead><tr><th>Item</th>{temLoteNesteContrato && <th>Lote</th>}<th>Descrição</th><th>Qtd/mês</th><th>Total contratado</th><th>Acumulado</th><th>Saldo real</th><th>% consumido</th><th>Status</th><th></th></tr></thead>
           <tbody>{lista.map(it => {
             const a = contrato ? calcAnaliseItem(contrato, it) : null;
             const qtdTot = a ? a.qtdTot : (it.qtd_mensal||0);
@@ -1492,7 +1509,7 @@ function App() {
             return (
               <tr key={it.id} style={a?.acao==='ADITIVO'?{background:'#fff5f5'}:a?.acao==='SUPRESSÃO'?{background:'#fffbeb'}:{}}>
                 <td className="mono" style={{textAlign:'center'}}>{it.ordem||'—'}</td>
-                <td className="cell-m">{it.lote||'—'}</td>
+                {temLoteNesteContrato && <td className="cell-m">{it.lote||'—'}</td>}
                 <td>{it.item}</td>
                 <td style={{textAlign:'center'}} className="cell-m">{it.qtd_mensal} {it.unit}</td>
                 <td style={{textAlign:'center',fontWeight:600}}>{Math.round(qtdTot)}</td>
