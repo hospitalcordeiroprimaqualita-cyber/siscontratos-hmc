@@ -100,6 +100,7 @@ tr:hover td{background:#FAFBFD}
 .alert-box.amarelo{background:#fef3c7;color:#92400e;border-left:3px solid #f59e0b}
 .alert-box.laranja{background:#ffedd5;color:#9a3412;border-left:3px solid #f97316}
 .alert-box.vermelho{background:#fee2e2;color:#991b1b;border-left:3px solid #ef4444}
+.alert-box.azul{background:#dbeafe;color:#1e40af;border-left:3px solid #3b82f6}
 .deadline-item{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--gray-b)}
 .deadline-item:last-child{border-bottom:none}
 .dl-name{font-size:12.5px;font-weight:600}
@@ -572,7 +573,7 @@ function App() {
   const [formData, setFormData] = useState({});
   // ─── ALMOXARIFADO (estoque por QR Code) ───────────────────────────────
   const [movimentacoes, setMovimentacoes] = useState([]);
-  const [almoxTab, setAlmoxTab] = useState('itens'); // itens | scanner | historico
+  const [almoxTab, setAlmoxTab] = useState('reposicao'); // reposicao | itens | scanner | historico
   const [scannerAtivo, setScannerAtivo] = useState(false);
   const [itemEscaneado, setItemEscaneado] = useState(null);
   const [movTipo, setMovTipo] = useState('saida');
@@ -583,6 +584,7 @@ function App() {
   const [itemParaAdicionar, setItemParaAdicionar] = useState('');
   const [contratoParaAdicionar, setContratoParaAdicionar] = useState('');
   const [buscaAlmox, setBuscaAlmox] = useState('');
+  const [pedidosGerados, setPedidosGerados] = useState([]);
   const html5QrRef = useRef(null);
   const formRef = useRef({});
   const [saving, setSaving] = useState(false);
@@ -627,7 +629,7 @@ function App() {
   const loadAll = async () => {
     setSyncStatus('loading');
     try {
-      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv] = await Promise.all([
+      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg] = await Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         sb().from('itens').select('*').order('created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
@@ -638,7 +640,8 @@ function App() {
         sb().from('tetos_investimento').select('*').order('ano'),
         sb().from('investimento_repasses').select('*').order('data'),
         sb().from('investimento_pagamentos').select('*').order('data'),
-        fetchAllRows('estoque_movimentacoes', 'created_at', false)
+        fetchAllRows('estoque_movimentacoes', 'created_at', false),
+        sb().from('pedidos_gerados').select('*').order('gerado_em', {ascending:false})
       ]);
       if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
       setContratos(c.data || []);
@@ -658,6 +661,8 @@ function App() {
       setPagamentosInvestimento(pi.data || []);
       if (mv.error) console.error('Tabela "estoque_movimentacoes":', mv.error.message);
       setMovimentacoes(mv.data || []);
+      if (pg.error) console.error('Tabela "pedidos_gerados":', pg.error.message);
+      setPedidosGerados(pg.data || []);
       setSyncStatus('ok');
     } catch(e) {
       setSyncStatus('err');
@@ -1162,6 +1167,7 @@ function App() {
     const atrasadas = statusMedicoes.filter(s => s.cls==='vermelho').length;
     const pendentes = statusMedicoes.filter(s => s.cls==='amarelo').length;
     const emDia = statusMedicoes.filter(s => s.cls==='verde').length;
+    const itensBaixoEstoque = itens.filter(i => i.controla_estoque && (i.saldo_atual||0) <= (i.estoque_minimo||0));
 
     return (
       <>
@@ -1172,8 +1178,9 @@ function App() {
             {cls:precisamAtencao.size>0?'laranja':'verde', val:precisamAtencao.size, label:'Precisam de aditivo/supressão', sub:'valor ou quantidade ≤ 30 dias'},
             {cls:vencidos>0?'vermelho':'verde', val:vencidos, label:'Contratos vencidos', sub:'necessitam ação'},
             {cls:'azul', val:adi, label:'Aditivos em análise', sub:'pendentes de aprovação'},
+            {cls:itensBaixoEstoque.length>0?'vermelho':'verde', val:itensBaixoEstoque.length, label:'Itens p/ repor (almoxarifado)', sub:'saldo no ou abaixo do mínimo', onClick:()=>{setSection('almoxarifado'); setAlmoxTab('reposicao');}},
           ].map((card,i) => (
-            <div key={i} className={`stat-card ${card.cls}`}>
+            <div key={i} className={`stat-card ${card.cls}`} style={card.onClick?{cursor:'pointer'}:{}} onClick={card.onClick}>
               <div className="s-val">{card.val}</div>
               <div className="s-label">{card.label}</div>
               <div className="s-sub">{card.sub}</div>
@@ -4206,15 +4213,28 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     janela.document.write(html);
     janela.document.close();
     janela.print();
+
+    const mesRef = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+    sb().from('pedidos_gerados').insert({
+      id: uid('PED'), contrato_id: pedidoContrato, mes_referencia: mesRef,
+      total_estimado: totalGeral, gerado_em: new Date().toISOString()
+    }).then(({error}) => { if (!error) loadAll(); });
   };
 
   const renderPedido = () => {
     const c = contratos.find(x => x.id === pedidoContrato);
     const itensDoContrato = pedidoContrato ? itens.filter(i => i.contrato_id === pedidoContrato).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999)) : [];
     const totalPedido = itensDoContrato.reduce((acc,it) => acc + (parseFloat(pedidoQtds[it.id]||0) * (it.vlr_unitario||0)), 0);
+    const mesAtual = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+    const pedidoDesteMes = pedidoContrato ? pedidosGerados.find(p => p.contrato_id === pedidoContrato && p.mes_referencia === mesAtual) : null;
 
     return (
       <>
+        {pedidoDesteMes && (
+          <AlertBox cls="azul" icon="fa-circle-info">
+            Pedido de <strong>{new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</strong> já foi gerado pra este contrato em {new Date(pedidoDesteMes.gerado_em).toLocaleDateString('pt-BR')}. Você ainda pode gerar de novo se precisar corrigir ou complementar.
+          </AlertBox>
+        )}
         <div className="panel">
           <div className="panel-head"><h2><i className="fa-solid fa-cart-shopping"/> Gerar pedido de compra</h2></div>
           <div className="panel-body">
@@ -4411,8 +4431,21 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       ? itensControlados.filter(i => (i.item||'').toLowerCase().includes(buscaAlmox.toLowerCase()))
       : itensControlados;
     const baixoEstoque = itensControlados.filter(i => (i.saldo_atual||0) <= (i.estoque_minimo||0));
+    const mesAtual = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+    // Agrupa os itens em baixo estoque por contrato, pra você já ver de qual fornecedor
+    // precisa pedir, sem entrar contrato por contrato pra descobrir.
+    const gruposReposicao = {};
+    baixoEstoque.forEach(it => {
+      if (!gruposReposicao[it.contrato_id]) gruposReposicao[it.contrato_id] = [];
+      gruposReposicao[it.contrato_id].push(it);
+    });
+    const contratosParaRepor = Object.keys(gruposReposicao)
+      .map(cid => ({ contrato: contratos.find(c=>c.id===cid), itens: gruposReposicao[cid] }))
+      .filter(g => g.contrato)
+      .sort((a,b)=>(a.contrato.numero||'').localeCompare(b.contrato.numero||''));
 
     const tabs = [
+      { k:'reposicao', l:`Reposição do mês${baixoEstoque.length?` (${baixoEstoque.length})`:''}`, i:'fa-cart-plus' },
       { k:'itens', l:'Itens & saldos', i:'fa-boxes-stacked' },
       { k:'scanner', l:'Leitor de QR Code', i:'fa-qrcode' },
       { k:'historico', l:'Histórico de movimentações', i:'fa-clock-rotate-left' },
@@ -4432,6 +4465,44 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           <AlertBox cls="vermelho" icon="fa-triangle-exclamation">
             <strong>{baixoEstoque.length} item(ns)</strong> no ou abaixo do estoque mínimo: {baixoEstoque.map(i=>i.item).join(', ')}.
           </AlertBox>
+        )}
+
+        {almoxTab === 'reposicao' && (
+          <div className="panel" style={{marginTop:14}}>
+            <div className="panel-head"><h2><i className="fa-solid fa-cart-plus"/> Itens pra repor este mês, por contrato</h2></div>
+            <div className="panel-body">
+              <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
+                Agrupado por fornecedor, pra você ir direto no pedido de compra de quem está precisando. Lembrete: o pedido de cada contrato é mensal — evite gerar mais de um no mesmo mês pro mesmo fornecedor, a menos que seja pra corrigir algo.
+              </div>
+              {contratosParaRepor.length === 0 && (
+                <div className="empty"><i className="fa-solid fa-circle-check" style={{color:'var(--teal)'}}/>Nenhum item abaixo do estoque mínimo no momento.</div>
+              )}
+              {contratosParaRepor.map(g => {
+                const jaGerado = pedidosGerados.find(p => p.contrato_id === g.contrato.id && p.mes_referencia === mesAtual);
+                return (
+                  <div key={g.contrato.id} style={{border:'1px solid var(--gray-b)',borderRadius:8,padding:'12px 14px',marginBottom:10}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+                      <div>
+                        <strong>{g.contrato.numero}</strong> · {g.contrato.empresa}
+                        <div style={{fontSize:11,color:'var(--text2)',marginTop:2}}>{g.itens.length} item(ns) abaixo do mínimo</div>
+                      </div>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        {jaGerado
+                          ? <span className="badge azul">Pedido de {new Date(mesAtual+'-02').toLocaleDateString('pt-BR',{month:'short',year:'numeric'})} já gerado</span>
+                          : <span className="badge vermelho">Pedido deste mês pendente</span>}
+                        <button className="btn btn-primary btn-sm" onClick={()=>{ setPedidoContrato(g.contrato.id); setSection('pedido'); }}>
+                          <i className="fa-solid fa-cart-shopping"/> Ir para o pedido
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{marginTop:8,fontSize:12,color:'var(--text2)'}}>
+                      {g.itens.map(it => `${it.item} (${it.saldo_atual||0}/${it.estoque_minimo||0} ${it.unit||''})`).join(' · ')}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {almoxTab === 'itens' && (
