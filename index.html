@@ -9,6 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -314,6 +316,17 @@ function ActBtn({ icon, onClick, title, danger }) {
 function AlertBox({ cls, icon, children }) {
   return <div className={`alert-box ${cls}`}><i className={`fa-solid ${icon}`} /><div>{children}</div></div>;
 }
+// Renderiza um QR Code (lib qrcodejs, carregada via CDN) dentro de uma div comum —
+// a lib mexe direto no DOM, então o React só precisa fornecer o container vazio.
+function QRTag({ payload, size }) {
+  const holderRef = useRef(null);
+  useEffect(() => {
+    if (!holderRef.current || typeof QRCode === 'undefined') return;
+    holderRef.current.innerHTML = '';
+    new QRCode(holderRef.current, { text: payload, width: size||90, height: size||90, correctLevel: QRCode.CorrectLevel.M });
+  }, [payload, size]);
+  return <div ref={holderRef} />;
+}
 
 // ─── GRÁFICOS (Chart.js) ──────────────────────────────────────────────────────
 const CHART_COLORS = ['#1D9E75','#178DBB','#f59e0b','#ef4444','#8B5CF6','#f97316','#0EA5E9','#22c55e'];
@@ -557,6 +570,19 @@ function App() {
   const [filtroAditivoContrato, setFiltroAditivoContrato] = useState('');
   const [buscaAditivo, setBuscaAditivo] = useState('');
   const [formData, setFormData] = useState({});
+  // ─── ALMOXARIFADO (estoque por QR Code) ───────────────────────────────
+  const [movimentacoes, setMovimentacoes] = useState([]);
+  const [almoxTab, setAlmoxTab] = useState('itens'); // itens | scanner | historico
+  const [scannerAtivo, setScannerAtivo] = useState(false);
+  const [itemEscaneado, setItemEscaneado] = useState(null);
+  const [movTipo, setMovTipo] = useState('saida');
+  const [movQtd, setMovQtd] = useState('');
+  const [movSetor, setMovSetor] = useState('');
+  const [movNota, setMovNota] = useState('');
+  const [movObs, setMovObs] = useState('');
+  const [itemParaAdicionar, setItemParaAdicionar] = useState('');
+  const [buscaAlmox, setBuscaAlmox] = useState('');
+  const html5QrRef = useRef(null);
   const formRef = useRef({});
   const [saving, setSaving] = useState(false);
 
@@ -600,7 +626,7 @@ function App() {
   const loadAll = async () => {
     setSyncStatus('loading');
     try {
-      const [c, i, a, m, l, ex, mi, ti, ri, pi] = await Promise.all([
+      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv] = await Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         sb().from('itens').select('*').order('created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
@@ -610,7 +636,8 @@ function App() {
         fetchAllRows('medicoes_itens', 'mes_referencia'),
         sb().from('tetos_investimento').select('*').order('ano'),
         sb().from('investimento_repasses').select('*').order('data'),
-        sb().from('investimento_pagamentos').select('*').order('data')
+        sb().from('investimento_pagamentos').select('*').order('data'),
+        fetchAllRows('estoque_movimentacoes', 'created_at', false)
       ]);
       if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
       setContratos(c.data || []);
@@ -628,6 +655,8 @@ function App() {
       setTetosInvestimento(ti.data || []);
       setRepassesInvestimento(ri.data || []);
       setPagamentosInvestimento(pi.data || []);
+      if (mv.error) console.error('Tabela "estoque_movimentacoes":', mv.error.message);
+      setMovimentacoes(mv.data || []);
       setSyncStatus('ok');
     } catch(e) {
       setSyncStatus('err');
@@ -782,6 +811,68 @@ function App() {
     setSaving(false);
     if (error) { alert('Erro: ' + error.message); return; }
     await loadAll(); closeModal();
+  };
+
+  // ─── ALMOXARIFADO ────────────────────────────────────────────────────
+  // Passa a controlar estoque físico (entrada/saída) para um item já cadastrado
+  // em algum contrato de fornecimento. Não cria item novo — só liga o controle.
+  const ativarControleEstoque = async (itemId, saldoInicial, estoqueMinimo) => {
+    setSaving(true);
+    const { error } = await sb().from('itens').update({
+      controla_estoque: true,
+      saldo_atual: parseFloat(saldoInicial) || 0,
+      estoque_minimo: parseFloat(estoqueMinimo) || 0
+    }).eq('id', itemId);
+    setSaving(false);
+    if (error) { alert('Erro ao ativar controle de estoque: ' + error.message); return; }
+    await loadAll();
+  };
+
+  const desativarControleEstoque = async (itemId) => {
+    if (!confirm('Remover este item do controle de almoxarifado? O histórico de movimentações é mantido.')) return;
+    await sb().from('itens').update({ controla_estoque: false }).eq('id', itemId);
+    await loadAll();
+  };
+
+  const atualizarEstoqueMinimo = async (itemId, valor) => {
+    await sb().from('itens').update({ estoque_minimo: parseFloat(valor) || 0 }).eq('id', itemId);
+    await loadAll();
+  };
+
+  // Registra entrada ou saída e já atualiza o saldo_atual do item, num upsert
+  // atômico o bastante pro caso de uso (leitura sequencial de QR, não concorrente).
+  const registrarMovimentacao = async ({ itemId, tipo, quantidade, setor, notaFiscal, observacao }) => {
+    const it = itens.find(x => x.id === itemId);
+    if (!it) { alert('Item não encontrado.'); return false; }
+    const qtd = parseFloat(quantidade) || 0;
+    if (qtd <= 0) { alert('Informe uma quantidade válida.'); return false; }
+    const saldoAtual = it.saldo_atual || 0;
+    if (tipo === 'saida' && qtd > saldoAtual) {
+      if (!confirm(`Saldo atual de "${it.item}" é ${saldoAtual} ${it.unit||''}. Essa saída deixaria o saldo negativo (${(saldoAtual-qtd).toFixed(2)}). Confirmar mesmo assim?`)) return false;
+    }
+    setSaving(true);
+    const novoSaldo = tipo === 'entrada' ? saldoAtual + qtd : saldoAtual - qtd;
+    const { error: errMov } = await sb().from('estoque_movimentacoes').insert({
+      id: uid('MOV'), item_id: itemId, tipo, quantidade: qtd,
+      setor: setor || null, nota_fiscal: notaFiscal || null, observacao: observacao || null,
+      responsavel: UNIDADE_CONFIG.fiscalPadrao || null, saldo_apos: novoSaldo,
+      created_at: new Date().toISOString()
+    });
+    if (errMov) { setSaving(false); alert('Erro ao registrar movimentação: ' + errMov.message); return false; }
+    const { error: errIt } = await sb().from('itens').update({ saldo_atual: novoSaldo }).eq('id', itemId);
+    setSaving(false);
+    if (errIt) { alert('Movimentação registrada, mas houve erro ao atualizar o saldo: ' + errIt.message); }
+    await loadAll();
+    return true;
+  };
+
+  // Payload do QR: prefixo fixo + id do item, pra não confundir com QR de outra coisa
+  // caso o celular leia algo diferente por engano.
+  const qrPayload = (itemId) => `HMC-ALMOX:${itemId}`;
+  const buscarItemPorQR = (texto) => {
+    const m = /^HMC-ALMOX:(.+)$/.exec((texto||'').trim());
+    const itemId = m ? m[1] : (texto||'').trim();
+    return itens.find(i => i.id === itemId && i.controla_estoque) || null;
   };
 
   // REGISTRAR EXECUCAO
@@ -3485,7 +3576,20 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const itensDoContrato = itens.filter(i => i.contrato_id === pedidoContrato);
     const novasQtds = {};
     itensDoContrato.forEach(it => {
-      if (pedidoBase === 'contratado') {
+      if (pedidoBase === 'estoque') {
+        // Baseado no saldo físico real do almoxarifado, não na medição do contrato.
+        // Se o item não está no controle de estoque, cai pra quantidade contratada/mês.
+        if (it.controla_estoque) {
+          const noventaDiasAtras = new Date(); noventaDiasAtras.setDate(noventaDiasAtras.getDate() - 90);
+          const saidas90d = movimentacoes.filter(m => m.item_id === it.id && m.tipo === 'saida' && new Date(m.created_at) >= noventaDiasAtras);
+          const totalSaidas90d = saidas90d.reduce((acc,m) => acc + (m.quantidade||0), 0);
+          const consumoMedioMensal = totalSaidas90d / 3;
+          const estoqueAlvo = consumoMedioMensal > 0 ? consumoMedioMensal * 2 : (it.estoque_minimo||0) * 2;
+          novasQtds[it.id] = Math.max(0, Math.round(estoqueAlvo - (it.saldo_atual||0)));
+        } else {
+          novasQtds[it.id] = it.qtd_mensal || 0;
+        }
+      } else if (pedidoBase === 'contratado') {
         novasQtds[it.id] = it.qtd_mensal || 0;
       } else {
         // Média histórica real. Se o item nunca foi usado ainda (sem histórico),
@@ -3500,7 +3604,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       }
     });
     setPedidoQtds(novasQtds);
-  }, [pedidoContrato, pedidoBase, itens, contratos]);
+  }, [pedidoContrato, pedidoBase, itens, contratos, movimentacoes]);
 
   const gerarRelatorioMensal = () => {
     const mesRef = mesToPT(relatorioMes);
@@ -4127,6 +4231,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
               <div className="form-group">
                 <label>Sugerir quantidade com base em</label>
                 <select value={pedidoBase} onChange={e=>setPedidoBase(e.target.value)}>
+                  <option value="estoque">Saldo real do almoxarifado (recomendado)</option>
                   <option value="media">Média histórica de consumo real</option>
                   <option value="contratado">Quantidade contratada/mês</option>
                 </select>
@@ -4144,14 +4249,20 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             <div className="panel-body">
               <div className="tbl-wrap">
                 <table>
-                  <thead><tr><th>Item</th><th>Unidade</th><th>Qtd contratada/mês</th><th>Qtd sugerida</th><th>Valor unitário</th><th>Total estimado</th></tr></thead>
+                  <thead><tr><th>Item</th><th>Unidade</th><th>Saldo almoxarifado</th><th>Qtd contratada/mês</th><th>Qtd sugerida</th><th>Valor unitário</th><th>Total estimado</th></tr></thead>
                   <tbody>{itensDoContrato.map(it => {
                     const qtd = parseFloat(pedidoQtds[it.id]||0);
                     const total = qtd * (it.vlr_unitario||0);
+                    const baixo = it.controla_estoque && (it.saldo_atual||0) <= (it.estoque_minimo||0);
                     return (
                       <tr key={it.id}>
                         <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item}</td>
                         <td className="cell-m" style={{textAlign:'center'}}>{it.unit||'un.'}</td>
+                        <td style={{textAlign:'center'}}>
+                          {it.controla_estoque
+                            ? <span className={`badge ${baixo?'vermelho':'verde'}`}>{it.saldo_atual||0} {it.unit||''}</span>
+                            : <span style={{color:'var(--text3)',fontSize:11}}>não monitorado</span>}
+                        </td>
                         <td className="cell-m" style={{textAlign:'center'}}>{it.qtd_mensal||0}</td>
                         <td style={{width:90}}>
                           <input type="number" min="0" value={pedidoQtds[it.id]||''}
@@ -4188,6 +4299,294 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     );
   };
 
+
+  // ─── ALMOXARIFADO — impressão de etiquetas QR ───────────────────────────
+  const imprimirEtiquetasQR = (lista) => {
+    if (!lista.length) { alert('Nenhum item no controle de estoque ainda.'); return; }
+    const itemsForQr = lista.map(it => ({ id: it.id, payload: qrPayload(it.id) }));
+    const labelsHtml = lista.map(it => `
+      <div class="etiqueta">
+        <div class="qr-holder" id="qr_${it.id}"></div>
+        <div class="etiqueta-nome">${(it.item||'').substring(0,60)}</div>
+        <div class="etiqueta-cod">${it.id}</div>
+      </div>`).join('');
+
+    const estilos = `<style>
+      * { box-sizing:border-box; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; padding:16px; }
+      .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+      .etiqueta { border:1px dashed #999; border-radius:6px; padding:10px 6px; text-align:center; page-break-inside:avoid; break-inside:avoid; }
+      .qr-holder { display:flex; justify-content:center; margin-bottom:6px; }
+      .etiqueta-nome { font-size:10px; font-weight:bold; line-height:1.25; }
+      .etiqueta-cod { font-size:8.5px; color:#666; margin-top:2px; }
+      @media print { .grid{gap:10px;} }
+    </style>`;
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Etiquetas QR — Almoxarifado</title>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+      ${estilos}</head><body>
+      <div class="grid">${labelsHtml}</div>
+      <script>
+        window.onload = function(){
+          var itens = ${JSON.stringify(itemsForQr)};
+          itens.forEach(function(it){
+            new QRCode(document.getElementById('qr_'+it.id), { text: it.payload, width:96, height:96, correctLevel: QRCode.CorrectLevel.M });
+          });
+          setTimeout(function(){ window.print(); }, 500);
+        };
+      </script>
+    </body></html>`;
+
+    const janela = window.open('', '_blank');
+    janela.document.write(html);
+    janela.document.close();
+  };
+
+  // ─── ALMOXARIFADO — leitor de câmera (html5-qrcode) ─────────────────────
+  useEffect(() => {
+    if (section !== 'almoxarifado' || almoxTab !== 'scanner' || !scannerAtivo) return;
+    if (typeof Html5Qrcode === 'undefined') { alert('Biblioteca de leitura de QR não carregou. Verifique a conexão.'); setScannerAtivo(false); return; }
+    const html5QrCode = new Html5Qrcode('qr-reader');
+    html5QrRef.current = html5QrCode;
+    let ativo = true;
+    html5QrCode.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: 240 },
+      (decodedText) => {
+        if (!ativo) return;
+        const item = buscarItemPorQR(decodedText);
+        if (item) {
+          ativo = false;
+          html5QrCode.pause(true);
+          setItemEscaneado(item);
+          setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs('');
+        }
+      },
+      () => {} // erro de leitura por frame — ignora, é esperado até o QR entrar no quadro
+    ).catch(err => {
+      alert('Não foi possível acessar a câmera: ' + err + '. Verifique se o navegador tem permissão de câmera e se a página está em HTTPS.');
+      setScannerAtivo(false);
+    });
+    return () => {
+      ativo = false;
+      if (html5QrRef.current) {
+        html5QrRef.current.stop().then(() => html5QrRef.current.clear()).catch(()=>{});
+        html5QrRef.current = null;
+      }
+    };
+  }, [section, almoxTab, scannerAtivo]);
+
+  const confirmarMovimentacaoScanner = async () => {
+    if (!itemEscaneado) return;
+    const ok = await registrarMovimentacao({
+      itemId: itemEscaneado.id, tipo: movTipo, quantidade: movQtd,
+      setor: movTipo === 'saida' ? movSetor : null,
+      notaFiscal: movTipo === 'entrada' ? movNota : null,
+      observacao: movObs
+    });
+    if (ok) {
+      setItemEscaneado(null);
+      if (html5QrRef.current) html5QrRef.current.resume();
+    }
+  };
+
+  const cancelarLeituraAtual = () => {
+    setItemEscaneado(null);
+    if (html5QrRef.current) html5QrRef.current.resume();
+  };
+
+  const renderAlmoxarifado = () => {
+    const itensControlados = itens.filter(i => i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||''));
+    const itensDisponiveis = itens.filter(i => !i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||''));
+    const filtrados = buscaAlmox
+      ? itensControlados.filter(i => (i.item||'').toLowerCase().includes(buscaAlmox.toLowerCase()))
+      : itensControlados;
+    const baixoEstoque = itensControlados.filter(i => (i.saldo_atual||0) <= (i.estoque_minimo||0));
+
+    const tabs = [
+      { k:'itens', l:'Itens & saldos', i:'fa-boxes-stacked' },
+      { k:'scanner', l:'Leitor de QR Code', i:'fa-qrcode' },
+      { k:'historico', l:'Histórico de movimentações', i:'fa-clock-rotate-left' },
+    ];
+
+    return (
+      <>
+        <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
+          {tabs.map(t => (
+            <button key={t.k} className={`btn btn-sm ${almoxTab===t.k?'btn-primary':'btn-secondary'}`} onClick={()=>{setAlmoxTab(t.k); if(t.k!=='scanner') setScannerAtivo(false);}}>
+              <i className={`fa-solid ${t.i}`}/> {t.l}
+            </button>
+          ))}
+        </div>
+
+        {baixoEstoque.length > 0 && (
+          <AlertBox cls="vermelho" icon="fa-triangle-exclamation">
+            <strong>{baixoEstoque.length} item(ns)</strong> no ou abaixo do estoque mínimo: {baixoEstoque.map(i=>i.item).join(', ')}.
+          </AlertBox>
+        )}
+
+        {almoxTab === 'itens' && (
+          <>
+            <div className="panel" style={{marginTop:14}}>
+              <div className="panel-head"><h2><i className="fa-solid fa-plus"/> Adicionar item ao controle de estoque</h2></div>
+              <div className="panel-body">
+                <div style={{fontSize:12,color:'var(--text2)',marginBottom:12}}>
+                  Escolha um item já cadastrado em algum contrato de fornecimento pra passar a controlar entrada/saída física dele.
+                </div>
+                <div className="form-row">
+                  <div className="form-group full">
+                    <label>Item do contrato</label>
+                    <select value={itemParaAdicionar} onChange={e=>setItemParaAdicionar(e.target.value)}>
+                      <option value="">— Selecione —</option>
+                      {itensDisponiveis.map(it => {
+                        const c = contratos.find(x=>x.id===it.contrato_id);
+                        return <option key={it.id} value={it.id}>{it.item} · {c?.numero||''}</option>;
+                      })}
+                    </select>
+                  </div>
+                </div>
+                {itemParaAdicionar && (
+                  <div className="form-row" style={{marginTop:8}}>
+                    <FG label="Saldo físico inicial (contagem atual)"><input type="number" min="0" id="almox-saldo-inicial" placeholder="0" /></FG>
+                    <FG label="Estoque mínimo (alerta de reposição)"><input type="number" min="0" id="almox-estoque-minimo" placeholder="0" /></FG>
+                  </div>
+                )}
+                {itemParaAdicionar && (
+                  <button className="btn btn-primary btn-sm" style={{marginTop:10}} disabled={saving} onClick={()=>{
+                    const saldo = document.getElementById('almox-saldo-inicial')?.value || 0;
+                    const min = document.getElementById('almox-estoque-minimo')?.value || 0;
+                    ativarControleEstoque(itemParaAdicionar, saldo, min).then(()=>setItemParaAdicionar(''));
+                  }}>
+                    <i className="fa-solid fa-check"/> Ativar controle de estoque
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="panel" style={{marginTop:14}}>
+              <div className="panel-head">
+                <h2><i className="fa-solid fa-boxes-stacked"/> Itens no almoxarifado ({itensControlados.length})</h2>
+                <button className="btn btn-secondary btn-sm" onClick={()=>imprimirEtiquetasQR(itensControlados)}>
+                  <i className="fa-solid fa-print"/> Imprimir etiquetas QR (todas)
+                </button>
+              </div>
+              <div className="panel-body">
+                <input type="text" placeholder="Buscar item..." value={buscaAlmox} onChange={e=>setBuscaAlmox(e.target.value)} style={{marginBottom:12,width:'100%',maxWidth:320,padding:'6px 10px',border:'1px solid var(--gray-b)',borderRadius:6,fontSize:12}} />
+                {filtrados.length === 0 && <div className="empty"><i className="fa-solid fa-boxes-stacked" style={{color:'var(--teal)'}}/>Nenhum item no controle de estoque ainda.</div>}
+                {filtrados.length > 0 && (
+                  <div className="tbl-wrap">
+                    <table>
+                      <thead><tr><th>Item</th><th>Unidade</th><th>Saldo atual</th><th>Estoque mínimo</th><th>Status</th><th>QR Code</th><th></th></tr></thead>
+                      <tbody>{filtrados.map(it => {
+                        const baixo = (it.saldo_atual||0) <= (it.estoque_minimo||0);
+                        return (
+                          <tr key={it.id}>
+                            <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item}</td>
+                            <td className="cell-m" style={{textAlign:'center'}}>{it.unit||'un.'}</td>
+                            <td style={{textAlign:'center',fontWeight:700}}>{it.saldo_atual||0}</td>
+                            <td style={{width:90}}>
+                              <input type="number" min="0" defaultValue={it.estoque_minimo||0}
+                                onBlur={e=>atualizarEstoqueMinimo(it.id, e.target.value)}
+                                style={{width:'100%',padding:'4px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}} />
+                            </td>
+                            <td style={{textAlign:'center'}}><span className={`badge ${baixo?'vermelho':'verde'}`}>{baixo?'Repor':'OK'}</span></td>
+                            <td style={{textAlign:'center'}}><QRTag payload={qrPayload(it.id)} size={56} /></td>
+                            <td style={{textAlign:'center'}}>
+                              <button className="act-btn del" title="Remover do controle" onClick={()=>desativarControleEstoque(it.id)}><i className="fa-solid fa-xmark"/></button>
+                            </td>
+                          </tr>
+                        );
+                      })}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {almoxTab === 'scanner' && (
+          <div className="panel" style={{marginTop:14}}>
+            <div className="panel-head"><h2><i className="fa-solid fa-qrcode"/> Leitura por câmera</h2></div>
+            <div className="panel-body">
+              {!scannerAtivo && !itemEscaneado && (
+                <>
+                  <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
+                    Abra essa tela pelo celular, aponte a câmera pro QR Code colado no item e registre a entrada ou saída na hora. Funciona direto pelo navegador, sem instalar nada.
+                  </div>
+                  <button className="btn btn-primary" onClick={()=>setScannerAtivo(true)}><i className="fa-solid fa-camera"/> Iniciar leitura pela câmera</button>
+                </>
+              )}
+              {scannerAtivo && !itemEscaneado && (
+                <>
+                  <div id="qr-reader" style={{width:'100%',maxWidth:420,margin:'0 auto'}}></div>
+                  <div style={{textAlign:'center',marginTop:12,fontSize:12,color:'var(--text2)'}}>Aponte a câmera para o QR Code do item...</div>
+                  <div style={{textAlign:'center',marginTop:10}}>
+                    <button className="btn btn-secondary btn-sm" onClick={()=>setScannerAtivo(false)}><i className="fa-solid fa-stop"/> Parar leitura</button>
+                  </div>
+                </>
+              )}
+              {itemEscaneado && (
+                <div style={{maxWidth:420,margin:'0 auto'}}>
+                  <AlertBox cls="azul" icon="fa-box-open">
+                    <strong>{itemEscaneado.item}</strong><br/>
+                    Saldo atual: <strong>{itemEscaneado.saldo_atual||0} {itemEscaneado.unit||''}</strong>
+                  </AlertBox>
+                  <div className="form-row" style={{marginTop:12}}>
+                    <FG label="Tipo de movimentação" full>
+                      <select value={movTipo} onChange={e=>setMovTipo(e.target.value)}>
+                        <option value="saida">Saída (consumo / retirada)</option>
+                        <option value="entrada">Entrada (recebimento)</option>
+                      </select>
+                    </FG>
+                    <FG label="Quantidade *" full><input type="number" min="0" step="any" autoFocus value={movQtd} onChange={e=>setMovQtd(e.target.value)} placeholder="0" /></FG>
+                    {movTipo === 'saida' && <FG label="Setor de destino" full><input type="text" value={movSetor} onChange={e=>setMovSetor(e.target.value)} placeholder="Ex: Enfermaria, CME, Pronto Socorro" /></FG>}
+                    {movTipo === 'entrada' && <FG label="Nota fiscal" full><input type="text" value={movNota} onChange={e=>setMovNota(e.target.value)} placeholder="Nº da nota fiscal" /></FG>}
+                    <FG label="Observação" full><input type="text" value={movObs} onChange={e=>setMovObs(e.target.value)} placeholder="Opcional" /></FG>
+                  </div>
+                  <div style={{display:'flex',gap:8,marginTop:12}}>
+                    <button className="btn btn-secondary" style={{flex:1}} onClick={cancelarLeituraAtual}>Cancelar</button>
+                    <button className="btn btn-primary" style={{flex:1}} disabled={saving} onClick={confirmarMovimentacaoScanner}>
+                      {saving ? <><i className="fa-solid fa-rotate spin"/> Salvando...</> : <><i className="fa-solid fa-check"/> Confirmar</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {almoxTab === 'historico' && (
+          <div className="panel" style={{marginTop:14}}>
+            <div className="panel-head"><h2><i className="fa-solid fa-clock-rotate-left"/> Movimentações registradas ({movimentacoes.length})</h2></div>
+            <div className="panel-body">
+              {movimentacoes.length === 0 && <div className="empty"><i className="fa-solid fa-clock-rotate-left" style={{color:'var(--teal)'}}/>Nenhuma movimentação registrada ainda.</div>}
+              {movimentacoes.length > 0 && (
+                <div className="tbl-wrap">
+                  <table>
+                    <thead><tr><th>Data/hora</th><th>Item</th><th>Tipo</th><th>Quantidade</th><th>Setor / Nota fiscal</th><th>Saldo após</th></tr></thead>
+                    <tbody>{movimentacoes.slice(0,300).map(m => {
+                      const it = itens.find(i=>i.id===m.item_id);
+                      return (
+                        <tr key={m.id}>
+                          <td className="cell-m">{new Date(m.created_at).toLocaleString('pt-BR')}</td>
+                          <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it?.item || m.item_id}</td>
+                          <td style={{textAlign:'center'}}><span className={`badge ${m.tipo==='entrada'?'verde':'azul'}`}>{m.tipo==='entrada'?'Entrada':'Saída'}</span></td>
+                          <td style={{textAlign:'center',fontWeight:700}}>{m.quantidade}</td>
+                          <td className="cell-m">{m.setor || m.nota_fiscal || '—'}</td>
+                          <td style={{textAlign:'center'}}>{m.saldo_apos}</td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
 
   // ─── ANÁLISE PREDITIVA ──────────────────────────────────────────────────
   const renderPreditiva = () => {
@@ -4260,6 +4659,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     { sec:'financeiro', icon:'fa-circle-dollar-to-slot', label:'Controle financeiro', group:'controles' },
     { sec:'quantidade', icon:'fa-boxes-stacked', label:'Controle de quantidade', group:'controles' },
     { sec:'prazo', icon:'fa-calendar-days', label:'Controle de prazo', group:'controles' },
+    { sec:'almoxarifado', icon:'fa-warehouse', label:'Almoxarifado (QR)', group:'controles' },
     { sec:'aditivos', icon:'fa-file-pen', label:'Aditivos e supressões', group:'gestao' },
     { sec:'medicao', icon:'fa-file-invoice-dollar', label:'Medições mensais', group:'gestao' },
     { sec:'historico', icon:'fa-clock-rotate-left', label:'Histórico de medições', group:'gestao' },
@@ -4355,6 +4755,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             </>
           )}
           {section === 'prazo' && renderPrazo()}
+          {section === 'almoxarifado' && renderAlmoxarifado()}
           {section === 'preditiva' && renderPreditiva()}
           {section === 'aditivos' && renderAditivos()}
           {section === 'medicao' && renderMedicao()}
