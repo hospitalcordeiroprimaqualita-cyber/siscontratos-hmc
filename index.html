@@ -1076,6 +1076,8 @@ function App() {
     return (
       <div>
         <div style={{background:'linear-gradient(135deg, var(--teal-d), var(--teal))', borderRadius:14, padding:'40px 36px', color:'#fff', marginBottom:24, position:'relative', overflow:'hidden'}}>
+          <div style={{position:'absolute', top:'-30%', right:'-8%', width:'55%', height:'170%', background:'linear-gradient(115deg, rgba(255,255,255,0) 40%, rgba(255,255,255,.10) 52%, rgba(255,255,255,.16) 58%, rgba(255,255,255,0) 70%)', transform:'rotate(-8deg)', pointerEvents:'none'}}/>
+          <div style={{position:'absolute', bottom:-40, right:-40, width:180, height:180, borderRadius:'50%', background:'rgba(255,255,255,.06)', pointerEvents:'none'}}/>
           <div style={{position:'relative', zIndex:1}}>
             <div style={{fontSize:12, fontWeight:700, letterSpacing:'.08em', opacity:.85, marginBottom:8}}>{UNIDADE_CONFIG.nomeUnidade.toUpperCase()} · {UNIDADE_CONFIG.ossNome.toUpperCase()}</div>
             <h1 style={{fontSize:30, fontWeight:800, marginBottom:10, lineHeight:1.15}}>SisContratos HMC</h1>
@@ -1102,7 +1104,7 @@ function App() {
             {v:totalItensMonitorados, l:'ITENS MONITORADOS INDIVIDUALMENTE'},
             {v:totalMedicoes, l:'MEDIÇÕES MENSAIS REGISTRADAS'},
           ].map((k,i) => (
-            <div key={i} className="panel" style={{margin:0, textAlign:'center', padding:'20px 12px'}}>
+            <div key={i} className="panel" style={{margin:0, textAlign:'center', padding:'20px 12px', transition:'transform .16s ease, box-shadow .16s ease'}} onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)';e.currentTarget.style.boxShadow='0 8px 22px rgba(0,0,0,.10)';}} onMouseLeave={e=>{e.currentTarget.style.transform='none';e.currentTarget.style.boxShadow='';}}>
               <div style={{fontSize:24, fontWeight:800, color:'var(--teal-d)'}}>{k.v}</div>
               <div style={{fontSize:11, color:'var(--text3)', marginTop:5, fontWeight:600, letterSpacing:'.02em'}}>{k.l}</div>
             </div>
@@ -1134,8 +1136,8 @@ function App() {
             {marcos.map((m,i) => (
               <div key={i} style={{display:'flex', gap:14, marginBottom:i<marcos.length-1?18:0}}>
                 <div style={{display:'flex', flexDirection:'column', alignItems:'center', flexShrink:0}}>
-                  <div style={{width:12, height:12, borderRadius:'50%', background:'var(--teal)'}}/>
-                  {i<marcos.length-1 && <div style={{width:2, flex:1, background:'var(--gray-b)', marginTop:2}}/>}
+                  <div style={{width:13, height:13, borderRadius:'50%', background:'var(--teal)', boxShadow:'0 0 0 4px var(--teal-l)'}}/>
+                  {i<marcos.length-1 && <div style={{width:2, flex:1, background:'var(--gray-b)', marginTop:4}}/>}
                 </div>
                 <div style={{paddingBottom:i<marcos.length-1?4:0}}>
                   <div style={{fontWeight:700, fontSize:13, marginBottom:3}}>{m.titulo}</div>
@@ -1791,8 +1793,7 @@ function App() {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      @page { size: auto; margin: 50px 24px 60px 24px; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; display:flex; flex-direction:column; min-height:100vh; }
       .header { text-align:center; margin-bottom:14px; }
       .header img { width:100%; height:auto; margin-bottom:8px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
@@ -1805,19 +1806,14 @@ function App() {
       .grupo-titulo { background:#d0d0d0; text-align:center; padding:5px; font-weight:bold; margin-top:10px; }
       .total-geral { text-align:right; font-weight:bold; font-size:12px; border:1px solid #000; padding:6px 8px; margin-top:4px; }
       .obs { font-size:10px; color:#333; margin:10px 0; line-height:1.6; }
-      .rodape-sistema { position: fixed; bottom: -60px; left: 0; right: 0; padding: 8px 20px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema { margin-top: auto; padding-top: 20px; padding-bottom: 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      .pg-header { position: fixed; top: -50px; left: 0; right: 0; height: 32px; padding: 0 20px;
-        border-bottom: 1.5px solid #1D9E75; font-size: 9px; color: #333; background: #fff;
-        display: flex; justify-content: space-between; align-items: center; }
-      .pg-header strong { color: #0F6E56; }
       tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
     </style>`;
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Pedido de Reequilíbrio - ${contrato.numero}</title>${estilos}</head><body>
-      <div class="pg-header"><span><strong>SisContratos HMC</strong> · Pedido de Reequilíbrio Quantitativo</span><span>Contrato ${contrato.numero}</span></div>
       <div class="header">${logoImg}</div>
       <div class="titulo-box"><h2>PEDIDO DE REEQUILÍBRIO QUANTITATIVO</h2><div style="font-size:11px;margin-top:4px">Redistribuição entre itens do mesmo contrato — sem alteração do valor total contratado</div></div>
       <div class="info">
@@ -1879,8 +1875,7 @@ function App() {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      @page { size: auto; margin: 50px 24px 60px 24px; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; display:flex; flex-direction:column; min-height:100vh; }
       .header { text-align:center; margin-bottom:14px; }
       .header img { width:100%; height:auto; margin-bottom:8px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
@@ -1892,19 +1887,14 @@ function App() {
       td.desc{text-align:left;} td.num{text-align:center;} td.val{text-align:right;}
       .total-geral { text-align:right; font-weight:bold; font-size:12px; border:1px solid #000; padding:6px 8px; margin-top:4px; }
       .obs { font-size:10px; color:#333; margin:10px 0; line-height:1.6; }
-      .rodape-sistema { position: fixed; bottom: -60px; left: 0; right: 0; padding: 8px 20px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema { margin-top: auto; padding-top: 20px; padding-bottom: 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      .pg-header { position: fixed; top: -50px; left: 0; right: 0; height: 32px; padding: 0 20px;
-        border-bottom: 1.5px solid #1D9E75; font-size: 9px; color: #333; background: #fff;
-        display: flex; justify-content: space-between; align-items: center; }
-      .pg-header strong { color: #0F6E56; }
       tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
     </style>`;
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Pedido de Aditivo - ${contrato.numero}</title>${estilos}</head><body>
-      <div class="pg-header"><span><strong>SisContratos HMC</strong> · Pedido de Aditivo</span><span>Contrato ${contrato.numero}</span></div>
       <div class="header">${logoImg}</div>
       <div class="titulo-box"><h2>PEDIDO DE ADITIVO CONTRATUAL</h2><div style="font-size:11px;margin-top:4px">Solicitação de acréscimo de quantitativo — art. 125, Lei 14.133/2021</div></div>
       <div class="info">
@@ -2497,8 +2487,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const estilos = `
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        @page { size: auto; margin: 50px 20px 60px 20px; }
-        body { font-family: Arial, sans-serif; font-size: 11px; color: #000; margin:0; padding:0; }
+        body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 20px; display:flex; flex-direction:column; min-height:100vh; }
         .header { text-align: center; margin-bottom: 16px; }
         .header img { width: 100%; height: auto; margin-bottom: 8px; }
         .header h3 { font-size: 11px; font-weight: normal; letter-spacing: 1px; margin-bottom: 10px; }
@@ -2525,12 +2514,8 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
         @media print { body { padding: 10px; } }
-      .rodape-sistema { position: fixed; bottom: -60px; left: 0; right: 0; padding: 8px 20px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema { margin-top: auto; padding-top: 20px; padding-bottom: 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      .pg-header { position: fixed; top: -50px; left: 0; right: 0; height: 32px; padding: 0 20px;
-        border-bottom: 1.5px solid #1D9E75; font-size: 9px; color: #333; background: #fff;
-        display: flex; justify-content: space-between; align-items: center; }
-      .pg-header strong { color: #0F6E56; }
       </style>
     `;
 
@@ -2626,7 +2611,6 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     }
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Medição ${c.numero} - ${mesRef}</title>${estilos}</head><body>
-      <div class="pg-header"><span><strong>SisContratos HMC</strong> · Medição</span><span>Contrato ${c.numero} · ${mesRef}</span></div>
       ${cabecalho(medicaoNumMedicao||'__')}
       ${corpoTabela}
       <br/>
@@ -2762,8 +2746,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      @page { size: auto; margin: 50px 20px 60px 20px; }
-      body { font-family: Arial, sans-serif; font-size: 10.5px; color: #000; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; font-size: 10.5px; color: #000; padding: 20px; display:flex; flex-direction:column; min-height:100vh; }
       .header { text-align: center; margin-bottom: 16px; }
       .header img { width: 100%; height: auto; margin-bottom: 8px; }
       .header h3 { font-size: 11px; font-weight: normal; letter-spacing: 1px; margin-bottom: 10px; }
@@ -2787,16 +2770,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
       @media print { body { padding: 10px; } }
-      .rodape-sistema { position: fixed; bottom: -60px; left: 0; right: 0; padding: 8px 20px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema { margin-top: auto; padding-top: 20px; padding-bottom: 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      .pg-header { position: fixed; top: -50px; left: 0; right: 0; height: 32px; padding: 0 20px;
-        border-bottom: 1.5px solid #1D9E75; font-size: 9px; color: #333; background: #fff;
-        display: flex; justify-content: space-between; align-items: center; }
-      .pg-header strong { color: #0F6E56; }
     </style>`;
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Medição ${c.numero} - ${mesRef}</title>${estilos}</head><body>
-      <div class="pg-header"><span><strong>SisContratos HMC</strong> · Medição</span><span>Contrato ${c.numero} · ${mesRef}</span></div>
       <div class="header">${logoImg}<h3>PROJETO SOCIAL CRESCE COMUNIDADE</h3></div>
       <div class="titulo-box"><h2>PROCESSO INTERNO Nº ${c.processo || '129/2024'}</h2><h3>Medição - ${mesRef}</h3></div>
       <div class="info">
@@ -3298,8 +3276,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      @page { size: auto; margin: 50px 24px 60px 24px; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; display:flex; flex-direction:column; min-height:100vh; }
       .header { text-align:center; margin-bottom:14px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
       .titulo-box h2 { font-size:14px; font-weight:bold; }
@@ -3322,12 +3299,8 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
-      .rodape-sistema { position: fixed; bottom: -60px; left: 0; right: 0; padding: 8px 20px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema { margin-top: auto; padding-top: 20px; padding-bottom: 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      .pg-header { position: fixed; top: -50px; left: 0; right: 0; height: 32px; padding: 0 20px;
-        border-bottom: 1.5px solid #1D9E75; font-size: 9px; color: #333; background: #fff;
-        display: flex; justify-content: space-between; align-items: center; }
-      .pg-header strong { color: #0F6E56; }
     </style>`;
 
     const kpisHtml = `<div class="kpis">
@@ -3367,7 +3340,6 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       </tr>`).join('')}</tbody></table>` : '<div class="obs">Este contrato não tem itens com rubrica orçamentária cadastrada.</div>';
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Ciência Financeira - ${c.numero} - ${mesRef}</title>${estilos}</head><body>
-      <div class="pg-header"><span><strong>SisContratos HMC</strong> · Relatório de Ciência Financeira</span><span>Contrato ${c.numero} · ${mesRef}</span></div>
       <div class="header">${logoImg}</div>
       <div class="titulo-box"><h2>RELATÓRIO DE ACOMPANHAMENTO CONTRATUAL — CIÊNCIA AO FINANCEIRO PRIMA QUALITÁ</h2><div style="font-size:11px;margin-top:4px">Contrato nº ${c.numero} · ${c.empresa} · ${numMedicao}ª Medição — ${mesRef}</div></div>
 
@@ -3836,8 +3808,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      @page { size: auto; margin: 50px 24px 60px 24px; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; display:flex; flex-direction:column; min-height:100vh; }
       .header { text-align:center; margin-bottom:14px; }
       .header h3 { font-size:11px; font-weight:normal; letter-spacing:1px; margin-top:6px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
@@ -3863,12 +3834,8 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
-      .rodape-sistema { position: fixed; bottom: -60px; left: 0; right: 0; padding: 8px 20px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema { margin-top: auto; padding-top: 20px; padding-bottom: 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      .pg-header { position: fixed; top: -50px; left: 0; right: 0; height: 32px; padding: 0 20px;
-        border-bottom: 1.5px solid #1D9E75; font-size: 9px; color: #333; background: #fff;
-        display: flex; justify-content: space-between; align-items: center; }
-      .pg-header strong { color: #0F6E56; }
     </style>`;
 
     const corBadge = cls => cls==='verde'?'#22c55e':cls==='amarelo'?'#f59e0b':'#ef4444';
@@ -3953,7 +3920,6 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       : '<div class="obs">Nenhum contrato com necessidade real de aditivo ou supressão identificada neste mês.</div>';
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório Mensal - ${mesRef}</title>${estilos}</head><body>
-      <div class="pg-header"><span><strong>SisContratos HMC</strong> · Relatório Mensal</span><span>${mesRef}</span></div>
       <div class="header">${logoImg}<h3>PROJETO SOCIAL CRESCE COMUNIDADE — PRIMA QUALITÁ SAÚDE</h3></div>
       <div class="titulo-box"><h2>RELATÓRIO MENSAL DE ACOMPANHAMENTO DE CONTRATOS</h2><div style="font-size:11px;margin-top:4px">${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao} · Referência: ${mesRef}</div></div>
 
@@ -4308,8 +4274,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      @page { size: auto; margin: 50px 24px 60px 24px; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; margin:0; padding:0; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; display:flex; flex-direction:column; min-height:100vh; }
       .header { text-align:center; margin-bottom:14px; }
       .header img { width:100%; height:auto; margin-bottom:8px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
@@ -4320,19 +4285,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       td { border:1px solid #000; padding:4px 6px; font-size:10px; }
       td.desc{text-align:left;} td.num{text-align:center;} td.val{text-align:right;}
       .total-geral { text-align:right; font-weight:bold; font-size:12px; border:1px solid #000; padding:6px 8px; margin-top:4px; }
-      .rodape-sistema { position: fixed; bottom: -60px; left: 0; right: 0; padding: 8px 20px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+      .rodape-sistema { margin-top: auto; padding-top: 20px; padding-bottom: 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      .pg-header { position: fixed; top: -50px; left: 0; right: 0; height: 32px; padding: 0 20px;
-        border-bottom: 1.5px solid #1D9E75; font-size: 9px; color: #333; background: #fff;
-        display: flex; justify-content: space-between; align-items: center; }
-      .pg-header strong { color: #0F6E56; }
       tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
     </style>`;
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Pedido de Compra - ${c.numero}</title>${estilos}</head><body>
-      <div class="pg-header"><span><strong>SisContratos HMC</strong> · Pedido de Compra</span><span>Contrato ${c.numero}</span></div>
       <div class="header">${logoImg}</div>
       <div class="titulo-box"><h2>PEDIDO DE COMPRA / SOLICITAÇÃO DE FORNECIMENTO</h2></div>
       <div class="info">
