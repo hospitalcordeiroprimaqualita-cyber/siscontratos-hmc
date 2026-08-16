@@ -1731,8 +1731,11 @@ function App() {
 
     // Resumo analítico de consumo — todo item envolvido (falta e sobra), com o
     // mesmo cálculo usado na análise do sistema, pra justificar o pedido com dados.
+    // Ordenado pelo número do item (ordem) — não pela ordem déficit/superávit, senão
+    // os itens em falta sempre apareceriam primeiro, fora da sequência do contrato.
     const itensEnvolvidos = [...deficit.map(d=>d.item), ...superavit.map(s=>s.item)];
-    const resumoAnalitico = itensEnvolvidos.map(it => ({ it, a: calcAnaliseItem(contrato, it) })).filter(x=>x.a);
+    const resumoAnalitico = itensEnvolvidos.map(it => ({ it, a: calcAnaliseItem(contrato, it) })).filter(x=>x.a)
+      .sort((x,y) => (x.it.ordem||999) - (y.it.ordem||999));
     const mesesTotContrato = resumoAnalitico[0]?.a.mesesTot;
     const mesesDecContrato = resumoAnalitico[0]?.a.mesesDec;
     const mesesRestContrato = resumoAnalitico[0]?.a.mesesRest;
@@ -1778,7 +1781,7 @@ function App() {
       .obs { font-size:10px; color:#333; margin:10px 0; line-height:1.6; }
       .rodape-sistema { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo { page-break-inside: avoid; break-inside: avoid; }
+      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
       @media print { body{padding:12px;} }
@@ -1860,7 +1863,7 @@ function App() {
       .obs { font-size:10px; color:#333; margin:10px 0; line-height:1.6; }
       .rodape-sistema { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo { page-break-inside: avoid; break-inside: avoid; }
+      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
       @media print { body{padding:12px;} }
@@ -2482,7 +2485,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         .assinatura-box { flex: 1; text-align: center; }
         .assinatura-box .linha { border-top: 1px solid #000; margin-bottom: 4px; }
         .assinatura-box p { font-size: 10px; line-height: 1.5; }
-      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo { page-break-inside: avoid; break-inside: avoid; }
+      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
         @media print { body { padding: 10px; } }
@@ -2738,7 +2741,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       .assinatura-box { flex: 1; text-align: center; max-width:260px; }
       .assinatura-box .linha { border-top: 1px solid #000; margin-bottom: 4px; }
       .assinatura-box p { font-size: 10px; line-height: 1.5; }
-      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo { page-break-inside: avoid; break-inside: avoid; }
+      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
       @media print { body { padding: 10px; } }
@@ -3252,7 +3255,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       .header { text-align:center; margin-bottom:14px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
       .titulo-box h2 { font-size:14px; font-weight:bold; }
-      .sec-titulo { background:#0F6E56; color:#fff; padding:7px 10px; font-weight:bold; font-size:12px; margin:16px 0 6px; }
+      .sec-titulo { background:#0F6E56; color:#fff; padding:7px 10px; font-weight:bold; font-size:12px; margin:16px 0 6px; page-break-after:avoid; break-after:avoid; page-break-inside:avoid; break-inside:avoid; }
       .resumo-texto { font-size:10.5px; line-height:1.7; text-align:justify; margin-bottom:8px; }
       .kpis { display:flex; gap:10px; margin:10px 0 6px; }
       .kpi-card { flex:1; border:1px solid #ccc; border-radius:6px; padding:9px 6px; text-align:center; }
@@ -3268,7 +3271,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       .assinaturas { margin-top:36px; display:flex; gap:30px; justify-content:center; }
       .assinatura-box { flex:1; text-align:center; max-width:250px; }
       .assinatura-box .linha { border-top:1px solid #000; margin-bottom:4px; }
-      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo { page-break-inside: avoid; break-inside: avoid; }
+      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
       @media print { body{padding:12px;} }
@@ -3346,7 +3349,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     // o navegador terminar o layout antes de paginar a impressão — chamar
     // print() na sequência podia pegar o conteúdo ainda montando e sair
     // cortado nas últimas páginas.
-    setTimeout(() => { janela.focus(); janela.print(); }, 400);
+    setTimeout(() => { janela.focus(); janela.print(); }, 650);
   };
 
   const renderHistorico = () => {
@@ -3786,7 +3789,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       .header h3 { font-size:11px; font-weight:normal; letter-spacing:1px; margin-top:6px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
       .titulo-box h2 { font-size:15px; font-weight:bold; }
-      .sec-titulo { background:#0F6E56; color:#fff; padding:7px 10px; font-weight:bold; font-size:12px; margin:16px 0 6px; }
+      .sec-titulo { background:#0F6E56; color:#fff; padding:7px 10px; font-weight:bold; font-size:12px; margin:16px 0 6px; page-break-after:avoid; break-after:avoid; page-break-inside:avoid; break-inside:avoid; }
       table { width:100%; border-collapse:collapse; margin-bottom:8px; }
       th { background:#d0d0d0; border:1px solid #000; padding:5px 6px; font-size:9.5px; text-align:center; font-weight:bold; }
       td { border:1px solid #000; padding:4px 6px; font-size:9.5px; }
@@ -3804,7 +3807,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       .assinaturas { margin-top:50px; display:flex; gap:40px; justify-content:center; }
       .assinatura-box { flex:1; text-align:center; max-width:260px; }
       .assinatura-box .linha { border-top:1px solid #000; margin-bottom:4px; }
-      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo { page-break-inside: avoid; break-inside: avoid; }
+      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
       @media print { body{padding:12px;} }
@@ -3939,7 +3942,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     // o navegador terminar o layout antes de paginar a impressão — chamar
     // print() na sequência podia pegar o conteúdo ainda montando e sair
     // cortado nas últimas páginas.
-    setTimeout(() => { janela.focus(); janela.print(); }, 400);
+    setTimeout(() => { janela.focus(); janela.print(); }, 650);
   };
 
   // ─── INVESTIMENTOS (teto anual compartilhado entre vários contratos) ──────
@@ -4261,7 +4264,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       .total-geral { text-align:right; font-weight:bold; font-size:12px; border:1px solid #000; padding:6px 8px; margin-top:4px; }
       .rodape-sistema { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 20px 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
       .rodape-sistema strong { color: #0F6E56; }
-      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo { page-break-inside: avoid; break-inside: avoid; }
+      tr, .panel, .chart-box, .kpi-card, .assinaturas, .assinatura-box, .grupo-titulo, .periodo-box, .lote-titulo, .obs, .kpis { page-break-inside: avoid; break-inside: avoid; }
       table { page-break-inside: auto; }
       thead { display: table-header-group; }
       @media print { body{padding:12px;} }
