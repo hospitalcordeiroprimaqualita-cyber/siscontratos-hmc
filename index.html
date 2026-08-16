@@ -587,6 +587,7 @@ function App() {
   const [pedidosGerados, setPedidosGerados] = useState([]);
   const html5QrRef = useRef(null);
   const formRef = useRef({});
+  const [ordemLista, setOrdemLista] = React.useState([]); // ids dos itens na ordem escolhida, usado no modal 'reordenar-itens'
   const [saving, setSaving] = useState(false);
 
   const initSb = (url, key) => {
@@ -697,6 +698,10 @@ function App() {
       setForm({ contrato_id: id, fim_atual: c.fim?.substring(0,10), novo_prazo: c.fim?.substring(0,10), nova_vigencia_meses: c.vigencia_meses||12 });
     } else if (tipo === 'execucao') {
       setForm({ contrato_id: id, mes_referencia: todayMonth() });
+    } else if (tipo === 'reordenar-itens') {
+      const itensDoContrato = itens.filter(x => x.contrato_id === id).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
+      setOrdemLista(itensDoContrato.map(it => it.id));
+      setForm({ contrato_id: id });
     }
     setModal({ tipo, id });
   };
@@ -816,6 +821,20 @@ function App() {
     const { error } = await sb().from('itens').upsert(data);
     setSaving(false);
     if (error) { alert('Erro: ' + error.message); return; }
+    await loadAll(); closeModal();
+  };
+
+  // REORDENAR ITENS DE UM CONTRATO — grava ordem = posição (1,2,3...) conforme
+  // a sequência escolhida no modal, pra bater com o número do item no contrato real.
+  const salvarOrdemItens = async () => {
+    setSaving(true);
+    const atualizacoes = ordemLista.map((itemId, idx) =>
+      sb().from('itens').update({ ordem: idx + 1 }).eq('id', itemId)
+    );
+    const resultados = await Promise.all(atualizacoes);
+    setSaving(false);
+    const erro = resultados.find(r => r.error);
+    if (erro) { alert('Erro ao salvar a nova ordem: ' + erro.error.message); return; }
     await loadAll(); closeModal();
   };
 
@@ -1430,7 +1449,7 @@ function App() {
         const mensalReal = it.qtd_total_contratada ? (it.qtd_total_contratada/mesesTot) : it.qtd_mensal;
         const acao = dif<-1?'ADITIVO':dif>mensalReal*2?'SUPRESSÃO':'OK';
         return {item:it.item, qtdMensal:it.qtd_mensal, qtdAcum:it.qtd_acum,
-          qtdTot:Math.round(qtdTot), saldo, media:media.toFixed(1),
+          qtdTot:Math.round(qtdTot), saldo, media:Math.round(media),
           mesesRest, proj, dif, acao, pctAnual};
       });
       const aditivo = analise.filter(a=>a.acao==='ADITIVO').sort((a,b)=>a.dif-b.dif);
@@ -1590,6 +1609,11 @@ function App() {
                 <i className="fa-solid fa-object-ungroup" /> Remover lote deste contrato
               </button>
             )}
+            {lista.length > 1 && (
+              <button className="btn btn-secondary btn-sm" onClick={() => openModal('reordenar-itens', selQtd)}>
+                <i className="fa-solid fa-arrow-down-up-across-line" /> Reordenar itens
+              </button>
+            )}
             <button className="btn btn-primary btn-sm" onClick={() => openModal('item', selQtd)}><i className="fa-solid fa-plus" /> Adicionar item</button>
           </div>
         </div>
@@ -1739,7 +1763,7 @@ function App() {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px 24px 60px 24px; }
       .header { text-align:center; margin-bottom:14px; }
       .header img { width:100%; height:auto; margin-bottom:8px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
@@ -1803,7 +1827,11 @@ function App() {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-    janela.print();
+    // Documentos grandes (muitas linhas/páginas) precisam de um instante pra
+    // o navegador terminar o layout antes de paginar a impressão — chamar
+    // print() na sequência podia pegar o conteúdo ainda montando e sair
+    // cortado nas últimas páginas.
+    setTimeout(() => { janela.focus(); janela.print(); }, 400);
   };
 
   const gerarPedidoAditivo = (contrato, itensNecessarios, totalNecessario) => {
@@ -1818,7 +1846,7 @@ function App() {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px 24px 60px 24px; }
       .header { text-align:center; margin-bottom:14px; }
       .header img { width:100%; height:auto; margin-bottom:8px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
@@ -1866,7 +1894,11 @@ function App() {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-    janela.print();
+    // Documentos grandes (muitas linhas/páginas) precisam de um instante pra
+    // o navegador terminar o layout antes de paginar a impressão — chamar
+    // print() na sequência podia pegar o conteúdo ainda montando e sair
+    // cortado nas últimas páginas.
+    setTimeout(() => { janela.focus(); janela.print(); }, 400);
   };
 
   // Aplica o reequilíbrio DE VERDADE: atualiza qtd_total_contratada dos itens
@@ -2294,6 +2326,38 @@ function App() {
         </>
       );
     }
+    if (tipo === 'reordenar-itens') {
+      const mover = (idx, sentido) => {
+        const nova = ordemLista.slice();
+        const alvo = idx + sentido;
+        if (alvo < 0 || alvo >= nova.length) return;
+        [nova[idx], nova[alvo]] = [nova[alvo], nova[idx]];
+        setOrdemLista(nova);
+      };
+      return (
+        <>
+          <div className="cell-m" style={{fontSize:11.5,marginBottom:10}}>
+            <i className="fa-solid fa-circle-info" /> Ajuste aqui pra bater com o número do item no contrato real (documento/edital). Ao salvar, o item na posição 1 vira "Item 1", o da posição 2 vira "Item 2", e assim por diante — essa numeração é o que aparece na Medição, no Pedido de Reequilíbrio e nos Relatórios.
+          </div>
+          {ordemLista.length === 0 && <div className="empty">Este contrato ainda não tem itens cadastrados.</div>}
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {ordemLista.map((itemId, idx) => {
+              const it = itens.find(x => x.id === itemId);
+              if (!it) return null;
+              return (
+                <div key={itemId} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',border:'1px solid var(--border)',borderRadius:8}}>
+                  <span className="mono" style={{minWidth:26,textAlign:'center',fontWeight:700}}>{idx+1}</span>
+                  <span style={{flex:1,fontSize:13}}>{it.item}{it.lote ? ` · ${it.lote}` : ''}</span>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>mover(idx,-1)} disabled={idx===0} title="Subir"><i className="fa-solid fa-arrow-up" /></button>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>mover(idx,1)} disabled={idx===ordemLista.length-1} title="Descer"><i className="fa-solid fa-arrow-down" /></button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      );
+    }
+
     return null;
   };
 
@@ -2306,6 +2370,7 @@ function App() {
     'editar-item': { title:'Editar item contratado', icon:'fa-pen', onSave: salvarItem },
     execucao: { title:'Registrar execução mensal (desativado)', icon:'fa-circle-dollar-to-slot', onSave: null },
     prorrog: { title:'Solicitar prorrogação de prazo', icon:'fa-clock-rotate-left', onSave: salvarProrrog },
+    'reordenar-itens': { title:'Reordenar itens do contrato', icon:'fa-arrow-down-up-across-line', onSave: salvarOrdemItens },
   };
 
   // ─── MEDIÇÕES MENSAIS ────────────────────────────────────────────────────
@@ -2394,7 +2459,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const estilos = `
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 20px; }
+        body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 20px 20px 60px 20px; }
         .header { text-align: center; margin-bottom: 16px; }
         .header img { width: 100%; height: auto; margin-bottom: 8px; }
         .header h3 { font-size: 11px; font-weight: normal; letter-spacing: 1px; margin-bottom: 10px; }
@@ -2527,7 +2592,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-    janela.print();
+    // Documentos grandes (muitas linhas/páginas) precisam de um instante pra
+    // o navegador terminar o layout antes de paginar a impressão — chamar
+    // print() na sequência podia pegar o conteúdo ainda montando e sair
+    // cortado nas últimas páginas.
+    setTimeout(() => { janela.focus(); janela.print(); }, 400);
 
     // Em vez de window.confirm (que fica "preso" na aba de origem quando o
     // foco vai pra aba nova), guarda a ação de registrar num aviso fixo
@@ -2649,7 +2718,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: Arial, sans-serif; font-size: 10.5px; color: #000; padding: 20px; }
+      body { font-family: Arial, sans-serif; font-size: 10.5px; color: #000; padding: 20px 20px 60px 20px; }
       .header { text-align: center; margin-bottom: 16px; }
       .header img { width: 100%; height: auto; margin-bottom: 8px; }
       .header h3 { font-size: 11px; font-weight: normal; letter-spacing: 1px; margin-bottom: 10px; }
@@ -2698,7 +2767,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-    janela.print();
+    // Documentos grandes (muitas linhas/páginas) precisam de um instante pra
+    // o navegador terminar o layout antes de paginar a impressão — chamar
+    // print() na sequência podia pegar o conteúdo ainda montando e sair
+    // cortado nas últimas páginas.
+    setTimeout(() => { janela.focus(); janela.print(); }, 400);
 
     setPendenteRegistro({
       totalGeral, numero: c.numero, mesLabel: mesToPT(medicaoMes),
@@ -3175,7 +3248,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px 24px 60px 24px; }
       .header { text-align:center; margin-bottom:14px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
       .titulo-box h2 { font-size:14px; font-weight:bold; }
@@ -3269,7 +3342,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-    janela.print();
+    // Documentos grandes (muitas linhas/páginas) precisam de um instante pra
+    // o navegador terminar o layout antes de paginar a impressão — chamar
+    // print() na sequência podia pegar o conteúdo ainda montando e sair
+    // cortado nas últimas páginas.
+    setTimeout(() => { janela.focus(); janela.print(); }, 400);
   };
 
   const renderHistorico = () => {
@@ -3704,7 +3781,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px 24px 60px 24px; }
       .header { text-align:center; margin-bottom:14px; }
       .header h3 { font-size:11px; font-weight:normal; letter-spacing:1px; margin-top:6px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
@@ -3858,7 +3935,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-    janela.print();
+    // Documentos grandes (muitas linhas/páginas) precisam de um instante pra
+    // o navegador terminar o layout antes de paginar a impressão — chamar
+    // print() na sequência podia pegar o conteúdo ainda montando e sair
+    // cortado nas últimas páginas.
+    setTimeout(() => { janela.focus(); janela.print(); }, 400);
   };
 
   // ─── INVESTIMENTOS (teto anual compartilhado entre vários contratos) ──────
@@ -4167,7 +4248,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
       * { box-sizing: border-box; margin:0; padding:0; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px; }
+      body { font-family: Arial, sans-serif; font-size: 11px; color:#000; padding:24px 24px 60px 24px; }
       .header { text-align:center; margin-bottom:14px; }
       .header img { width:100%; height:auto; margin-bottom:8px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
@@ -4212,7 +4293,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
-    janela.print();
+    // Documentos grandes (muitas linhas/páginas) precisam de um instante pra
+    // o navegador terminar o layout antes de paginar a impressão — chamar
+    // print() na sequência podia pegar o conteúdo ainda montando e sair
+    // cortado nas últimas páginas.
+    setTimeout(() => { janela.focus(); janela.print(); }, 400);
 
     const mesRef = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
     sb().from('pedidos_gerados').insert({
@@ -4728,7 +4813,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         const acao = dif<-1?'ADITIVO':dif>mensalReal*2?'SUPRESSÃO':'OK';
         analise.push({contrato:c.numero,item:it.item,qtdMensal:it.qtd_mensal,
           qtdAcum:it.qtd_acum,qtdTot:Math.round(qtdTot),saldo,
-          media:media.toFixed(1),mesesRest,proj,dif,acao,pct});
+          media:Math.round(media),mesesRest,proj,dif,acao,pct});
       });
     });
     const aditivo = analise.filter(a=>a.acao==='ADITIVO').sort((a,b)=>a.dif-b.dif);
