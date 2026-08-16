@@ -581,6 +581,7 @@ function App() {
   const [movNota, setMovNota] = useState('');
   const [movObs, setMovObs] = useState('');
   const [itemParaAdicionar, setItemParaAdicionar] = useState('');
+  const [contratoParaAdicionar, setContratoParaAdicionar] = useState('');
   const [buscaAlmox, setBuscaAlmox] = useState('');
   const html5QrRef = useRef(null);
   const formRef = useRef({});
@@ -4398,6 +4399,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   const renderAlmoxarifado = () => {
     const itensControlados = itens.filter(i => i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||''));
     const itensDisponiveis = itens.filter(i => !i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||''));
+    // Só contratos de fornecimento que têm pelo menos um item ainda fora do controle de estoque —
+    // evita listar contrato de serviço/RH junto, onde "item" não é insumo físico.
+    const contratosComItensDisponiveis = contratos
+      .filter(c => itensDisponiveis.some(it => it.contrato_id === c.id))
+      .slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||''));
+    const itensDoContratoSelecionado = contratoParaAdicionar
+      ? itensDisponiveis.filter(it => it.contrato_id === contratoParaAdicionar)
+      : [];
     const filtrados = buscaAlmox
       ? itensControlados.filter(i => (i.item||'').toLowerCase().includes(buscaAlmox.toLowerCase()))
       : itensControlados;
@@ -4431,20 +4440,28 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
               <div className="panel-head"><h2><i className="fa-solid fa-plus"/> Adicionar item ao controle de estoque</h2></div>
               <div className="panel-body">
                 <div style={{fontSize:12,color:'var(--text2)',marginBottom:12}}>
-                  Escolha um item já cadastrado em algum contrato de fornecimento pra passar a controlar entrada/saída física dele.
+                  Escolha o contrato de fornecimento e depois o item dele que você quer passar a controlar por entrada/saída física.
                 </div>
                 <div className="form-row">
-                  <div className="form-group full">
-                    <label>Item do contrato</label>
-                    <select value={itemParaAdicionar} onChange={e=>setItemParaAdicionar(e.target.value)}>
-                      <option value="">— Selecione —</option>
-                      {itensDisponiveis.map(it => {
-                        const c = contratos.find(x=>x.id===it.contrato_id);
-                        return <option key={it.id} value={it.id}>{it.item} · {c?.numero||''}</option>;
-                      })}
+                  <FG label="Contrato de fornecimento" full>
+                    <select value={contratoParaAdicionar} onChange={e=>{setContratoParaAdicionar(e.target.value); setItemParaAdicionar('');}}>
+                      <option value="">— Selecione o contrato —</option>
+                      {contratosComItensDisponiveis.map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
                     </select>
-                  </div>
+                  </FG>
                 </div>
+                {contratoParaAdicionar && (
+                  <div className="form-row">
+                    <div className="form-group full">
+                      <label>Item deste contrato</label>
+                      <select value={itemParaAdicionar} onChange={e=>setItemParaAdicionar(e.target.value)}>
+                        <option value="">— Selecione o item —</option>
+                        {itensDoContratoSelecionado.map(it => <option key={it.id} value={it.id}>{it.item}</option>)}
+                      </select>
+                      {itensDoContratoSelecionado.length === 0 && <div className="cell-m" style={{fontSize:11,marginTop:4}}>Todos os itens deste contrato já estão no controle de estoque.</div>}
+                    </div>
+                  </div>
+                )}
                 {itemParaAdicionar && (
                   <div className="form-row" style={{marginTop:8}}>
                     <FG label="Saldo físico inicial (contagem atual)"><input type="number" min="0" id="almox-saldo-inicial" placeholder="0" /></FG>
@@ -4455,7 +4472,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                   <button className="btn btn-primary btn-sm" style={{marginTop:10}} disabled={saving} onClick={()=>{
                     const saldo = document.getElementById('almox-saldo-inicial')?.value || 0;
                     const min = document.getElementById('almox-estoque-minimo')?.value || 0;
-                    ativarControleEstoque(itemParaAdicionar, saldo, min).then(()=>setItemParaAdicionar(''));
+                    ativarControleEstoque(itemParaAdicionar, saldo, min).then(()=>{setItemParaAdicionar(''); setContratoParaAdicionar('');});
                   }}>
                     <i className="fa-solid fa-check"/> Ativar controle de estoque
                   </button>
