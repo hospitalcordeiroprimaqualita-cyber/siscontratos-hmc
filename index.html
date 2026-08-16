@@ -4323,7 +4323,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     </style>`;
 
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Etiquetas QR — Almoxarifado</title>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
       ${estilos}</head><body>
       <div class="grid">${labelsHtml}</div>
       <script>
@@ -4334,7 +4334,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           });
           setTimeout(function(){ window.print(); }, 500);
         };
-      </script>
+      <\/script>
     </body></html>`;
 
     const janela = window.open('', '_blank');
