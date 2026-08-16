@@ -4219,6 +4219,36 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       id: uid('PED'), contrato_id: pedidoContrato, mes_referencia: mesRef,
       total_estimado: totalGeral, gerado_em: new Date().toISOString()
     }).then(({error}) => { if (!error) loadAll(); });
+
+    // Pré-preenche a medição deste mês com as mesmas quantidades sugeridas no pedido,
+    // pra você só conferir e salvar em vez de digitar tudo de novo. Só entra em contratos
+    // do tipo "itens" (não mexe em Radiocom/médicos) e NUNCA sobrescreve item que já
+    // tem medição salva pra esse mês — preenche só o que ainda está em branco.
+    if (tipoContrato(c.numero) !== 'medicos') {
+      const jaSalvos = medicoesItensHist.filter(mi => mi.contrato_id === pedidoContrato && mi.mes_referencia === mesRef);
+      const draft = { ...medicaoItens };
+      let algumNovo = false;
+      itensDoContrato.forEach(it => {
+        const salvo = jaSalvos.find(mi => mi.item_id === it.id);
+        if (salvo) return; // respeita o que já foi confirmado — não sobrescreve
+        const qtdSugerida = parseFloat(pedidoQtds[it.id] || 0);
+        if (qtdSugerida > 0) {
+          draft[it.id] = qtdSugerida;
+          draft['vu_'+it.id] = it.vlr_unitario || 0;
+          algumNovo = true;
+        }
+      });
+      if (algumNovo) {
+        setMedicaoContrato(pedidoContrato);
+        setMedicaoMes(mesRef);
+        setMedicaoItens(draft);
+        setTimeout(() => {
+          if (confirm(`Pedido gerado! Também deixei a medição de ${mesToPT(mesRef)} deste contrato pré-preenchida com as mesmas quantidades — quer ir conferir e salvar agora?`)) {
+            setSection('medicao');
+          }
+        }, 300);
+      }
+    }
   };
 
   const renderPedido = () => {
@@ -4239,7 +4269,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           <div className="panel-head"><h2><i className="fa-solid fa-cart-shopping"/> Gerar pedido de compra</h2></div>
           <div className="panel-body">
             <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
-              Monta um pedido pronto pra enviar ao fornecedor, já com quantidade sugerida — sem precisar catar medições antigas toda vez que precisar comprar.
+              Monta um pedido pronto pra enviar ao fornecedor, já com quantidade sugerida — sem precisar catar medições antigas toda vez que precisar comprar. Ao gerar, a medição deste mês também é pré-preenchida com as mesmas quantidades (sem sobrescrever o que você já confirmou), só pra você revisar e salvar.
             </div>
             <div className="form-row">
               <div className="form-group">
