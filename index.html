@@ -1931,11 +1931,15 @@ function App() {
     const totalSemCobertura = itensSemCobertura.reduce((acc,d)=>acc+(d.faltaCobrir??0),0);
     const hoje = new Date();
 
-    // Resumo analítico de consumo — todo item envolvido (falta e sobra), com o
-    // mesmo cálculo usado na análise do sistema, pra justificar o pedido com dados.
-    // Ordenado pelo número do item (ordem) — não pela ordem déficit/superávit, senão
-    // os itens em falta sempre apareceriam primeiro, fora da sequência do contrato.
-    const itensEnvolvidos = [...deficit.map(d=>d.item), ...superavit.map(s=>s.item)];
+    // Resumo analítico de consumo — TODOS os itens do contrato (não só os que
+    // entram no remanejamento), pra bater com o Termo de Referência e a empresa
+    // não interpretar como item "sumido" quando na verdade ele só está estável
+    // (sem risco e sem excedente, portanto sem ação necessária). Os itens que
+    // efetivamente entram no remanejamento (falta ou sobra) são destacados.
+    // Ordenado pelo número do item (ordem), a mesma sequência do contrato real.
+    const idsFalta = new Set(deficit.map(d=>d.item.id));
+    const idsSobra = new Set(superavit.map(s=>s.item.id));
+    const itensEnvolvidos = itens.filter(i => i.contrato_id === contrato.id);
     const resumoAnalitico = itensEnvolvidos.map(it => ({ it, a: calcAnaliseItem(contrato, it) })).filter(x=>x.a)
       .sort((x,y) => (x.it.ordem||999) - (y.it.ordem||999));
     const mesesTotContrato = resumoAnalitico[0]?.a.mesesTot;
@@ -1954,7 +1958,13 @@ function App() {
       <td class="val">R$ ${a.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
     </tr>`).join('');
 
-    const linhasResumo = resumoAnalitico.map(({it,a}) => `<tr style="page-break-inside:avoid;break-inside:avoid;">
+    const linhasResumo = resumoAnalitico.map(({it,a}) => {
+      const isFalta = idsFalta.has(it.id);
+      const isSobra = idsSobra.has(it.id);
+      const bgLinha = isFalta ? '#fee2e2' : isSobra ? '#dcfce7' : '';
+      const situacao = isFalta ? 'SUPLEMENTAR' : isSobra ? 'SUPRIMIR' : '—';
+      const corSituacao = isFalta ? '#b91c1c' : isSobra ? '#166534' : '#666';
+      return `<tr style="page-break-inside:avoid;break-inside:avoid;${bgLinha?`background:${bgLinha};`:''}">
       <td class="num">${it.ordem??'—'}</td>
       <td class="desc">${it.item}${it.lote?` · Lote ${it.lote}`:''}</td>
       <td class="num">${a.qtdTot.toLocaleString('pt-BR')}</td>
@@ -1963,7 +1973,9 @@ function App() {
       <td class="num">${Math.round(a.media)}</td>
       <td class="num">${a.proj}</td>
       <td class="num" style="color:${a.dif<0?'#b91c1c':'#166534'};font-weight:bold">${a.dif>0?'+':''}${a.dif}</td>
-    </tr>`).join('');
+      <td class="num" style="color:${corSituacao};font-weight:bold;font-size:8.5px">${situacao}</td>
+    </tr>`;
+    }).join('');
 
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
     const estilos = `<style>
@@ -2000,10 +2012,13 @@ function App() {
       <div class="obs">
         Os itens abaixo apresentam saldo remanescente insuficiente para cobrir a demanda projetada até o fim da vigência. Para equilíbrio, propõe-se a supressão parcial dos itens com excedente e a suplementação correspondente dos itens em risco, <strong>sem alteração do valor global do contrato</strong>.
       </div>
-      <div class="grupo-titulo">RESUMO ANALÍTICO DE CONSUMO — BASE DO CÁLCULO</div>
-      <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. total contratada</th><th>Acumulado</th><th>Saldo</th><th>Média real/mês</th><th>Projeção até o fim</th><th>Diferença</th></tr></thead>
+      <div class="grupo-titulo">RESUMO ANALÍTICO DE CONSUMO — TODOS OS ITENS DO CONTRATO</div>
+      <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. total contratada</th><th>Acumulado</th><th>Saldo</th><th>Média real/mês</th><th>Projeção até o fim</th><th>Diferença</th><th>Situação</th></tr></thead>
       <tbody>${linhasResumo}</tbody></table>
-      <div class="obs">Diferença = Saldo − Projeção de consumo até o fim da vigência (baseada na média real de uso). Negativo = risco de esgotar antes do fim; positivo = excedente disponível para remanejamento.</div>
+      <div class="obs">Diferença = Saldo − Projeção de consumo até o fim da vigência (baseada na média real de uso). Negativo = risco de esgotar antes do fim; positivo = excedente disponível para remanejamento.
+      &nbsp;&nbsp;<span style="background:#fee2e2;padding:1px 5px;border:1px solid #b91c1c;color:#b91c1c;font-weight:bold">■</span> item a suplementar &nbsp;&nbsp;
+      <span style="background:#dcfce7;padding:1px 5px;border:1px solid #166534;color:#166534;font-weight:bold">■</span> item a suprimir (com saldo/excedente) &nbsp;&nbsp;
+      itens sem marcação: situação estável, sem ação necessária neste pedido.</div>
       <div class="grupo-titulo">PROPOSTA DE REMANEJAMENTO</div>
       <table><thead><tr><th colspan="4">SUPRIMIR (item com excedente)</th><th></th><th colspan="4">SUPLEMENTAR (item em risco)</th></tr>
       <tr><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th><th></th><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th></tr></thead>
