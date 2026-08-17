@@ -270,7 +270,12 @@ const clsFin = p => p < 70 ? 'verde' : p < 85 ? 'amarelo' : p < 95 ? 'laranja' :
 const clsPrazo = d => d < 0 ? 'vermelho' : d <= 30 ? 'vermelho' : d <= 60 ? 'laranja' : d <= 90 ? 'amarelo' : 'verde';
 const brl = v => 'R$ ' + (parseFloat(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtD = s => { if (!s) return '—'; const [y,m,d] = s.substring(0,10).split('-'); return `${d}/${m}/${y}`; };
-const uid = p => p + Date.now().toString(36).toUpperCase();
+// Antes, o id dependia só de Date.now() (precisão de milissegundo). Isso é ótimo
+// pra uma chamada isolada, mas quebra quando o código gera vários ids em sequência
+// muito rápida — como na prorrogação de prazo, que duplica todos os itens do
+// contrato num só .map(): todos saíam com o MESMO id, e o banco rejeitava o
+// segundo item em diante por violar a chave única. O sufixo aleatório resolve.
+const uid = p => p + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2,6).toUpperCase();
 const proximoNumeroTA = (numeroAtual) => {
   const m = (numeroAtual||'').match(/^(.*?)(?:\s+(\d+)º\s*TA)?$/i);
   const base = (m && m[1] ? m[1] : numeroAtual || '').trim();
