@@ -582,6 +582,7 @@ function App() {
   const [confirmarExclusaoChave, setConfirmarExclusaoChave] = useState(null);
   const [filtroAditivoContrato, setFiltroAditivoContrato] = useState('');
   const [buscaAditivo, setBuscaAditivo] = useState('');
+  const [abaContratos, setAbaContratos] = useState('ativos'); // 'ativos' | 'arquivados'
   const [formData, setFormData] = useState({});
   // ─── ALMOXARIFADO (estoque por QR Code) ───────────────────────────────
   const [movimentacoes, setMovimentacoes] = useState([]);
@@ -1038,7 +1039,9 @@ function App() {
     const proj = Math.round(media*mesesRest);
     // qtd_total_contratada é a fonte confiável quando preenchida (evita ambiguidade
     // de contratos onde qtd_mensal na verdade guarda o total do período, não a taxa mensal).
-    const qtdTot = it.qtd_total_contratada || (it.qtd_mensal*mesesTot);
+    // Arredondado aqui na origem (não só na tela) pra qtdTot nunca aparecer quebrado
+    // (ex: 8.33/mês × 12 meses = 99.96) em nenhuma tela ou PDF que use este cálculo.
+    const qtdTot = Math.round(it.qtd_total_contratada || (it.qtd_mensal*mesesTot));
     const saldo = Math.round(qtdTot-it.qtd_acum);
     const dif = Math.round(saldo-proj);
     // Taxa mensal real para o gatilho de supressão: quando qtd_total_contratada existe,
@@ -1089,6 +1092,12 @@ function App() {
       const ultimaExec = execsContrato.length ? execsContrato.slice().sort((a,b)=>a.mes_referencia.localeCompare(b.mes_referencia)).slice(-1)[0] : null;
       const ultimoMes = ultimaExec?.mes_referencia || null;
       if (!ultimoMes) {
+        // Só cobra a 1ª medição se já existe pelo menos um mês FECHADO desde o
+        // início da vigência — contrato/aditivo iniciado no mês corrente ainda
+        // não tem nada pra medir (o mês só fecha e é medido no mês seguinte).
+        const [iy, im] = (c.inicio||'').split('-').map(Number);
+        const mesesDesdeInicio = iy && im ? (anoAtual - iy) * 12 + (mesAtualNum - im) : 99;
+        if (mesesDesdeInicio < 1) return;
         tarefas.push({ id:'med_'+c.id, prioridade:'urgente', icon:'fa-file-invoice-dollar',
           titulo:`Lançar a 1ª medição — ${c.numero}`, subtitulo:`${(c.empresa||'').substring(0,44)} · nenhuma medição registrada ainda`,
           onClick:()=>{ setSection('medicao'); setMedicaoContrato(c.id); } });
@@ -1364,6 +1373,13 @@ function App() {
         if (mesesAtraso <= 1) { cls='verde'; label = ehSemMedicao(ultimaExec) ? 'Sem serviço (justificado)' : 'Em dia'; }
         else if (mesesAtraso === 2) { cls='amarelo'; label='Atenção · 1 mês atrasado'; }
         else { cls='vermelho'; label=`Atrasada · ${mesesAtraso-1} meses`; }
+      } else {
+        // Nunca medido: só é "atraso" de fato se já passou pelo menos um mês
+        // fechado desde o início da vigência. Contrato/aditivo iniciado neste
+        // mesmo mês ainda não tem nada a medir.
+        const [iy, im] = (c.inicio||'').split('-').map(Number);
+        const mesesDesdeInicio = iy && im ? (anoAtual - iy) * 12 + (mesAtualNum - im) : 99;
+        if (mesesDesdeInicio < 1) { cls='verde'; label='Vigência iniciada neste mês'; }
       }
       return { contrato:c, ultimoMes, mesesAtraso, cls, label };
     }).sort((a,b) => (b.mesesAtraso??99) - (a.mesesAtraso??99));
@@ -1549,14 +1565,39 @@ function App() {
     );
   };
 
-  const renderContratos = () => (
+  const renderContratos = () => {
+    const contratosAtivos = contratos.filter(c => c.status !== 'arquivado');
+    const contratosArquivados = contratos.filter(c => c.status === 'arquivado');
+    const listaAtual = abaContratos === 'arquivados' ? contratosArquivados : contratosAtivos;
+    const arquivar = async (c, arquivar) => {
+      if (!confirm(arquivar ? `Arquivar o contrato ${c.numero}? Ele sai da lista de ativos e das análises do sistema, mas o histórico continua salvo e disponível na aba Arquivados.` : `Reativar o contrato ${c.numero}? Ele volta a aparecer nas análises e listas de contratos ativos.`)) return;
+      setSaving(true);
+      const { error } = await sb().from('contratos').update({ status: arquivar ? 'arquivado' : 'vigente', updated_at: new Date().toISOString() }).eq('id', c.id);
+      setSaving(false);
+      if (error) { alert('Erro: ' + error.message); return; }
+      await loadAll();
+    };
+    return (
     <div className="panel">
       <div className="panel-head"><h2><i className="fa-solid fa-file-contract" /> Contratos cadastrados</h2>
         <button className="btn btn-primary btn-sm" onClick={() => openModal('novo')}><i className="fa-solid fa-plus" /> Cadastrar</button>
       </div>
+      <div style={{display:'flex',gap:8,padding:'0 17px 12px'}}>
+        <button className={`btn btn-sm ${abaContratos==='ativos'?'btn-primary':'btn-secondary'}`} onClick={()=>setAbaContratos('ativos')}>
+          <i className="fa-solid fa-file-circle-check" /> Ativos ({contratosAtivos.length})
+        </button>
+        <button className={`btn btn-sm ${abaContratos==='arquivados'?'btn-primary':'btn-secondary'}`} onClick={()=>setAbaContratos('arquivados')}>
+          <i className="fa-solid fa-box-archive" /> Arquivados ({contratosArquivados.length})
+        </button>
+      </div>
+      {abaContratos==='arquivados' && (
+        <div style={{fontSize:11.5,color:'var(--text2)',padding:'0 17px 10px'}}>
+          <i className="fa-solid fa-circle-info"/> Contratos arquivados (substituídos por prorrogação/Termo Aditivo ou encerrados manualmente) — ficam fora das análises, painéis e alertas do sistema, mas o histórico continua acessível aqui.
+        </div>
+      )}
       <div className="tbl-wrap">
         <table><thead><tr><th>Nº</th><th>Empresa</th><th>Objeto</th><th>Setor</th><th>Início</th><th>Vencimento</th><th>Vlr mensal</th><th>Vlr total</th><th>Consumo</th><th>Status</th><th></th></tr></thead>
-        <tbody>{contratos.map(c => (
+        <tbody>{listaAtual.map(c => (
           <tr key={c.id}>
             <td className="mono"><strong>{c.numero}</strong></td>
             <td style={{maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.empresa}</td>
@@ -1571,14 +1612,22 @@ function App() {
             <td>
               <ActBtn icon="fa-eye" onClick={() => openModal('ver', c.id)} title="Ver" />
               <ActBtn icon="fa-pen" onClick={() => openModal('editar', c.id)} title="Editar" />
-              <ActBtn icon="fa-calendar-plus" onClick={() => openModal('prorrog', c.id)} title="Prorrogar prazo (novo Termo Aditivo)" />
+              {abaContratos==='ativos' ? (
+                <>
+                  <ActBtn icon="fa-calendar-plus" onClick={() => openModal('prorrog', c.id)} title="Prorrogar prazo (novo Termo Aditivo)" />
+                  <ActBtn icon="fa-box-archive" onClick={() => arquivar(c, true)} title="Arquivar contrato" />
+                </>
+              ) : (
+                <ActBtn icon="fa-rotate-left" onClick={() => arquivar(c, false)} title="Reativar contrato" />
+              )}
               <ActBtn icon="fa-trash" onClick={() => excluir('contratos', c.id)} title="Excluir" danger />
             </td>
           </tr>
         ))}</tbody></table>
+        {listaAtual.length===0 && <div className="empty" style={{padding:20}}>{abaContratos==='arquivados' ? 'Nenhum contrato arquivado.' : 'Nenhum contrato ativo.'}</div>}
       </div>
     </div>
-  );
+  );};
 
   const renderFinanceiro = () => {
     const c = contratos.find(x => x.id === selFin);
@@ -1650,7 +1699,7 @@ function App() {
         const pctAnual = qtdTot>0?Math.min(Math.round((it.qtd_acum/qtdTot)*100),100):0;
         const mensalReal = it.qtd_total_contratada ? (it.qtd_total_contratada/mesesTot) : it.qtd_mensal;
         const acao = dif<-1?'ADITIVO':dif>mensalReal*2?'SUPRESSÃO':'OK';
-        return {item:it.item, qtdMensal:it.qtd_mensal, qtdAcum:it.qtd_acum,
+        return {item:it.item, qtdMensal:Math.round(it.qtd_mensal||0), qtdAcum:Math.round(it.qtd_acum||0),
           qtdTot:Math.round(qtdTot), saldo, media:Math.round(media),
           mesesRest, proj, dif, acao, pctAnual};
       });
@@ -1771,8 +1820,8 @@ function App() {
                       <td className="cell-m" style={{textAlign:'center'}}>{it.carga_horaria||'—'}</td>
                       <td className="cell-m" style={{textAlign:'center'}}>{it.vaga||'—'}</td>
                       <td style={{textAlign:'center'}}>{brl(it.vlr_unitario||0)}</td>
-                      <td style={{textAlign:'center'}}>{it.qtd_mensal||0}</td>
-                      <td style={{textAlign:'center',fontWeight:600}}>{it.qtd_acum||0}</td>
+                      <td style={{textAlign:'center'}}>{Math.round(it.qtd_mensal||0)}</td>
+                      <td style={{textAlign:'center',fontWeight:600}}>{Math.round(it.qtd_acum||0)}</td>
                       <td style={{minWidth:220}}>
                         <select value={it.rubrica||''} onChange={e=>atualizarRubricaItem(it.id, e.target.value)} style={{width:'100%',fontSize:11.5,padding:'4px 6px'}}>
                           <option value="">— Sem rubrica —</option>
@@ -3982,6 +4031,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         if (mesesAtraso<=1) { cls='verde'; label='Em dia'; }
         else if (mesesAtraso===2) { cls='amarelo'; label='Atenção · 1 mês atrasado'; }
         else { cls='vermelho'; label=`Atrasada · ${mesesAtraso-1}m`; }
+      } else {
+        const [iy, im] = (c.inicio||'').split('-').map(Number);
+        const mesesDesdeInicio = iy && im ? (ry - iy) * 12 + (rm - im) : 99;
+        if (mesesDesdeInicio < 1) { cls='verde'; label='Vigência iniciada neste mês'; }
       }
       return { c, ultimoMes, cls, label };
     });
@@ -5084,8 +5137,8 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         const pct = qtdTot>0?Math.min(Math.round((it.qtd_acum/qtdTot)*100),100):0;
         const mensalReal = it.qtd_total_contratada ? (it.qtd_total_contratada/mesesTot) : it.qtd_mensal;
         const acao = dif<-1?'ADITIVO':dif>mensalReal*2?'SUPRESSÃO':'OK';
-        analise.push({contrato:c.numero,item:it.item,qtdMensal:it.qtd_mensal,
-          qtdAcum:it.qtd_acum,qtdTot:Math.round(qtdTot),saldo,
+        analise.push({contrato:c.numero,item:it.item,qtdMensal:Math.round(it.qtd_mensal||0),
+          qtdAcum:Math.round(it.qtd_acum||0),qtdTot:Math.round(qtdTot),saldo,
           media:Math.round(media),mesesRest,proj,dif,acao,pct});
       });
     });
