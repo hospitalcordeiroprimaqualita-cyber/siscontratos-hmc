@@ -1116,10 +1116,20 @@ function App() {
     contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).forEach(c => {
       const d = dias(c.fim);
       if (d != null && d <= 30) {
+        // WhatsApp pro financeiro (número fixo do ADM Prima Qualitá) só nos casos
+        // realmente urgentes — vencido ou a ≤15 dias — pra não virar spam de aviso.
+        let whatsapp = null;
+        if (d <= 15) {
+          const msg = `⚠️ *Alerta de vencimento de contrato* — SisContratos HMC\n\n` +
+            `*Contrato:* ${c.numero}\n*Empresa:* ${c.empresa||'—'}\n*Objeto:* ${c.objeto||'—'}\n` +
+            `*Vencimento:* ${fmtD(c.fim)}\n*Situação:* ${d<0?`vencido há ${Math.abs(d)} dia(s)`:`faltam ${d} dia(s)`}\n\n` +
+            `Favor providenciar renovação/prorrogação ou aditivo o quanto antes.`;
+          whatsapp = `https://wa.me/5521966671334?text=${encodeURIComponent(msg)}`;
+        }
         tarefas.push({ id:'prazo_'+c.id, prioridade: d<0 || d<=15 ? 'urgente' : 'atencao', icon:'fa-calendar-days',
           titulo: d<0 ? `Contrato vencido — ${c.numero}` : `Prazo vencendo — ${c.numero}`,
           subtitulo: d<0 ? `${(c.empresa||'').substring(0,44)} · venceu há ${Math.abs(d)} dias` : `${(c.empresa||'').substring(0,44)} · faltam ${d} dias`,
-          onClick:()=>{ setSection('prazo'); } });
+          onClick:()=>{ setSection('prazo'); }, whatsapp });
       }
     });
 
@@ -1217,6 +1227,12 @@ function App() {
                   <div style={{fontSize:13.5,fontWeight:600,color:'var(--text)'}}>{t.titulo}</div>
                   <div style={{fontSize:12,color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.subtitulo}</div>
                 </div>
+                {t.whatsapp && (
+                  <a href={t.whatsapp} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} title="Avisar o financeiro no WhatsApp"
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'6px 11px',borderRadius:7,background:'#25D36618',color:'#128C4A',fontSize:11.5,fontWeight:700,flexShrink:0,textDecoration:'none'}}>
+                    <i className="fa-brands fa-whatsapp" style={{fontSize:14}}/> Avisar financeiro
+                  </a>
+                )}
                 <span className="badge" style={{background:corPrioridade[t.prioridade]+'18',color:corPrioridade[t.prioridade],flexShrink:0}}>{labelPrioridade[t.prioridade]}</span>
                 <i className="fa-solid fa-chevron-right" style={{color:'var(--text3)',fontSize:11,flexShrink:0}}/>
               </div>
@@ -1927,6 +1943,14 @@ function App() {
           else if (d <= 60) alertas.push(<Badge key="60" cls="laranja" label="Alerta 60 dias" />);
           else if (d <= 90) alertas.push(<Badge key="90" cls="amarelo" label="Alerta 90 dias" />);
           else alertas.push(<Badge key="ok" cls="verde" label="Dentro do prazo" />);
+          let whatsapp = null;
+          if (d != null && d <= 15) {
+            const msg = `⚠️ *Alerta de vencimento de contrato* — SisContratos HMC\n\n` +
+              `*Contrato:* ${c.numero}\n*Empresa:* ${c.empresa||'—'}\n*Objeto:* ${c.objeto||'—'}\n` +
+              `*Vencimento:* ${fmtD(c.fim)}\n*Situação:* ${d<0?`vencido há ${Math.abs(d)} dia(s)`:`faltam ${d} dia(s)`}\n\n` +
+              `Favor providenciar renovação/prorrogação ou aditivo o quanto antes.`;
+            whatsapp = `https://wa.me/5521966671334?text=${encodeURIComponent(msg)}`;
+          }
           return (
             <tr key={c.id}>
               <td className="mono"><strong>{c.numero}</strong></td>
@@ -1936,7 +1960,10 @@ function App() {
               <td><BadgePrazo d={d} /></td>
               <td>{alertas}</td>
               <td><BadgeStatus s={c.status} /></td>
-              <td><ActBtn icon="fa-clock-rotate-left" onClick={() => openModal('prorrog', c.id)} title="Solicitar prorrogação" /></td>
+              <td>
+                {whatsapp && <a href={whatsapp} target="_blank" rel="noopener noreferrer" className="act-btn" title="Avisar o financeiro no WhatsApp" style={{color:'#128C4A'}}><i className="fa-brands fa-whatsapp" /></a>}
+                <ActBtn icon="fa-clock-rotate-left" onClick={() => openModal('prorrog', c.id)} title="Solicitar prorrogação" />
+              </td>
             </tr>
           );
         })}</tbody></table>
