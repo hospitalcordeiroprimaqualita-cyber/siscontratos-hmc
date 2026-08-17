@@ -558,7 +558,7 @@ function App() {
   const [configured, setConfigured] = useState(!!(sbUrl && sbKey));
   const sbRef = useRef(null);
 
-  const [section, setSection] = useState('painel');
+  const [section, setSection] = useState('inicio');
   const [syncStatus, setSyncStatus] = useState('ok'); // ok | loading | err
   const [contratos, setContratos] = useState([]);
   const [itens, setItens] = useState([]);
@@ -710,6 +710,11 @@ function App() {
       setForm({ contrato_id: id, fim_atual: c.fim?.substring(0,10), novo_prazo: c.fim?.substring(0,10), nova_vigencia_meses: c.vigencia_meses||12 });
     } else if (tipo === 'execucao') {
       setForm({ contrato_id: id, mes_referencia: todayMonth() });
+    } else if (tipo === 'sem-medicao') {
+      const mes = medicaoMes || todayMonth();
+      const existente = execucoes.find(e => e.contrato_id === id && e.mes_referencia === mes);
+      const motivoExistente = existente && ehSemMedicao(existente) ? existente.observacao.replace(SEM_MEDICAO_MARCADOR,'').trim() : '';
+      setForm({ contrato_id: id, mes_referencia: mes, motivo: motivoExistente });
     } else if (tipo === 'reordenar-itens') {
       const itensDoContrato = itens.filter(x => x.contrato_id === id).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
       setOrdemLista(itensDoContrato.map(it => it.id));
@@ -926,6 +931,28 @@ function App() {
     await loadAll(); closeModal();
   };
 
+  // MARCADOR "SEM MEDIÇÃO NESTE MÊS" — registra o mês como resolvido (não conta
+  // mais como atraso), mas sem valor executado e com o motivo justificado.
+  // Usa o marcador "[SEM MEDIÇÃO]" no início da observação pra ser identificável
+  // depois (no Histórico, no Painel e na Bússola do Dia) sem precisar de coluna nova.
+  const SEM_MEDICAO_MARCADOR = '[SEM MEDIÇÃO]';
+  const ehSemMedicao = e => (e?.observacao || '').startsWith(SEM_MEDICAO_MARCADOR);
+  const salvarSemMedicao = async () => {
+    const cId = fv('contrato_id');
+    const mes = fv('mes_referencia');
+    const motivo = (fv('motivo') || '').trim();
+    if (!cId || !mes) { alert('Selecione o contrato e o mês.'); return; }
+    if (!motivo) { alert('Descreva o motivo — isso fica registrado no histórico do contrato.'); return; }
+    setSaving(true);
+    const { error } = await sb().from('execucoes').upsert({
+      id: `${cId}_${mes}`, contrato_id: cId, mes_referencia: mes, valor: 0,
+      observacao: `${SEM_MEDICAO_MARCADOR} ${motivo}`
+    }, { onConflict: 'contrato_id,mes_referencia' });
+    setSaving(false);
+    if (error) { alert('Erro ao registrar: ' + error.message); return; }
+    await loadAll(); closeModal();
+  };
+
   // PRORROGAÇÃO
   const salvarProrrog = async () => {
     if (!fv('novo_prazo') || !fv('justificativa')) { alert('Informe o novo prazo e a justificativa.'); return; }
@@ -1047,6 +1074,148 @@ function App() {
       });
     });
     return setIds;
+  };
+
+  // ─── BÚSSOLA DO DIA (tarefas pendentes, priorizadas) ──────────────────────
+  const tarefasDoDia = () => {
+    const tarefas = [];
+    const mesAtual = todayMonth();
+    const [anoAtual, mesAtualNum] = mesAtual.split('-').map(Number);
+    const ativos = contratos.filter(c => !['finalizado','arquivado'].includes(c.status));
+
+    // 1) Medições nunca lançadas ou atrasadas
+    ativos.forEach(c => {
+      const execsContrato = execucoes.filter(e => e.contrato_id === c.id);
+      const ultimaExec = execsContrato.length ? execsContrato.slice().sort((a,b)=>a.mes_referencia.localeCompare(b.mes_referencia)).slice(-1)[0] : null;
+      const ultimoMes = ultimaExec?.mes_referencia || null;
+      if (!ultimoMes) {
+        tarefas.push({ id:'med_'+c.id, prioridade:'urgente', icon:'fa-file-invoice-dollar',
+          titulo:`Lançar a 1ª medição — ${c.numero}`, subtitulo:`${(c.empresa||'').substring(0,44)} · nenhuma medição registrada ainda`,
+          onClick:()=>{ setSection('medicao'); setMedicaoContrato(c.id); } });
+      } else if (!ehSemMedicao(ultimaExec)) {
+        const [uy, um] = ultimoMes.split('-').map(Number);
+        const mesesAtraso = (anoAtual - uy) * 12 + (mesAtualNum - um);
+        if (mesesAtraso >= 2) {
+          tarefas.push({ id:'med_'+c.id, prioridade: mesesAtraso>=3?'urgente':'atencao', icon:'fa-file-invoice-dollar',
+            titulo:`Lançar medição atrasada — ${c.numero}`, subtitulo:`${(c.empresa||'').substring(0,44)} · ${mesesAtraso-1} ${mesesAtraso-1===1?'mês':'meses'} em atraso`,
+            onClick:()=>{ setSection('medicao'); setMedicaoContrato(c.id); } });
+        }
+      }
+    });
+
+    // 2) Prazos vencendo ou vencidos
+    contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).forEach(c => {
+      const d = dias(c.fim);
+      if (d != null && d <= 30) {
+        tarefas.push({ id:'prazo_'+c.id, prioridade: d<0 || d<=15 ? 'urgente' : 'atencao', icon:'fa-calendar-days',
+          titulo: d<0 ? `Contrato vencido — ${c.numero}` : `Prazo vencendo — ${c.numero}`,
+          subtitulo: d<0 ? `${(c.empresa||'').substring(0,44)} · venceu há ${Math.abs(d)} dias` : `${(c.empresa||'').substring(0,44)} · faltam ${d} dias`,
+          onClick:()=>{ setSection('prazo'); } });
+      }
+    });
+
+    // 3) Contratos com risco financeiro/quantitativo (mesmo cálculo do Painel)
+    const precisamId = contratosPrecisamAtencao();
+    contratos.filter(c => precisamId.has(c.id)).forEach(c => {
+      tarefas.push({ id:'reeq_'+c.id, prioridade:'atencao', icon:'fa-scale-unbalanced',
+        titulo:`Revisar reequilíbrio — ${c.numero}`, subtitulo:`${(c.empresa||'').substring(0,44)} · saldo ou prazo em risco`,
+        onClick:()=>{ setSection('aditivos'); } });
+    });
+
+    // 4) Aditivos aguardando aprovação
+    aditivos.filter(a => a.status === 'Em análise').forEach(a => {
+      const c = contratos.find(x => x.id === a.contrato_id);
+      tarefas.push({ id:'adi_'+a.id, prioridade:'info', icon:'fa-file-pen',
+        titulo:`Aditivo pendente de aprovação`, subtitulo: c ? `${c.numero} · ${a.tipo||'aditivo'}` : (a.tipo||'aditivo'),
+        onClick:()=>{ setSection('aditivos'); } });
+    });
+
+    // 5) Estoque do almoxarifado abaixo do mínimo
+    const itensBaixo = itens.filter(i => i.controla_estoque && (i.saldo_atual||0) <= (i.estoque_minimo||0));
+    if (itensBaixo.length) {
+      tarefas.push({ id:'estoque', prioridade: itensBaixo.length>5?'urgente':'atencao', icon:'fa-boxes-stacked',
+        titulo:`Repor estoque no almoxarifado`, subtitulo:`${itensBaixo.length} ${itensBaixo.length===1?'item':'itens'} no mínimo ou abaixo`,
+        onClick:()=>{ setSection('almoxarifado'); setAlmoxTab('reposicao'); } });
+    }
+
+    const ordem = { urgente:0, atencao:1, info:2 };
+    return tarefas.sort((a,b) => ordem[a.prioridade]-ordem[b.prioridade]);
+  };
+
+  const renderInicio = () => {
+    const tarefas = tarefasDoDia();
+    const urgentes = tarefas.filter(t=>t.prioridade==='urgente').length;
+    const atencao = tarefas.filter(t=>t.prioridade==='atencao').length;
+    const hoje = new Date();
+    const hora = hoje.getHours();
+    const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+    const dataFmt = hoje.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
+    const corPrioridade = { urgente:'#ef4444', atencao:'#f59e0b', info:'#178DBB' };
+    const labelPrioridade = { urgente:'Urgente', atencao:'Atenção', info:'Informativo' };
+    const acessosRapidos = [
+      { icon:'fa-file-invoice-dollar', label:'Lançar medição', onClick:()=>setSection('medicao') },
+      { icon:'fa-file-pen', label:'Aditivos e supressões', onClick:()=>setSection('aditivos') },
+      { icon:'fa-file-contract', label:'Contratos', onClick:()=>setSection('contratos') },
+      { icon:'fa-gauge-high', label:'Painel executivo', onClick:()=>setSection('painel') },
+    ];
+
+    return (
+      <div style={{maxWidth:900,margin:'0 auto'}}>
+        <div style={{background:'linear-gradient(135deg, var(--teal-d), var(--teal))', borderRadius:14, padding:'32px 32px', color:'#fff', marginBottom:20, position:'relative', overflow:'hidden'}}>
+          <div style={{position:'absolute', top:'-30%', right:'-8%', width:'55%', height:'170%', background:'linear-gradient(115deg, rgba(255,255,255,0) 40%, rgba(255,255,255,.10) 52%, rgba(255,255,255,.16) 58%, rgba(255,255,255,0) 70%)', transform:'rotate(-8deg)', pointerEvents:'none'}}/>
+          <div style={{position:'relative', zIndex:1}}>
+            <div style={{fontSize:12.5, opacity:.85, textTransform:'capitalize', marginBottom:4}}>{dataFmt}</div>
+            <h1 style={{fontSize:26, fontWeight:800, margin:'0 0 6px'}}>{saudacao}! <i className="fa-solid fa-compass" style={{opacity:.85, fontSize:22}}/></h1>
+            <div style={{fontSize:13.5, opacity:.92}}>
+              {tarefas.length === 0
+                ? 'Tudo em dia — nenhuma pendência encontrada no momento.'
+                : `Você tem ${tarefas.length} ${tarefas.length===1?'pendência':'pendências'} pra hoje${urgentes>0?`, sendo ${urgentes} urgente${urgentes>1?'s':''}`:''}.`}
+            </div>
+          </div>
+        </div>
+
+        <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap'}}>
+          {acessosRapidos.map((a,i) => (
+            <button key={i} className="btn btn-secondary" onClick={a.onClick} style={{flex:'1 1 160px',justifyContent:'center',padding:'12px 10px'}}>
+              <i className={`fa-solid ${a.icon}`}/> {a.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <h2><i className="fa-solid fa-list-check"/> O que fazer hoje</h2>
+            {tarefas.length > 0 && (
+              <span style={{fontSize:12,color:'var(--text2)'}}>
+                {urgentes>0 && <span style={{color:'#ef4444',fontWeight:700,marginRight:10}}>{urgentes} urgente{urgentes>1?'s':''}</span>}
+                {atencao>0 && <span style={{color:'#f59e0b',fontWeight:700}}>{atencao} atenção</span>}
+              </span>
+            )}
+          </div>
+          <div style={{padding: tarefas.length ? '6px 0' : undefined}}>
+            {tarefas.length === 0 ? (
+              <div className="empty" style={{padding:'44px 20px'}}>
+                <i className="fa-solid fa-circle-check" style={{display:'block',fontSize:32,color:'#22c55e',marginBottom:10}}/>
+                Nenhuma pendência agora — todos os contratos estão em dia.
+              </div>
+            ) : tarefas.map(t => (
+              <div key={t.id} onClick={t.onClick} style={{display:'flex',alignItems:'center',gap:14,padding:'13px 20px',borderBottom:'1px solid var(--gray-b)',cursor:'pointer',transition:'background .12s'}}
+                onMouseEnter={e=>e.currentTarget.style.background='#F7FAFC'} onMouseLeave={e=>e.currentTarget.style.background=''}>
+                <div style={{width:36,height:36,borderRadius:10,background:corPrioridade[t.prioridade]+'18',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <i className={`fa-solid ${t.icon}`} style={{color:corPrioridade[t.prioridade],fontSize:14}}/>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13.5,fontWeight:600,color:'var(--text)'}}>{t.titulo}</div>
+                  <div style={{fontSize:12,color:'var(--text2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.subtitulo}</div>
+                </div>
+                <span className="badge" style={{background:corPrioridade[t.prioridade]+'18',color:corPrioridade[t.prioridade],flexShrink:0}}>{labelPrioridade[t.prioridade]}</span>
+                <i className="fa-solid fa-chevron-right" style={{color:'var(--text3)',fontSize:11,flexShrink:0}}/>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // ─── IMPACTO DO PROJETO (vitrine para o Prêmio Melhores do Ano) ───────────
@@ -1184,14 +1353,15 @@ function App() {
     const [anoAtual, mesAtualNum] = mesAtual.split('-').map(Number);
     const statusMedicoes = contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).map(c => {
       const execsContrato = execucoes.filter(e => e.contrato_id === c.id);
-      const ultimoMes = execsContrato.length ? execsContrato.map(e=>e.mes_referencia).sort().slice(-1)[0] : null;
+      const ultimaExec = execsContrato.length ? execsContrato.slice().sort((a,b)=>a.mes_referencia.localeCompare(b.mes_referencia)).slice(-1)[0] : null;
+      const ultimoMes = ultimaExec?.mes_referencia || null;
       let mesesAtraso = null, cls = 'vermelho', label = 'Nunca medido';
       if (ultimoMes) {
         const [uy, um] = ultimoMes.split('-').map(Number);
         mesesAtraso = (anoAtual - uy) * 12 + (mesAtualNum - um);
         // O mês vigente só é medido no início do mês seguinte — por isso "em dia"
         // é ter medido até o mês anterior (mesesAtraso 0 ou 1), não o mês atual.
-        if (mesesAtraso <= 1) { cls='verde'; label='Em dia'; }
+        if (mesesAtraso <= 1) { cls='verde'; label = ehSemMedicao(ultimaExec) ? 'Sem serviço (justificado)' : 'Em dia'; }
         else if (mesesAtraso === 2) { cls='amarelo'; label='Atenção · 1 mês atrasado'; }
         else { cls='vermelho'; label=`Atrasada · ${mesesAtraso-1} meses`; }
       }
@@ -2359,6 +2529,27 @@ function App() {
         </>
       );
     }
+    if (tipo === 'sem-medicao') {
+      const cPre = contratos.find(x => x.id === modal.id);
+      return (
+        <>
+          <div className="cell-m" style={{fontSize:11.5,marginBottom:12}}>
+            <i className="fa-solid fa-circle-info" /> Use isso quando o contrato realmente não teve nenhum serviço prestado naquele mês (ex.: suspensão temporária, ainda não iniciou, greve, etc.). O mês fica registrado com valor R$ 0,00 e o motivo — e deixa de aparecer como "atrasado" na Bússola do Dia e no Painel.
+          </div>
+          <div className="form-grid">
+            <FG label="Contrato *" full>
+              <select defaultValue={fv('contrato_id')} onChange={e=>sf('contrato_id',e.target.value)} disabled={!!modal.id}>
+                <option value="">— Selecione —</option>
+                {contratos.map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,40)}</option>)}
+              </select>
+            </FG>
+            <FG label="Mês de referência *"><FI k="mes_referencia" type="month" /></FG>
+            <FG label="Motivo *" full><FT k="motivo" placeholder="Ex: contrato suspenso por decisão administrativa desde 05/2026..." /></FG>
+          </div>
+          {cPre && <div style={{fontSize:11.5,color:'var(--text2)',marginTop:10}}>{cPre.numero} · {cPre.empresa}</div>}
+        </>
+      );
+    }
     if (tipo === 'reordenar-itens') {
       const mover = (idx, sentido) => {
         const nova = ordemLista.slice();
@@ -2402,6 +2593,7 @@ function App() {
     item: { title:'Adicionar item contratado', icon:'fa-boxes-stacked', onSave: salvarItem },
     'editar-item': { title:'Editar item contratado', icon:'fa-pen', onSave: salvarItem },
     execucao: { title:'Registrar execução mensal (desativado)', icon:'fa-circle-dollar-to-slot', onSave: null },
+    'sem-medicao': { title:'Registrar mês sem medição', icon:'fa-calendar-xmark', onSave: salvarSemMedicao },
     prorrog: { title:'Solicitar prorrogação de prazo', icon:'fa-clock-rotate-left', onSave: salvarProrrog },
     'reordenar-itens': { title:'Reordenar itens do contrato', icon:'fa-arrow-down-up-across-line', onSave: salvarOrdemItens },
   };
@@ -2839,7 +3031,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           }
 
           await sb().from('medicoes_lancamentos').delete().eq('contrato_id', c.id).eq('mes_referencia', medicaoMes);
-          if (novosLancamentos.length) await sb().from('medicoes_lancamentos').insert(novosLancamentos);
+          if (novosLancamentos.length) {
+            const { error: errLanc } = await sb().from('medicoes_lancamentos').insert(novosLancamentos);
+            if (errLanc) throw new Error('Os lançamentos detalhados (médico/quantidade) não foram salvos: ' + errLanc.message + '. O valor total NÃO foi registrado — corrija e tente salvar de novo, senão o "Acumulado" desse contrato fica errado.');
+          }
 
           await sb().from('execucoes').upsert({
             id: `${c.id}_${medicaoMes}`, contrato_id: c.id, mes_referencia: medicaoMes,
@@ -3183,6 +3378,28 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           </div>
         </div>
 
+        {medicaoContrato && (() => {
+          const execAtual = execucoes.find(e => e.contrato_id === medicaoContrato && e.mes_referencia === medicaoMes);
+          if (execAtual && ehSemMedicao(execAtual)) {
+            return (
+              <div className="panel">
+                <div className="panel-body" style={{display:'flex',alignItems:'center',gap:10,fontSize:12.5,color:'var(--text2)'}}>
+                  <i className="fa-solid fa-calendar-xmark" style={{color:'var(--blue)'}}/>
+                  <span><strong>Este mês está marcado como sem medição:</strong> {execAtual.observacao.replace(SEM_MEDICAO_MARCADOR,'').trim()}</span>
+                  <button className="btn btn-secondary btn-sm" style={{marginLeft:'auto'}} onClick={()=>openModal('sem-medicao', medicaoContrato)}>Editar motivo</button>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div style={{textAlign:'right',marginBottom:10}}>
+              <button className="btn btn-secondary btn-sm" onClick={()=>openModal('sem-medicao', medicaoContrato)}>
+                <i className="fa-solid fa-calendar-xmark"/> Este mês não teve medição (justificar)
+              </button>
+            </div>
+          );
+        })()}
+
         {ehMedico && (
           <div className="panel"><div className="panel-body" style={{textAlign:'right'}}>
             <button className="btn btn-primary" onClick={gerarPDFRadiocom}><i className="fa-solid fa-file-pdf"/> Gerar PDF e registrar</button>
@@ -3400,6 +3617,13 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const extrairNumMedicao = (obs) => { const m = (obs||'').match(/^(\d+)ª/); return m ? m[1] : '—'; };
 
     const detalheDoMes = (e) => {
+      if (ehSemMedicao(e)) {
+        return (
+          <div className="empty" style={{padding:'14px 0'}}>
+            <i className="fa-solid fa-calendar-xmark" style={{color:'var(--blue)'}}/> Sem medição neste mês — {e.observacao.replace(SEM_MEDICAO_MARCADOR,'').trim()}
+          </div>
+        );
+      }
       if (ehMedicoHist) {
         const lancsDoMes = lancamentos.filter(l => l.contrato_id === e.contrato_id && l.mes_referencia === e.mes_referencia);
         if (!lancsDoMes.length) return <div className="empty" style={{padding:'14px 0'}}>Sem lançamentos detalhados salvos para este mês.</div>;
@@ -3488,7 +3712,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                         <td className="mono"><strong>{c?.numero||'—'}</strong></td>
                         <td>{mesToPT(e.mes_referencia)}</td>
                         <td className="cell-m" style={{textAlign:'center'}}>{extrairNumMedicao(e.observacao)}</td>
-                        <td style={{fontWeight:700,color:'var(--teal-d)'}}>{brl(e.valor)}</td>
+                        <td style={{fontWeight:700,color:'var(--teal-d)'}}>
+                          {ehSemMedicao(e)
+                            ? <span className="badge" style={{background:'#178DBB18',color:'var(--blue)'}}><i className="fa-solid fa-calendar-xmark"/> Sem medição</span>
+                            : brl(e.valor)}
+                        </td>
                         <td>
                           {confirmando ? (
                             <div style={{display:'flex',gap:6,alignItems:'center',justifyContent:'flex-end'}}>
@@ -4886,6 +5114,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   };
 
   const navItems = [
+    { sec:'inicio', icon:'fa-compass', label:'Início', group:'main' },
     { sec:'impacto', icon:'fa-star', label:'Impacto do projeto', group:'main' },
     { sec:'painel', icon:'fa-gauge-high', label:'Painel executivo', group:'main' },
     { sec:'contratos', icon:'fa-file-contract', label:'Contratos', group:'main' },
@@ -4902,7 +5131,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     { sec:'pedido', icon:'fa-cart-shopping', label:'Pedido de compra', group:'gestao' },
   ];
 
-  const sectionTitles = { impacto:'Impacto do Projeto', painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais', historico:'Histórico de Medições', rubrica:'Consumo por Rubrica', investimentos:'Investimentos', relatorio:'Relatório Mensal', pedido:'Pedido de Compra' };
+  const sectionTitles = { inicio:'Início', impacto:'Impacto do Projeto', painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais', historico:'Histórico de Medições', rubrica:'Consumo por Rubrica', investimentos:'Investimentos', relatorio:'Relatório Mensal', pedido:'Pedido de Compra' };
 
   if (!configured) return (
     <div style={{minHeight:'100vh',background:'#EEF2F6'}}>
@@ -4966,6 +5195,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         </div>
 
         <div className="content">
+          {section === 'inicio' && renderInicio()}
           {section === 'impacto' && renderImpacto()}
           {section === 'painel' && renderPainel()}
           {section === 'contratos' && renderContratos()}
