@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1120,10 +1121,17 @@ function App() {
         // realmente urgentes — vencido ou a ≤15 dias — pra não virar spam de aviso.
         let whatsapp = null;
         if (d <= 15) {
-          const msg = `⚠️ *Alerta de vencimento de contrato* — SisContratos HMC\n\n` +
-            `*Contrato:* ${c.numero}\n*Empresa:* ${c.empresa||'—'}\n*Objeto:* ${c.objeto||'—'}\n` +
-            `*Vencimento:* ${fmtD(c.fim)}\n*Situação:* ${d<0?`vencido há ${Math.abs(d)} dia(s)`:`faltam ${d} dia(s)`}\n\n` +
-            `Favor providenciar renovação/prorrogação ou aditivo o quanto antes.`;
+          const situacaoMsg = d<0 ? `🔴 Vencido há ${Math.abs(d)} dia(s)` : `🟠 Vence em ${d} dia(s)`;
+          const msg = `🏥 *${UNIDADE_CONFIG.nomeUnidade}*\n` +
+            `📋 *SisContratos HMC — Alerta de Vencimento*\n` +
+            `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n\n` +
+            `📄 *Contrato:* ${c.numero}\n` +
+            `🏢 *Empresa:* ${c.empresa||'—'}\n` +
+            `📝 *Objeto:* ${c.objeto||'—'}\n` +
+            `📅 *Vencimento:* ${fmtD(c.fim)}\n` +
+            `⏰ *Situação:* ${situacaoMsg}\n\n` +
+            `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n` +
+            `✅ Favor providenciar renovação, prorrogação ou aditivo o quanto antes.`;
           whatsapp = `https://wa.me/5521966671334?text=${encodeURIComponent(msg)}`;
         }
         tarefas.push({ id:'prazo_'+c.id, prioridade: d<0 || d<=15 ? 'urgente' : 'atencao', icon:'fa-calendar-days',
@@ -1517,7 +1525,7 @@ function App() {
 
           // Comparativo % prazo decorrido vs % valor consumido — mostra quais contratos
           // estão gastando mais rápido do que o tempo de vigência permitiria.
-          const comparativoPrazoValor = contratos.map(c => {
+          const comparativoPrazoValor = contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).map(c => {
             if (!c.inicio || !c.fim) return null;
             const ini = new Date(c.inicio), fim = new Date(c.fim), hoje = new Date();
             const totalDias = fim - ini;
@@ -1548,9 +1556,9 @@ function App() {
         })()}
 
         <div className="panel">
-          <div className="panel-head"><h2><i className="fa-solid fa-hourglass-half" /> Prazos de todos os contratos</h2></div>
+          <div className="panel-head"><h2><i className="fa-solid fa-hourglass-half" /> Prazos dos contratos ativos</h2></div>
           <div className="panel-body" style={{paddingTop:4}}>
-            {contratos.slice().sort((a,b) => dias(a.fim) - dias(b.fim)).map(c => (
+            {contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).slice().sort((a,b) => dias(a.fim) - dias(b.fim)).map(c => (
               <div key={c.id} className="deadline-item">
                 <div><div className="dl-name">{c.numero}</div><div className="dl-emp">{c.empresa?.substring(0,32)}</div></div>
                 <BadgePrazo d={dias(c.fim)} />
@@ -1563,7 +1571,7 @@ function App() {
           <div className="panel-head"><h2><i className="fa-solid fa-table-list" /> Visão geral</h2></div>
           <div className="tbl-wrap">
             <table><thead><tr><th>Nº</th><th>Empresa</th><th>Segmento</th><th>Valor total</th><th>% Consumido</th><th>Saldo</th><th>Prazo</th><th>Status</th></tr></thead>
-            <tbody>{contratos.map(c => (
+            <tbody>{contratos.filter(c => !['finalizado','arquivado'].includes(c.status)).map(c => (
               <tr key={c.id}>
                 <td className="mono"><strong>{c.numero}</strong></td>
                 <td style={{maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.empresa}</td>
@@ -1945,10 +1953,17 @@ function App() {
           else alertas.push(<Badge key="ok" cls="verde" label="Dentro do prazo" />);
           let whatsapp = null;
           if (d != null && d <= 15) {
-            const msg = `⚠️ *Alerta de vencimento de contrato* — SisContratos HMC\n\n` +
-              `*Contrato:* ${c.numero}\n*Empresa:* ${c.empresa||'—'}\n*Objeto:* ${c.objeto||'—'}\n` +
-              `*Vencimento:* ${fmtD(c.fim)}\n*Situação:* ${d<0?`vencido há ${Math.abs(d)} dia(s)`:`faltam ${d} dia(s)`}\n\n` +
-              `Favor providenciar renovação/prorrogação ou aditivo o quanto antes.`;
+            const situacaoMsg = d<0 ? `🔴 Vencido há ${Math.abs(d)} dia(s)` : `🟠 Vence em ${d} dia(s)`;
+            const msg = `🏥 *${UNIDADE_CONFIG.nomeUnidade}*\n` +
+              `📋 *SisContratos HMC — Alerta de Vencimento*\n` +
+              `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n\n` +
+              `📄 *Contrato:* ${c.numero}\n` +
+              `🏢 *Empresa:* ${c.empresa||'—'}\n` +
+              `📝 *Objeto:* ${c.objeto||'—'}\n` +
+              `📅 *Vencimento:* ${fmtD(c.fim)}\n` +
+              `⏰ *Situação:* ${situacaoMsg}\n\n` +
+              `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n` +
+              `✅ Favor providenciar renovação, prorrogação ou aditivo o quanto antes.`;
             whatsapp = `https://wa.me/5521966671334?text=${encodeURIComponent(msg)}`;
           }
           return (
@@ -4005,6 +4020,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   const [pedidoContrato, setPedidoContrato] = React.useState('');
   const [pedidoQtds, setPedidoQtds] = React.useState({}); // { [item_id]: quantidade a pedir }
   const [pedidoBase, setPedidoBase] = React.useState('media'); // 'media' | 'contratado'
+  const [enviandoPedidoWhats, setEnviandoPedidoWhats] = React.useState(false);
 
   useEffect(() => {
     if (!pedidoContrato) { setPedidoQtds({}); return; }
@@ -4578,10 +4594,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
 
   // ─── PEDIDO DE COMPRA ────────────────────────────────────────────────────
-  const gerarPedidoCompra = () => {
-    const c = contratos.find(x => x.id === pedidoContrato);
-    if (!c) { alert('Selecione um contrato.'); return; }
-    const itensDoContrato = itens.filter(i => i.contrato_id === pedidoContrato).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
+  // Monta o HTML do pedido — função isolada pra ser reaproveitada tanto na
+  // impressão/PDF via print() quanto na geração do PDF real (blob) usado
+  // pra anexar e enviar como documento no WhatsApp.
+  const montarConteudoPedido = (c, itensDoContrato) => {
     const hoje = new Date();
 
     let totalGeral = 0;
@@ -4643,6 +4659,15 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       </div>
     </body></html>`;
 
+    return { html, totalGeral, hoje };
+  };
+
+  const gerarPedidoCompra = () => {
+    const c = contratos.find(x => x.id === pedidoContrato);
+    if (!c) { alert('Selecione um contrato.'); return; }
+    const itensDoContrato = itens.filter(i => i.contrato_id === pedidoContrato).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
+    const { html, totalGeral, hoje } = montarConteudoPedido(c, itensDoContrato);
+
     const janela = window.open('', '_blank');
     janela.document.write(html);
     janela.document.close();
@@ -4686,6 +4711,70 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           }
         }, 300);
       }
+    }
+  };
+
+  // Gera o pedido como PDF de verdade (arquivo/blob, não só a tela de impressão)
+  // e tenta enviar já anexado no WhatsApp via Web Share API do navegador — é a
+  // única forma técnica de anexar um arquivo automaticamente, já que o link
+  // "wa.me" do WhatsApp só aceita texto, nunca arquivos, por limitação da própria
+  // plataforma. Funciona no celular (Android/iOS, Chrome/Safari); no computador,
+  // como o WhatsApp Web também não aceita anexo por link, baixa o PDF e abre o
+  // WhatsApp com o texto pronto pra você só arrastar o arquivo baixado pra dentro
+  // da conversa.
+  const enviarPedidoWhatsApp = async () => {
+    const c = contratos.find(x => x.id === pedidoContrato);
+    if (!c) { alert('Selecione um contrato.'); return; }
+    const itensDoContrato = itens.filter(i => i.contrato_id === pedidoContrato).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
+    if (!itensDoContrato.some(it => parseFloat(pedidoQtds[it.id]||0) > 0)) {
+      alert('Informe ao menos uma quantidade antes de enviar o pedido.');
+      return;
+    }
+    setEnviandoPedidoWhats(true);
+    try {
+      const { html, totalGeral, hoje } = montarConteudoPedido(c, itensDoContrato);
+      const nomeArquivo = `Pedido_${c.numero.replace(/[^\w-]+/g,'_')}_${hoje.toISOString().slice(0,10)}.pdf`;
+
+      // Renderiza o HTML fora da tela pra converter em PDF sem mexer no layout visível
+      const container = document.createElement('div');
+      container.style.position = 'fixed';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      container.innerHTML = html.replace(/^[\s\S]*<body>/, '').replace(/<\/body>[\s\S]*$/, '');
+      document.body.appendChild(container);
+
+      const blob = await window.html2pdf().from(container).set({
+        margin: 0,
+        filename: nomeArquivo,
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      }).outputPdf('blob');
+
+      document.body.removeChild(container);
+
+      const arquivo = new File([blob], nomeArquivo, { type: 'application/pdf' });
+      const textoWhats = `📋 *${UNIDADE_CONFIG.nomeUnidade} — SisContratos HMC*\nPedido de compra · Contrato ${c.numero} · ${c.empresa}\nTotal estimado: R$ ${totalGeral.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+
+      if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+        // Celular: abre o seletor nativo já com o PDF anexado — escolhe WhatsApp e pronto
+        await navigator.share({ files: [arquivo], title: `Pedido de Compra ${c.numero}`, text: textoWhats });
+      } else {
+        // Desktop (ou navegador sem suporte a compartilhar arquivo): baixa o PDF
+        // e abre o WhatsApp Web com o texto pronto — falta só anexar manualmente.
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = nomeArquivo;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        alert(`O PDF "${nomeArquivo}" foi baixado. Este navegador não permite anexar arquivo automaticamente — o WhatsApp vai abrir com o texto pronto, só falta você anexar o arquivo baixado na conversa.`);
+        window.open(`https://wa.me/?text=${encodeURIComponent(textoWhats)}`, '_blank');
+      }
+    } catch (err) {
+      if (err && err.name !== 'AbortError') { // AbortError = usuário cancelou o compartilhamento, não é erro
+        alert('Não foi possível gerar/enviar o PDF: ' + err.message);
+      }
+    } finally {
+      setEnviandoPedidoWhats(false);
     }
   };
 
@@ -4733,7 +4822,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           <div className="panel">
             <div className="panel-head">
               <h2><i className="fa-solid fa-list-check"/> Itens — {c.numero}</h2>
-              <button className="btn btn-primary" onClick={gerarPedidoCompra}><i className="fa-solid fa-file-pdf"/> Gerar pedido de compra</button>
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-primary" onClick={gerarPedidoCompra}><i className="fa-solid fa-file-pdf"/> Gerar pedido de compra</button>
+                <button className="btn btn-secondary" onClick={enviarPedidoWhatsApp} disabled={enviandoPedidoWhats} title="Gera o PDF do pedido e envia como documento anexado no WhatsApp">
+                  {enviandoPedidoWhats
+                    ? <><i className="fa-solid fa-spinner fa-spin"/> Gerando PDF...</>
+                    : <><i className="fa-brands fa-whatsapp" style={{color:'#128C4A'}}/> Enviar por WhatsApp</>}
+                </button>
+              </div>
             </div>
             <div className="panel-body">
               <div className="tbl-wrap">
