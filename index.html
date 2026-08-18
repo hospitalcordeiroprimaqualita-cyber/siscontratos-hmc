@@ -599,6 +599,7 @@ function App() {
   const [contratoParaAdicionar, setContratoParaAdicionar] = useState('');
   const [buscaAlmox, setBuscaAlmox] = useState('');
   const [pedidosGerados, setPedidosGerados] = useState([]);
+  const [pendenciasFornecedor, setPendenciasFornecedor] = useState([]);
   const html5QrRef = useRef(null);
   const formRef = useRef({});
   const [ordemLista, setOrdemLista] = React.useState([]); // ids dos itens na ordem escolhida, usado no modal 'reordenar-itens'
@@ -644,7 +645,7 @@ function App() {
   const loadAll = async () => {
     setSyncStatus('loading');
     try {
-      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg] = await Promise.all([
+      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg, pf] = await Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         sb().from('itens').select('*').order('created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
@@ -656,7 +657,8 @@ function App() {
         sb().from('investimento_repasses').select('*').order('data'),
         sb().from('investimento_pagamentos').select('*').order('data'),
         fetchAllRows('estoque_movimentacoes', 'created_at', false),
-        sb().from('pedidos_gerados').select('*').order('gerado_em', {ascending:false})
+        sb().from('pedidos_gerados').select('*').order('gerado_em', {ascending:false}),
+        sb().from('pendencias_fornecedor').select('*').order('created_at', {ascending:false})
       ]);
       if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
       setContratos(c.data || []);
@@ -678,6 +680,8 @@ function App() {
       setMovimentacoes(mv.data || []);
       if (pg.error) console.error('Tabela "pedidos_gerados":', pg.error.message);
       setPedidosGerados(pg.data || []);
+      if (pf.error) console.error('Tabela "pendencias_fornecedor":', pf.error.message);
+      setPendenciasFornecedor(pf.data || []);
       setSyncStatus('ok');
     } catch(e) {
       setSyncStatus('err');
@@ -721,6 +725,11 @@ function App() {
       const itensDoContrato = itens.filter(x => x.contrato_id === id).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
       setOrdemLista(itensDoContrato.map(it => it.id));
       setForm({ contrato_id: id });
+    } else if (tipo === 'pendencia') {
+      setForm({ contrato_id: '', motivo:'' });
+    } else if (tipo === 'editar-pendencia') {
+      const p = pendenciasFornecedor.find(x => x.id === id);
+      setForm({ ...p });
     }
     setModal({ tipo, id });
   };
@@ -1020,6 +1029,30 @@ function App() {
     await loadAll();
   };
 
+  // ─── RECADOS / PENDÊNCIAS COM FORNECEDOR (quadro estilo post-it na Início) ──
+  const salvarPendencia = async () => {
+    if (!fv('motivo')?.trim()) { alert('Descreva a pendência (ex: aguardando certidão negativa de débitos).'); return; }
+    setSaving(true);
+    const data = {
+      id: modal.id && modal.tipo === 'editar-pendencia' ? modal.id : uid('PF'),
+      contrato_id: fv('contrato_id') || null,
+      motivo: fv('motivo').trim(),
+      resolvido: false,
+      created_at: modal.id && modal.tipo === 'editar-pendencia' ? undefined : new Date().toISOString(),
+    };
+    const { error } = await sb().from('pendencias_fornecedor').upsert(data);
+    setSaving(false);
+    if (error) { alert('Erro ao salvar recado: ' + error.message); return; }
+    await loadAll(); closeModal();
+  };
+
+  const resolverPendencia = async (p) => {
+    if (!confirm(`Marcar "${p.motivo.substring(0,60)}..." como resolvido? Ele sai do quadro da Início.`)) return;
+    const { error } = await sb().from('pendencias_fornecedor').update({ resolvido: true, resolvido_em: new Date().toISOString() }).eq('id', p.id);
+    if (error) { alert('Erro: ' + error.message); return; }
+    await loadAll();
+  };
+
   // ─── RENDER SECTIONS ───────────────────────────────────────────────────────
   // Calcula análise preditiva de UM item (usado tanto no painel quanto na quantidade)
   const calcAnaliseItem = (c, it) => {
@@ -1208,6 +1241,70 @@ function App() {
             </button>
           ))}
         </div>
+
+        {(() => {
+          const cores = [
+            { bg:'#FFF3A3', bgH:'#FFEE85', texto:'#5C4B00' },
+            { bg:'#FFD6A0', bgH:'#FFC77D', texto:'#6B3A00' },
+            { bg:'#FFC2D1', bgH:'#FFA8C0', texto:'#7A1F3D' },
+            { bg:'#C7E8FF', bgH:'#A9DBFF', texto:'#0B4A73' },
+            { bg:'#D6F5D0', bgH:'#B9EEB0', texto:'#1E5E1B' },
+          ];
+          const rotacoes = [-2.5, 1.8, -1.2, 2.6, -3, 1.2];
+          const pendentesAtivas = pendenciasFornecedor.filter(p => !p.resolvido);
+          const diasDesde = (iso) => { if (!iso) return 0; return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)); };
+          return (
+            <div className="panel" style={{marginBottom:20, background:'linear-gradient(180deg,#FAFAF7,#fff)'}}>
+              <div className="panel-head">
+                <h2><i className="fa-solid fa-note-sticky" style={{color:'#D9A400'}}/> Recados — pendências com fornecedores</h2>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  {pendentesAtivas.length > 0 && <span className="badge laranja">{pendentesAtivas.length} pendente{pendentesAtivas.length>1?'s':''}</span>}
+                  <button className="btn btn-secondary btn-sm" onClick={()=>openModal('pendencia')}><i className="fa-solid fa-plus"/> Novo recado</button>
+                </div>
+              </div>
+              <div style={{padding: pendentesAtivas.length ? '22px 24px' : undefined}}>
+                {pendentesAtivas.length === 0 ? (
+                  <div className="empty" style={{padding:'34px 20px'}}>
+                    <i className="fa-solid fa-note-sticky" style={{display:'block',fontSize:28,color:'var(--text3)',marginBottom:10}}/>
+                    Nenhum recado pendente. Use "Novo recado" pra anotar o que precisa cobrar de um fornecedor (ex: certidão vencida, documentação faltando).
+                  </div>
+                ) : (
+                  <div style={{display:'flex',flexWrap:'wrap',gap:22,paddingTop:6}}>
+                    {pendentesAtivas.map((p,i) => {
+                      const cor = cores[i % cores.length];
+                      const rot = rotacoes[i % rotacoes.length];
+                      const c = p.contrato_id ? contratos.find(x => x.id === p.contrato_id) : null;
+                      const dias = diasDesde(p.created_at);
+                      return (
+                        <div key={p.id} style={{
+                            width:210, minHeight:170, background:cor.bg, color:cor.texto,
+                            padding:'16px 16px 14px', borderRadius:3, transform:`rotate(${rot}deg)`,
+                            boxShadow:'0 6px 14px rgba(0,0,0,.16), 0 2px 4px rgba(0,0,0,.10)',
+                            display:'flex', flexDirection:'column', position:'relative',
+                            transition:'transform .15s, box-shadow .15s', cursor:'default'
+                          }}
+                          onMouseEnter={e=>{e.currentTarget.style.transform=`rotate(0deg) scale(1.04)`; e.currentTarget.style.boxShadow='0 12px 24px rgba(0,0,0,.22)'; e.currentTarget.style.zIndex=5;}}
+                          onMouseLeave={e=>{e.currentTarget.style.transform=`rotate(${rot}deg) scale(1)`; e.currentTarget.style.boxShadow='0 6px 14px rgba(0,0,0,.16), 0 2px 4px rgba(0,0,0,.10)'; e.currentTarget.style.zIndex='';}}>
+                          <div style={{position:'absolute',top:-8,left:'50%',transform:'translateX(-50%) rotate(-4deg)',width:44,height:16,background:'rgba(255,255,255,.55)',borderRadius:2,boxShadow:'0 1px 2px rgba(0,0,0,.15)'}}/>
+                          {c && <div style={{fontSize:10.5,fontWeight:800,textTransform:'uppercase',letterSpacing:'.03em',opacity:.75,marginBottom:6}}>{c.numero} · {c.empresa?.substring(0,20)}</div>}
+                          <div style={{fontSize:13,fontWeight:600,lineHeight:1.42,flex:1,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{p.motivo}</div>
+                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12,paddingTop:8,borderTop:'1px dashed rgba(0,0,0,.18)'}}>
+                            <span style={{fontSize:10.5,fontWeight:700,opacity:.7}}>{dias===0?'hoje':dias===1?'há 1 dia':`há ${dias} dias`}</span>
+                            <div style={{display:'flex',gap:8}}>
+                              <i className="fa-solid fa-pen" title="Editar" style={{cursor:'pointer',fontSize:12,opacity:.65}} onClick={()=>openModal('editar-pendencia', p.id)}/>
+                              <i className="fa-solid fa-check" title="Marcar como resolvido" style={{cursor:'pointer',fontSize:13,opacity:.75}} onClick={()=>resolverPendencia(p)}/>
+                              <i className="fa-solid fa-trash" title="Excluir" style={{cursor:'pointer',fontSize:12,opacity:.55}} onClick={()=>excluir('pendencias_fornecedor', p.id)}/>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="panel">
           <div className="panel-head">
@@ -2554,6 +2651,17 @@ function App() {
       </>
     );
 
+    if (tipo === 'pendencia' || tipo === 'editar-pendencia') return (
+      <div className="form-row">
+        <FG label="Contrato relacionado (opcional)" full>
+          <FS k="contrato_id" opts={[{v:'',l:'— Nenhum específico —'},...cOpts]} />
+        </FG>
+        <FG label="O que está pendente por parte do fornecedor? *" full>
+          <FT k="motivo" placeholder="Ex: aguardando envio da certidão negativa de débitos (CND) atualizada. Ex: pendente envio da nota fiscal referente à medição de julho." />
+        </FG>
+      </div>
+    );
+
     if (tipo === 'aditivo') return (
       <div className="form-row" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:11}}>
         <FG label="Contrato *"><FS k="contrato_id" opts={[{v:'',l:'— Selecionar —'},...cOpts]} /></FG>
@@ -2702,6 +2810,8 @@ function App() {
     'sem-medicao': { title:'Registrar mês sem medição', icon:'fa-calendar-xmark', onSave: salvarSemMedicao },
     prorrog: { title:'Solicitar prorrogação de prazo', icon:'fa-clock-rotate-left', onSave: salvarProrrog },
     'reordenar-itens': { title:'Reordenar itens do contrato', icon:'fa-arrow-down-up-across-line', onSave: salvarOrdemItens },
+    pendencia: { title:'Novo recado — pendência com fornecedor', icon:'fa-note-sticky', onSave: salvarPendencia },
+    'editar-pendencia': { title:'Editar recado', icon:'fa-note-sticky', onSave: salvarPendencia },
   };
 
   // ─── MEDIÇÕES MENSAIS ────────────────────────────────────────────────────
