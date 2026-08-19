@@ -1165,7 +1165,7 @@ function App() {
             `⏰ *Situação:* ${situacaoMsg}\n\n` +
             `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n` +
             `✅ Favor providenciar renovação, prorrogação ou aditivo o quanto antes.`;
-          whatsapp = `https://wa.me/5521966671334?text=${encodeURIComponent(msg)}`;
+          whatsapp = `https://wa.me/5521966731334?text=${encodeURIComponent(msg)}`;
         }
         tarefas.push({ id:'prazo_'+c.id, prioridade: d<0 || d<=15 ? 'urgente' : 'atencao', icon:'fa-calendar-days',
           titulo: d<0 ? `Contrato vencido — ${c.numero}` : `Prazo vencendo — ${c.numero}`,
@@ -2061,7 +2061,7 @@ function App() {
               `⏰ *Situação:* ${situacaoMsg}\n\n` +
               `▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n` +
               `✅ Favor providenciar renovação, prorrogação ou aditivo o quanto antes.`;
-            whatsapp = `https://wa.me/5521966671334?text=${encodeURIComponent(msg)}`;
+            whatsapp = `https://wa.me/5521966731334?text=${encodeURIComponent(msg)}`;
           }
           return (
             <tr key={c.id}>
