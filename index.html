@@ -595,6 +595,11 @@ function App() {
   const [movSetor, setMovSetor] = useState('');
   const [movNota, setMovNota] = useState('');
   const [movObs, setMovObs] = useState('');
+  const [scannerModo, setScannerModo] = useState(null); // null (escolher) | 'unico' | 'sequencia'
+  const [carrinhoItens, setCarrinhoItens] = useState([]); // [{itemId, item, unit, qtd, saldoAtual}]
+  const [carrinhoRevisao, setCarrinhoRevisao] = useState(false);
+  const [ultimoLido, setUltimoLido] = useState(null); // {ok, nome} — feedback rápido a cada bipada
+  const ultimoLidoCodeRef = useRef({ code:'', ts:0 });
   const [itemParaAdicionar, setItemParaAdicionar] = useState('');
   const [contratoParaAdicionar, setContratoParaAdicionar] = useState('');
   const [buscaAlmox, setBuscaAlmox] = useState('');
@@ -5038,6 +5043,24 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   };
 
   // ─── ALMOXARIFADO — leitor de câmera (html5-qrcode) ─────────────────────
+  const tocarBeep = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + 0.12);
+    } catch(e) {}
+  };
+
+  const resetScanner = () => {
+    setScannerAtivo(false); setScannerModo(null); setItemEscaneado(null);
+    setCarrinhoItens([]); setCarrinhoRevisao(false); setUltimoLido(null);
+    setMovTipo('saida'); setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs('');
+  };
+
   useEffect(() => {
     if (section !== 'almoxarifado' || almoxTab !== 'scanner' || !scannerAtivo) return;
     if (typeof Html5Qrcode === 'undefined') { alert('Biblioteca de leitura de QR não carregou. Verifique a conexão.'); setScannerAtivo(false); return; }
@@ -5049,6 +5072,38 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       { fps: 10, qrbox: 240 },
       (decodedText) => {
         if (!ativo) return;
+
+        if (scannerModo === 'sequencia') {
+          // Debounce: mesmo código lido repetidas vezes em frames seguidos enquanto
+          // o item está parado na frente da câmera não pode virar várias "bipadas".
+          // Só conta de novo se passar 1.2s — tempo suficiente pra afastar e reapresentar
+          // o item de propósito, caso queira somar mais uma unidade.
+          const agora = Date.now();
+          if (decodedText === ultimoLidoCodeRef.current.code && agora - ultimoLidoCodeRef.current.ts < 1200) return;
+          ultimoLidoCodeRef.current = { code: decodedText, ts: agora };
+
+          const item = buscarItemPorQR(decodedText);
+          if (!item) {
+            setUltimoLido({ ok:false, texto:'QR não reconhecido ou item não controla estoque' });
+            setTimeout(() => setUltimoLido(null), 1400);
+            return;
+          }
+          tocarBeep();
+          setCarrinhoItens(prev => {
+            const idx = prev.findIndex(x => x.itemId === item.id);
+            if (idx >= 0) {
+              const copy = [...prev];
+              copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + 1 };
+              return copy;
+            }
+            return [...prev, { itemId: item.id, item: item.item, unit: item.unit, qtd: 1, saldoAtual: item.saldo_atual||0 }];
+          });
+          setUltimoLido({ ok:true, nome: item.item });
+          setTimeout(() => setUltimoLido(null), 1200);
+          return;
+        }
+
+        // modo 'unico' — comportamento original: para a câmera e pede os detalhes
         const item = buscarItemPorQR(decodedText);
         if (item) {
           ativo = false;
@@ -5069,7 +5124,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         html5QrRef.current = null;
       }
     };
-  }, [section, almoxTab, scannerAtivo]);
+  }, [section, almoxTab, scannerAtivo, scannerModo]);
 
   const confirmarMovimentacaoScanner = async () => {
     if (!itemEscaneado) return;
@@ -5088,6 +5143,56 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   const cancelarLeituraAtual = () => {
     setItemEscaneado(null);
     if (html5QrRef.current) html5QrRef.current.resume();
+  };
+
+  // Confirma TODAS as movimentações do carrinho de uma vez só (a mesma leitura
+  // em sequência estilo supermercado), com o mesmo tipo/setor/nota pra todo o lote.
+  const confirmarCarrinho = async () => {
+    if (carrinhoItens.length === 0) return;
+    const tipo = movTipo;
+
+    // Avisa uma única vez sobre todos os itens que ficariam com saldo negativo,
+    // em vez de interromper item por item.
+    if (tipo === 'saida') {
+      const comProblema = carrinhoItens.filter(ci => ci.qtd > (itens.find(i=>i.id===ci.itemId)?.saldo_atual||0));
+      if (comProblema.length > 0) {
+        const lista = comProblema.map(ci => `• ${ci.item} — pedido: ${ci.qtd}, saldo atual: ${itens.find(i=>i.id===ci.itemId)?.saldo_atual||0}`).join('\n');
+        if (!confirm(`Estes itens ficarão com saldo negativo:\n\n${lista}\n\nConfirmar mesmo assim?`)) return;
+      }
+    }
+
+    setSaving(true);
+    const agora = new Date().toISOString();
+    const inserts = [];
+    const atualizacoesSaldo = [];
+    for (const ci of carrinhoItens) {
+      const it = itens.find(i => i.id === ci.itemId);
+      if (!it) continue;
+      const saldoAtual = it.saldo_atual || 0;
+      const novoSaldo = tipo === 'entrada' ? saldoAtual + ci.qtd : saldoAtual - ci.qtd;
+      inserts.push({
+        id: uid('MOV'), item_id: ci.itemId, tipo, quantidade: ci.qtd,
+        setor: tipo === 'saida' ? (movSetor || null) : null,
+        nota_fiscal: tipo === 'entrada' ? (movNota || null) : null,
+        observacao: movObs || null, responsavel: UNIDADE_CONFIG.fiscalPadrao || null,
+        saldo_apos: novoSaldo, created_at: agora
+      });
+      atualizacoesSaldo.push({ id: ci.itemId, saldo_atual: novoSaldo });
+    }
+
+    const { error: errMov } = await sb().from('estoque_movimentacoes').insert(inserts);
+    if (errMov) { setSaving(false); alert('Erro ao registrar movimentações: ' + errMov.message); return; }
+
+    for (const u of atualizacoesSaldo) {
+      await sb().from('itens').update({ saldo_atual: u.saldo_atual }).eq('id', u.id);
+    }
+
+    setSaving(false);
+    const totalItens = carrinhoItens.length;
+    const totalUnidades = carrinhoItens.reduce((s,ci) => s + ci.qtd, 0);
+    await loadAll();
+    resetScanner();
+    alert(`${totalItens} item(ns) — ${totalUnidades} unidade(s) no total — registrado(s) com sucesso como ${tipo==='entrada'?'entrada':'saída'}.`);
   };
 
   const renderAlmoxarifado = () => {
@@ -5129,7 +5234,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       <>
         <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
           {tabs.map(t => (
-            <button key={t.k} className={`btn btn-sm ${almoxTab===t.k?'btn-primary':'btn-secondary'}`} onClick={()=>{setAlmoxTab(t.k); if(t.k!=='scanner') setScannerAtivo(false);}}>
+            <button key={t.k} className={`btn btn-sm ${almoxTab===t.k?'btn-primary':'btn-secondary'}`} onClick={()=>{setAlmoxTab(t.k); if(t.k!=='scanner') resetScanner();}}>
               <i className={`fa-solid ${t.i}`}/> {t.l}
             </button>
           ))}
@@ -5269,17 +5374,38 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
         {almoxTab === 'scanner' && (
           <div className="panel" style={{marginTop:14}}>
-            <div className="panel-head"><h2><i className="fa-solid fa-qrcode"/> Leitura por câmera</h2></div>
+            <div className="panel-head">
+              <h2><i className="fa-solid fa-qrcode"/> Leitura por câmera</h2>
+              {scannerModo && <button className="btn btn-secondary btn-sm" onClick={resetScanner}><i className="fa-solid fa-arrow-left"/> Trocar modo</button>}
+            </div>
             <div className="panel-body">
-              {!scannerAtivo && !itemEscaneado && (
+
+              {/* ── ESCOLHA DO MODO ─────────────────────────────────────────── */}
+              {!scannerModo && (
+                <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
+                  <div style={{flex:'1 1 260px',border:'1px solid var(--border)',borderRadius:10,padding:18,cursor:'pointer'}} onClick={()=>setScannerModo('unico')}>
+                    <i className="fa-solid fa-box-open" style={{fontSize:20,color:'var(--teal)',marginBottom:8,display:'block'}}/>
+                    <strong>Ler item por item</strong>
+                    <div style={{fontSize:12,color:'var(--text2)',marginTop:6}}>Bipa um item, confirma a quantidade e os detalhes na hora, depois passa pro próximo. Melhor quando cada item tem observação diferente.</div>
+                  </div>
+                  <div style={{flex:'1 1 260px',border:'1px solid var(--border)',borderRadius:10,padding:18,cursor:'pointer'}} onClick={()=>setScannerModo('sequencia')}>
+                    <i className="fa-solid fa-cart-shopping" style={{fontSize:20,color:'var(--teal)',marginBottom:8,display:'block'}}/>
+                    <strong>Bipar vários em sequência</strong>
+                    <div style={{fontSize:12,color:'var(--text2)',marginTop:6}}>Estilo caixa de supermercado: bipa item após item sem parar, cada leitura soma 1 unidade na lista, e só no final você revisa e confirma tudo de uma vez.</div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── MODO ÚNICO (original) ───────────────────────────────────── */}
+              {scannerModo === 'unico' && !scannerAtivo && !itemEscaneado && (
                 <>
                   <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
-                    Abra essa tela pelo celular, aponte a câmera pro QR Code colado no item e registre a entrada ou saída na hora. Funciona direto pelo navegador, sem instalar nada.
+                    Aponte a câmera pro QR Code colado no item e registre a entrada ou saída na hora.
                   </div>
                   <button className="btn btn-primary" onClick={()=>setScannerAtivo(true)}><i className="fa-solid fa-camera"/> Iniciar leitura pela câmera</button>
                 </>
               )}
-              {scannerAtivo && !itemEscaneado && (
+              {scannerModo === 'unico' && scannerAtivo && !itemEscaneado && (
                 <>
                   <div id="qr-reader" style={{width:'100%',maxWidth:420,margin:'0 auto'}}></div>
                   <div style={{textAlign:'center',marginTop:12,fontSize:12,color:'var(--text2)'}}>Aponte a câmera para o QR Code do item...</div>
@@ -5314,6 +5440,130 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                   </div>
                 </div>
               )}
+
+              {/* ── MODO SEQUÊNCIA — configuração do lote antes de começar ─────── */}
+              {scannerModo === 'sequencia' && !scannerAtivo && !carrinhoRevisao && carrinhoItens.length === 0 && (
+                <div style={{maxWidth:420,margin:'0 auto'}}>
+                  <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
+                    Defina o tipo de movimentação do lote (vale pra todos os itens que você for bipar em seguida) e comece a leitura. Cada bipada soma 1 unidade — bipe de novo o mesmo item pra somar mais.
+                  </div>
+                  <div className="form-row">
+                    <FG label="Tipo de movimentação (para todo o lote)" full>
+                      <select value={movTipo} onChange={e=>setMovTipo(e.target.value)}>
+                        <option value="saida">Saída (consumo / retirada)</option>
+                        <option value="entrada">Entrada (recebimento)</option>
+                      </select>
+                    </FG>
+                    {movTipo === 'saida' && <FG label="Setor de destino" full><input type="text" value={movSetor} onChange={e=>setMovSetor(e.target.value)} placeholder="Ex: Enfermaria, CME, Pronto Socorro" /></FG>}
+                    {movTipo === 'entrada' && <FG label="Nota fiscal" full><input type="text" value={movNota} onChange={e=>setMovNota(e.target.value)} placeholder="Nº da nota fiscal" /></FG>}
+                    <FG label="Observação" full><input type="text" value={movObs} onChange={e=>setMovObs(e.target.value)} placeholder="Opcional, vale pra todo o lote" /></FG>
+                  </div>
+                  <button className="btn btn-primary" style={{width:'100%',marginTop:8}} onClick={()=>setScannerAtivo(true)}><i className="fa-solid fa-camera"/> Iniciar leitura em sequência</button>
+                </div>
+              )}
+
+              {/* ── MODO SEQUÊNCIA — bipando (câmera ligada) ────────────────────── */}
+              {scannerModo === 'sequencia' && scannerAtivo && (
+                <div style={{maxWidth:460,margin:'0 auto'}}>
+                  <div id="qr-reader" style={{width:'100%',maxWidth:420,margin:'0 auto',position:'relative'}}></div>
+                  <div style={{textAlign:'center',marginTop:10,minHeight:22,fontSize:13,fontWeight:700}}>
+                    {ultimoLido && (
+                      <span style={{color: ultimoLido.ok ? '#15803d' : '#b91c1c'}}>
+                        <i className={`fa-solid ${ultimoLido.ok?'fa-circle-check':'fa-triangle-exclamation'}`}/> {ultimoLido.ok ? `+1 ${ultimoLido.nome}` : ultimoLido.texto}
+                      </span>
+                    )}
+                    {!ultimoLido && <span style={{color:'var(--text2)',fontWeight:400}}>Aponte a câmera para o próximo item...</span>}
+                  </div>
+
+                  <div style={{marginTop:14,border:'1px solid var(--border)',borderRadius:10,overflow:'hidden'}}>
+                    <div style={{padding:'8px 12px',background:'var(--bg2)',fontSize:12,fontWeight:700,display:'flex',justifyContent:'space-between'}}>
+                      <span>Carrinho — {carrinhoItens.length} item(ns)</span>
+                      <span>{carrinhoItens.reduce((s,ci)=>s+ci.qtd,0)} unidade(s)</span>
+                    </div>
+                    <div style={{maxHeight:200,overflowY:'auto'}}>
+                      {carrinhoItens.length === 0 && <div style={{padding:14,fontSize:12,color:'var(--text2)',textAlign:'center'}}>Nenhum item bipado ainda.</div>}
+                      {carrinhoItens.slice().reverse().map(ci => (
+                        <div key={ci.itemId} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 12px',borderTop:'1px solid var(--border)',fontSize:12.5}}>
+                          <span>{ci.item}</span>
+                          <span style={{display:'flex',alignItems:'center',gap:10}}>
+                            <strong>{ci.qtd} {ci.unit||''}</strong>
+                            <i className="fa-solid fa-xmark" style={{cursor:'pointer',opacity:.5}} title="Remover do carrinho"
+                              onClick={()=>setCarrinhoItens(prev => prev.filter(x=>x.itemId!==ci.itemId))}/>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{display:'flex',gap:8,marginTop:12}}>
+                    <button className="btn btn-secondary" style={{flex:1}} onClick={()=>setScannerAtivo(false)}><i className="fa-solid fa-pause"/> Pausar</button>
+                    <button className="btn btn-primary" style={{flex:1}} disabled={carrinhoItens.length===0} onClick={()=>{setScannerAtivo(false); setCarrinhoRevisao(true);}}>
+                      <i className="fa-solid fa-flag-checkered"/> Finalizar leitura
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── MODO SEQUÊNCIA — pausado sem ainda ter ido pra revisão ──────── */}
+              {scannerModo === 'sequencia' && !scannerAtivo && !carrinhoRevisao && carrinhoItens.length > 0 && (
+                <div style={{maxWidth:420,margin:'0 auto',textAlign:'center'}}>
+                  <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>Leitura pausada com {carrinhoItens.length} item(ns) no carrinho.</div>
+                  <div style={{display:'flex',gap:8}}>
+                    <button className="btn btn-secondary" style={{flex:1}} onClick={()=>setScannerAtivo(true)}><i className="fa-solid fa-camera"/> Continuar bipando</button>
+                    <button className="btn btn-primary" style={{flex:1}} onClick={()=>setCarrinhoRevisao(true)}><i className="fa-solid fa-flag-checkered"/> Ir para revisão</button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── MODO SEQUÊNCIA — revisão final antes de confirmar ───────────── */}
+              {scannerModo === 'sequencia' && carrinhoRevisao && (
+                <div style={{maxWidth:560,margin:'0 auto'}}>
+                  <AlertBox cls={movTipo==='entrada'?'verde':'azul'} icon={movTipo==='entrada'?'fa-truck-ramp-box':'fa-dolly'}>
+                    Confira os itens antes de confirmar a {movTipo==='entrada'?'entrada':'saída'} — a quantidade de cada um pode ser ajustada aqui.
+                  </AlertBox>
+                  <div className="tbl-wrap" style={{marginTop:12}}>
+                    <table>
+                      <thead><tr><th>Item</th><th>Saldo atual</th><th>Qtd. bipada</th><th></th></tr></thead>
+                      <tbody>
+                        {carrinhoItens.map(ci => (
+                          <tr key={ci.itemId}>
+                            <td>{ci.item}</td>
+                            <td>{ci.saldoAtual} {ci.unit||''}</td>
+                            <td style={{maxWidth:100}}>
+                              <input type="number" min="0" step="any" value={ci.qtd}
+                                onChange={e => {
+                                  const v = parseFloat(e.target.value) || 0;
+                                  setCarrinhoItens(prev => prev.map(x => x.itemId===ci.itemId ? {...x, qtd:v} : x));
+                                }} style={{width:80}} />
+                            </td>
+                            <td><i className="fa-solid fa-trash" style={{cursor:'pointer',opacity:.55}} onClick={()=>setCarrinhoItens(prev => prev.filter(x=>x.itemId!==ci.itemId))}/></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="form-row" style={{marginTop:14}}>
+                    <FG label="Tipo de movimentação" full>
+                      <select value={movTipo} onChange={e=>setMovTipo(e.target.value)}>
+                        <option value="saida">Saída (consumo / retirada)</option>
+                        <option value="entrada">Entrada (recebimento)</option>
+                      </select>
+                    </FG>
+                    {movTipo === 'saida' && <FG label="Setor de destino" full><input type="text" value={movSetor} onChange={e=>setMovSetor(e.target.value)} placeholder="Ex: Enfermaria, CME, Pronto Socorro" /></FG>}
+                    {movTipo === 'entrada' && <FG label="Nota fiscal" full><input type="text" value={movNota} onChange={e=>setMovNota(e.target.value)} placeholder="Nº da nota fiscal" /></FG>}
+                    <FG label="Observação" full><input type="text" value={movObs} onChange={e=>setMovObs(e.target.value)} placeholder="Opcional, vale pra todo o lote" /></FG>
+                  </div>
+
+                  <div style={{display:'flex',gap:8,marginTop:12}}>
+                    <button className="btn btn-secondary" style={{flex:1}} onClick={()=>{setCarrinhoRevisao(false); setScannerAtivo(true);}}><i className="fa-solid fa-camera"/> Continuar bipando</button>
+                    <button className="btn btn-primary" style={{flex:1}} disabled={saving || carrinhoItens.length===0} onClick={confirmarCarrinho}>
+                      {saving ? <><i className="fa-solid fa-rotate spin"/> Salvando...</> : <><i className="fa-solid fa-check-double"/> Confirmar {carrinhoItens.length} registro(s)</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
         )}
