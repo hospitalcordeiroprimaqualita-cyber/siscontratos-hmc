@@ -2095,23 +2095,38 @@ function App() {
   // pode representar uma unidade técnica/econômica distinta na licitação, e
   // remanejar entre lotes pode não ter respaldo contratual/legal (Lei
   // 14.133/2021). Itens sem lote cadastrado (null) só casam entre si.
-  // O valor total suprimido sempre fecha exatamente com o valor total
-  // complementado (é só remanejamento, não muda o valor do contrato).
+  //
+  // REGRA IMPORTANTE: cada item de sobra só pode ser usado POR INTEIRO — toda
+  // a quantidade/valor excedente dele de uma vez, nunca fracionado nem
+  // repartido entre mais de um item em falta. Fisicamente não dá pra suprimir
+  // "meio item" de forma limpa no Termo Aditivo/pedido ao fornecedor: ou o
+  // excedente inteiro daquele item é remanejado, ou ele não entra nessa rodada
+  // (fica disponível pra outro reequilíbrio futuro). Isso pode fazer o total
+  // remanejado superar levemente o total em falta (arredondamento pra cima,
+  // pelo item cheio) — preferível a quebrar o item.
   const alocarReequilibrio = (deficit, superavit) => {
     const alocacoes = [];
-    const supRestante = superavit.map(s => ({ ...s, valorDisponivel: s.valor }));
+    const supDisponiveis = superavit.map(s => ({ ...s, usado: false }));
+
     deficit.forEach(d => {
       let valorNecessario = d.valor;
-      for (const s of supRestante) {
-        if (valorNecessario <= 0.01) break;
-        if (s.valorDisponivel <= 0.01) continue;
-        if ((d.item.lote || null) !== (s.item.lote || null)) continue;
-        const usar = Math.min(valorNecessario, s.valorDisponivel);
-        const qtdFalta = Math.round(d.item.vlr_unitario > 0 ? usar / d.item.vlr_unitario : 0);
-        const qtdSobra = Math.round(s.item.vlr_unitario > 0 ? usar / s.item.vlr_unitario : 0);
-        alocacoes.push({ itemFalta: d.item, itemSobra: s.item, valor: usar, qtdFalta, qtdSobra });
-        s.valorDisponivel -= usar;
-        valorNecessario -= usar;
+      while (valorNecessario > 0.01) {
+        const candidatos = supDisponiveis.filter(s => !s.usado && (s.item.lote || null) === (d.item.lote || null));
+        if (candidatos.length === 0) break; // sem mais sobra disponível nesse lote
+        // Prioriza o menor item de sobra que sozinho já cobre o restante da
+        // necessidade (evita desperdiçar excedente maior à toa); se nenhum
+        // cobre sozinho, usa o maior disponível — sempre o item inteiro.
+        candidatos.sort((a,b) => a.valor - b.valor);
+        const escolhido = candidatos.find(s => s.valor >= valorNecessario - 0.01) || candidatos[candidatos.length - 1];
+        escolhido.usado = true;
+        alocacoes.push({
+          itemFalta: d.item,
+          itemSobra: escolhido.item,
+          valor: escolhido.valor,   // valor CHEIO do item de sobra — inteiro, nunca fracionado
+          qtdSobra: escolhido.dif,  // quantidade CHEIA (excedente inteiro) suprimida do item de sobra
+          qtdFalta: d.item.vlr_unitario > 0 ? Math.round(escolhido.valor / d.item.vlr_unitario) : escolhido.dif,
+        });
+        valorNecessario -= escolhido.valor;
       }
     });
     return alocacoes;
@@ -2138,6 +2153,34 @@ function App() {
     const mesesTotContrato = resumoAnalitico[0]?.a.mesesTot;
     const mesesDecContrato = resumoAnalitico[0]?.a.mesesDec;
     const mesesRestContrato = resumoAnalitico[0]?.a.mesesRest;
+
+    // ── QUADRO "COMO ERA / COMO FICA" — o contrato na íntegra, com todos os
+    // itens em ordem, mostrando a quantidade e o valor de cada um ANTES e
+    // DEPOIS do remanejamento proposto (mesma lógica de delta usada quando o
+    // reequilíbrio é efetivamente aplicado em aplicarReequilibrio). Itens que
+    // não entram nesta rodada de remanejamento aparecem sem alteração.
+    const deltaPorItemContrato = {};
+    alocacoes.forEach(a => {
+      deltaPorItemContrato[a.itemFalta.id] = (deltaPorItemContrato[a.itemFalta.id]||0) + a.qtdFalta;
+      deltaPorItemContrato[a.itemSobra.id] = (deltaPorItemContrato[a.itemSobra.id]||0) - a.qtdSobra;
+    });
+    const itensAntesDepois = itensEnvolvidos.slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999)).map(it => {
+      const qtdAntes = it.qtd_total_contratada ?? (it.qtd_mensal*(contrato.vigencia_meses||12));
+      const delta = deltaPorItemContrato[it.id] || 0;
+      const qtdDepois = Math.round((qtdAntes + delta)*100)/100;
+      const vlrUnit = it.vlr_unitario || 0;
+      return { it, qtdAntes, qtdDepois, delta, valorAntes: qtdAntes*vlrUnit, valorDepois: qtdDepois*vlrUnit };
+    });
+    const valorTotalAntes = itensAntesDepois.reduce((acc,x)=>acc+x.valorAntes,0);
+    const valorTotalDepois = itensAntesDepois.reduce((acc,x)=>acc+x.valorDepois,0);
+    const linhasAntesDepois = itensAntesDepois.map(x => `<tr style="page-break-inside:avoid;break-inside:avoid;${x.delta?'background:#eef6ff;':''}">
+      <td class="num">${x.it.ordem??'—'}</td>
+      <td class="desc">${x.it.item}${x.it.lote?` · Lote ${x.it.lote}`:''}</td>
+      <td class="num">${x.qtdAntes.toLocaleString('pt-BR')}</td>
+      <td class="num" style="font-weight:${x.delta?'bold':'normal'};color:${x.delta>0?'#166534':x.delta<0?'#b91c1c':'#000'}">${x.qtdDepois.toLocaleString('pt-BR')}${x.delta?` (${x.delta>0?'+':''}${x.delta.toLocaleString('pt-BR')})`:''}</td>
+      <td class="val">R$ ${x.valorAntes.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+      <td class="val" style="font-weight:${x.delta?'bold':'normal'}">R$ ${x.valorDepois.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+    </tr>`).join('');
 
     const linhas = alocacoes.map(a => `<tr style="page-break-inside:avoid;break-inside:avoid;">
       <td class="num">${a.itemSobra.ordem??'—'}</td>
@@ -2217,6 +2260,11 @@ function App() {
       <tr><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th><th></th><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table>
       <div class="total-geral">VALOR TOTAL REMANEJADO &nbsp;&nbsp; R$ ${totalRealocado.toLocaleString('pt-BR',{minimumFractionDigits:2})} &nbsp;&nbsp; (suprimido = suplementado, sem impacto no valor do contrato)</div>
+      <div class="grupo-titulo">COMO FICARÁ O CONTRATO — TODOS OS ITENS, ANTES E DEPOIS DO REMANEJAMENTO</div>
+      <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. atual (antes)</th><th>Qtd. após o remanejamento</th><th>Valor atual (antes)</th><th>Valor após o remanejamento</th></tr></thead>
+      <tbody>${linhasAntesDepois}</tbody></table>
+      <div class="total-geral">VALOR TOTAL DO CONTRATO — ANTES: R$ ${valorTotalAntes.toLocaleString('pt-BR',{minimumFractionDigits:2})} &nbsp;&nbsp;→&nbsp;&nbsp; DEPOIS: R$ ${valorTotalDepois.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      <div class="obs"><span style="background:#eef6ff;padding:1px 5px;border:1px solid #1d4ed8;color:#1d4ed8;font-weight:bold">■</span> item com quantidade alterada por este remanejamento &nbsp;&nbsp; itens sem marcação: sem alteração nesta rodada.</div>
       ${itensSemCobertura.length ? `
       <div class="obs" style="margin-top:14px;color:#991b1b">
         <strong>Atenção:</strong> o remanejamento acima não cobre a totalidade da necessidade deste contrato — os itens abaixo não têm excedente suficiente (no mesmo lote) para suprir a falta e requerem <strong>aditivo real</strong> pelo valor indicado.
