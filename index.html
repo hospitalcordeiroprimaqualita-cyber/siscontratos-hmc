@@ -2263,7 +2263,10 @@ function App() {
       <div class="grupo-titulo">COMO FICARÁ O CONTRATO — TODOS OS ITENS, ANTES E DEPOIS DO REMANEJAMENTO</div>
       <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. atual (antes)</th><th>Qtd. após o remanejamento</th><th>Valor atual (antes)</th><th>Valor após o remanejamento</th></tr></thead>
       <tbody>${linhasAntesDepois}</tbody></table>
-      <div class="total-geral">VALOR TOTAL DO CONTRATO — ANTES: R$ ${valorTotalAntes.toLocaleString('pt-BR',{minimumFractionDigits:2})} &nbsp;&nbsp;→&nbsp;&nbsp; DEPOIS: R$ ${valorTotalDepois.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <div class="total-geral" style="flex:1;text-align:center">VALOR TOTAL DO CONTRATO — ANTES<br/><span style="font-size:14px">R$ ${valorTotalAntes.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+        <div class="total-geral" style="flex:1;text-align:center">VALOR TOTAL DO CONTRATO — DEPOIS<br/><span style="font-size:14px">R$ ${valorTotalDepois.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+      </div>
       <div class="obs"><span style="background:#eef6ff;padding:1px 5px;border:1px solid #1d4ed8;color:#1d4ed8;font-weight:bold">■</span> item com quantidade alterada por este remanejamento &nbsp;&nbsp; itens sem marcação: sem alteração nesta rodada.</div>
       ${itensSemCobertura.length ? `
       <div class="obs" style="margin-top:14px;color:#991b1b">
