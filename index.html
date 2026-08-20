@@ -2173,12 +2173,18 @@ function App() {
     });
     const valorTotalAntes = itensAntesDepois.reduce((acc,x)=>acc+x.valorAntes,0);
     const valorTotalDepois = itensAntesDepois.reduce((acc,x)=>acc+x.valorDepois,0);
-    const linhasAntesDepois = itensAntesDepois.map(x => `<tr style="page-break-inside:avoid;break-inside:avoid;${x.delta?'background:#eef6ff;':''}">
+    const linhasAntes = itensAntesDepois.map(x => `<tr style="page-break-inside:avoid;break-inside:avoid;">
       <td class="num">${x.it.ordem??'—'}</td>
       <td class="desc">${x.it.item}${x.it.lote?` · Lote ${x.it.lote}`:''}</td>
       <td class="num">${x.qtdAntes.toLocaleString('pt-BR')}</td>
-      <td class="num" style="font-weight:${x.delta?'bold':'normal'};color:${x.delta>0?'#166534':x.delta<0?'#b91c1c':'#000'}">${x.qtdDepois.toLocaleString('pt-BR')}${x.delta?` (${x.delta>0?'+':''}${x.delta.toLocaleString('pt-BR')})`:''}</td>
+      <td class="val">R$ ${(x.it.vlr_unitario||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
       <td class="val">R$ ${x.valorAntes.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+    </tr>`).join('');
+    const linhasDepois = itensAntesDepois.map(x => `<tr style="page-break-inside:avoid;break-inside:avoid;${x.delta?'background:#eef6ff;':''}">
+      <td class="num">${x.it.ordem??'—'}</td>
+      <td class="desc">${x.it.item}${x.it.lote?` · Lote ${x.it.lote}`:''}</td>
+      <td class="num" style="font-weight:${x.delta?'bold':'normal'};color:${x.delta>0?'#166534':x.delta<0?'#b91c1c':'#000'}">${x.qtdDepois.toLocaleString('pt-BR')}${x.delta?` (${x.delta>0?'+':''}${x.delta.toLocaleString('pt-BR')})`:''}</td>
+      <td class="val">R$ ${(x.it.vlr_unitario||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
       <td class="val" style="font-weight:${x.delta?'bold':'normal'}">R$ ${x.valorDepois.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
     </tr>`).join('');
 
@@ -2260,13 +2266,15 @@ function App() {
       <tr><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th><th></th><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table>
       <div class="total-geral">VALOR TOTAL REMANEJADO &nbsp;&nbsp; R$ ${totalRealocado.toLocaleString('pt-BR',{minimumFractionDigits:2})} &nbsp;&nbsp; (suprimido = suplementado, sem impacto no valor do contrato)</div>
-      <div class="grupo-titulo">COMO FICARÁ O CONTRATO — TODOS OS ITENS, ANTES E DEPOIS DO REMANEJAMENTO</div>
-      <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. atual (antes)</th><th>Qtd. após o remanejamento</th><th>Valor atual (antes)</th><th>Valor após o remanejamento</th></tr></thead>
-      <tbody>${linhasAntesDepois}</tbody></table>
-      <div style="display:flex;gap:10px;margin-top:4px">
-        <div class="total-geral" style="flex:1;text-align:center">VALOR TOTAL DO CONTRATO — ANTES<br/><span style="font-size:14px">R$ ${valorTotalAntes.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-        <div class="total-geral" style="flex:1;text-align:center">VALOR TOTAL DO CONTRATO — DEPOIS<br/><span style="font-size:14px">R$ ${valorTotalDepois.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-      </div>
+      <div class="grupo-titulo">QUADRO 1 — COMO ERA O CONTRATO (ANTES DO REMANEJAMENTO)</div>
+      <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. contratada</th><th>Valor unitário</th><th>Valor total</th></tr></thead>
+      <tbody>${linhasAntes}</tbody></table>
+      <div class="total-geral">VALOR TOTAL DO CONTRATO (ANTES) &nbsp;&nbsp; R$ ${valorTotalAntes.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+
+      <div class="grupo-titulo">QUADRO 2 — COMO FICARÁ O CONTRATO (DEPOIS DO REMANEJAMENTO)</div>
+      <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. contratada</th><th>Valor unitário</th><th>Valor total</th></tr></thead>
+      <tbody>${linhasDepois}</tbody></table>
+      <div class="total-geral">VALOR TOTAL DO CONTRATO (DEPOIS) &nbsp;&nbsp; R$ ${valorTotalDepois.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       <div class="obs"><span style="background:#eef6ff;padding:1px 5px;border:1px solid #1d4ed8;color:#1d4ed8;font-weight:bold">■</span> item com quantidade alterada por este remanejamento &nbsp;&nbsp; itens sem marcação: sem alteração nesta rodada.</div>
       ${itensSemCobertura.length ? `
       <div class="obs" style="margin-top:14px;color:#991b1b">
