@@ -5389,6 +5389,26 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     alert(`${totalItens} item(ns) — ${totalUnidades} unidade(s) no total — registrado(s) com sucesso como ${tipo==='entrada'?'entrada':'saída'}.`);
   };
 
+  // Adiciona ao carrinho manualmente (mesma lógica de quando bipa por QR) —
+  // usado quando a etiqueta física não bate com nenhum item no sistema (ex:
+  // etiqueta antiga de um item que foi excluído e recriado com outro ID).
+  const adicionarAoCarrinhoManual = (itemId) => {
+    const item = itens.find(i => i.id === itemId);
+    if (!item) return;
+    tocarBeep();
+    setCarrinhoItens(prev => {
+      const idx = prev.findIndex(x => x.itemId === item.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + 1 };
+        return copy;
+      }
+      return [...prev, { itemId: item.id, item: item.item, unit: item.unit, qtd: 1, saldoAtual: item.saldo_atual||0 }];
+    });
+    setUltimoLido({ ok:true, nome: item.item });
+    setTimeout(() => setUltimoLido(null), 1200);
+  };
+
   const renderAlmoxarifado = () => {
     const itensControlados = itens.filter(i => i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||''));
     const itensDisponiveis = itens.filter(i => !i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||''));
@@ -5610,6 +5630,13 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                     <button className="btn btn-secondary btn-sm" onClick={()=>setCameraIndex(i=>i+1)} title="Se a câmera não estiver focando o QR, tente trocar de lente"><i className="fa-solid fa-camera-rotate"/> Trocar câmera</button>
                     <button className="btn btn-secondary btn-sm" onClick={()=>setScannerAtivo(false)}><i className="fa-solid fa-stop"/> Parar leitura</button>
                   </div>
+                  <div style={{marginTop:14,maxWidth:340,marginLeft:'auto',marginRight:'auto'}}>
+                    <div style={{fontSize:11,color:'var(--text2)',textAlign:'center',marginBottom:6}}>Etiqueta não bateu com nenhum item? Selecione manualmente:</div>
+                    <select value="" onChange={e=>{ if(!e.target.value) return; const item = itens.find(i=>i.id===e.target.value); if(item){ setItemEscaneado(item); setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs(''); } }}>
+                      <option value="">— Selecionar item do almoxarifado —</option>
+                      {itens.filter(i=>i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||'')).map(i => <option key={i.id} value={i.id}>{i.item}</option>)}
+                    </select>
+                  </div>
                 </>
               )}
               {itemEscaneado && (
@@ -5691,6 +5718,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  <div style={{marginTop:10}}>
+                    <div style={{fontSize:11,color:'var(--text2)',textAlign:'center',marginBottom:6}}>Etiqueta não bateu com nenhum item? Adicione manualmente:</div>
+                    <select value="" onChange={e=>{ if(e.target.value) adicionarAoCarrinhoManual(e.target.value); }}>
+                      <option value="">— Selecionar item do almoxarifado —</option>
+                      {itens.filter(i=>i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||'')).map(i => <option key={i.id} value={i.id}>{i.item}</option>)}
+                    </select>
                   </div>
 
                   <div style={{display:'flex',gap:8,marginTop:12}}>
