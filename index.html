@@ -600,6 +600,8 @@ function App() {
   const [carrinhoRevisao, setCarrinhoRevisao] = useState(false);
   const [ultimoLido, setUltimoLido] = useState(null); // {ok, nome} — feedback rápido a cada bipada
   const ultimoLidoCodeRef = useRef({ code:'', ts:0 });
+  const [cameraIndex, setCameraIndex] = useState(0); // pra alternar entre lentes traseiras (grande-angular, macro etc.)
+  const camerasListRef = useRef([]);
   const [itemParaAdicionar, setItemParaAdicionar] = useState('');
   const [contratoParaAdicionar, setContratoParaAdicionar] = useState('');
   const [buscaAlmox, setBuscaAlmox] = useState('');
@@ -5160,6 +5162,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     setScannerAtivo(false); setScannerModo(null); setItemEscaneado(null);
     setCarrinhoItens([]); setCarrinhoRevisao(false); setUltimoLido(null);
     setMovTipo('saida'); setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs('');
+    setCameraIndex(0); camerasListRef.current = [];
   };
 
   useEffect(() => {
@@ -5176,13 +5179,38 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       // de "não lê o QR Code" em alguns aparelhos. Calculando com base no
       // tamanho real do vídeo, o quadro de leitura sempre cabe na tela.
       qrbox: (viewfinderWidth, viewfinderHeight) => {
-        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-        const tamanho = Math.floor(minEdge * 0.75);
-        return { width: tamanho, height: tamanho };
-      }
+        try {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          let tamanho = Math.floor(minEdge * 0.75);
+          // Blindagem: se por algum motivo o cálculo vier inválido (vídeo
+          // ainda sem dimensão real, ou navegador que reporta 0), cai pra um
+          // tamanho fixo seguro em vez de travar a leitura silenciosamente.
+          if (!tamanho || tamanho < 100) tamanho = 200;
+          return { width: tamanho, height: tamanho };
+        } catch (e) {
+          return { width: 200, height: 200 };
+        }
+      },
+      // Usa o leitor de código de barras NATIVO do navegador quando disponível
+      // (Chrome/Android mais recentes) em vez do motor em JS puro da
+      // biblioteca — é bem mais rápido e confiável, principal suspeito de
+      // "a câmera abre mas nunca detecta nada" em alguns aparelhos.
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true }
     };
     const aoDecodificar = (decodedText) => {
       if (!ativo) return;
+      try {
+        aoDecodificarInterno(decodedText);
+      } catch (e) {
+        // Blindagem: qualquer erro inesperado aqui não pode travar a leitura
+        // silenciosamente. Mostra na própria tela (não só no console, que no
+        // celular ninguém consegue abrir) pra dar pra diagnosticar o motivo.
+        console.error('Erro ao processar leitura de QR:', e);
+        setUltimoLido({ ok:false, texto: 'Erro ao processar leitura: ' + (e?.message || e) });
+        setTimeout(() => setUltimoLido(null), 3000);
+      }
+    };
+    const aoDecodificarInterno = (decodedText) => {
 
       if (scannerModo === 'sequencia') {
         // Debounce: mesmo código lido repetidas vezes em frames seguidos enquanto
@@ -5241,26 +5269,48 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     };
     const aoErrarFrame = () => {}; // erro de leitura por frame — ignora, é esperado até o QR entrar no quadro
 
-    // Tenta primeiro pela constraint padrão (câmera traseira). Se o navegador
-    // não aceitar bem essa forma — comum em WebViews de apps (WhatsApp,
-    // Instagram etc.) e alguns Android mais antigos, e provável causa de
-    // "não lê o QR Code" em certos aparelhos — cai pra segunda tentativa:
-    // lista as câmeras do aparelho e escolhe uma manualmente pelo ID.
-    html5QrCode.start({ facingMode: 'environment' }, config, aoDecodificar, aoErrarFrame).catch(async (err1) => {
+    // Busca a lista de câmeras do aparelho (uma vez só, reaproveitada nas
+    // trocas manuais) e inicia pela câmera do índice atual — permite alternar
+    // entre lentes traseiras (principal, grande-angular, macro) pelo botão
+    // "Trocar câmera", já que em celulares com várias lentes o pedido
+    // genérico por "environment" às vezes escolhe uma que não foca de perto
+    // o suficiente pra ler um QR pequeno (vídeo abre normal, mas nunca detecta
+    // nada — sintoma clássico desse problema).
+    const iniciar = async () => {
       try {
-        const cameras = await Html5Qrcode.getCameras();
-        if (!cameras || cameras.length === 0) throw err1;
-        // Prefere uma câmera com "traseira/back/rear" no nome; se não achar,
-        // usa a última da lista (convenção comum: a frontal costuma vir
-        // primeiro nessa lista, a traseira por último).
-        const traseira = cameras.find(c => /back|tras|rear|environment/i.test(c.label || '')) || cameras[cameras.length - 1];
+        if (camerasListRef.current.length === 0) {
+          const cams = await Html5Qrcode.getCameras();
+          // Reordena colocando primeiro uma câmera com "traseira/back/rear" no
+          // nome (palpite mais provável de ser a lente principal) — assim o
+          // índice 0 (tentativa inicial, antes de qualquer troca manual) já
+          // nasce na câmera certa na maioria dos aparelhos.
+          const idxTraseira = cams.findIndex(c => /back|tras|rear|environment/i.test(c.label || ''));
+          camerasListRef.current = idxTraseira > 0
+            ? [cams[idxTraseira], ...cams.slice(0,idxTraseira), ...cams.slice(idxTraseira+1)]
+            : cams;
+        }
+        const cams = camerasListRef.current;
         if (!ativo) return;
-        await html5QrCode.start(traseira.id, config, aoDecodificar, aoErrarFrame);
-      } catch (err2) {
-        alert('Não foi possível acessar a câmera: ' + (err2?.message || err2 || err1) + '. Verifique se o navegador tem permissão de câmera e se a página está em HTTPS.');
-        setScannerAtivo(false);
+        if (cams && cams.length > 0) {
+          const idx = ((cameraIndex % cams.length) + cams.length) % cams.length;
+          await html5QrCode.start(cams[idx].id, config, aoDecodificar, aoErrarFrame);
+        } else {
+          await html5QrCode.start({ facingMode: 'environment' }, config, aoDecodificar, aoErrarFrame);
+        }
+      } catch (err1) {
+        // Plano B: se listar câmeras falhar (ex: permissão ainda não concedida
+        // nesse momento), tenta pela constraint genérica.
+        try {
+          if (!ativo) return;
+          await html5QrCode.start({ facingMode: 'environment' }, config, aoDecodificar, aoErrarFrame);
+        } catch (err2) {
+          alert('Não foi possível acessar a câmera: ' + (err2?.message || err2 || err1) + '. Verifique se o navegador tem permissão de câmera e se a página está em HTTPS.');
+          setScannerAtivo(false);
+        }
       }
-    });
+    };
+    iniciar();
+
     return () => {
       ativo = false;
       if (html5QrRef.current) {
@@ -5268,7 +5318,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         html5QrRef.current = null;
       }
     };
-  }, [section, almoxTab, scannerAtivo, scannerModo]);
+  }, [section, almoxTab, scannerAtivo, scannerModo, cameraIndex]);
 
   const confirmarMovimentacaoScanner = async () => {
     if (!itemEscaneado) return;
@@ -5556,7 +5606,8 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                     {ultimoLido && !ultimoLido.ok && <span style={{color:'#b91c1c'}}><i className="fa-solid fa-triangle-exclamation"/> {ultimoLido.texto}</span>}
                     {!ultimoLido && <span style={{color:'var(--text2)',fontWeight:400}}>Aponte a câmera para o QR Code do item...</span>}
                   </div>
-                  <div style={{textAlign:'center',marginTop:10}}>
+                  <div style={{textAlign:'center',marginTop:10,display:'flex',gap:8,justifyContent:'center'}}>
+                    <button className="btn btn-secondary btn-sm" onClick={()=>setCameraIndex(i=>i+1)} title="Se a câmera não estiver focando o QR, tente trocar de lente"><i className="fa-solid fa-camera-rotate"/> Trocar câmera</button>
                     <button className="btn btn-secondary btn-sm" onClick={()=>setScannerAtivo(false)}><i className="fa-solid fa-stop"/> Parar leitura</button>
                   </div>
                 </>
@@ -5643,6 +5694,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                   </div>
 
                   <div style={{display:'flex',gap:8,marginTop:12}}>
+                    <button className="btn btn-secondary" style={{flex:1}} onClick={()=>setCameraIndex(i=>i+1)} title="Se a câmera não estiver focando o QR, tente trocar de lente"><i className="fa-solid fa-camera-rotate"/> Trocar câmera</button>
                     <button className="btn btn-secondary" style={{flex:1}} onClick={()=>setScannerAtivo(false)}><i className="fa-solid fa-pause"/> Pausar</button>
                     <button className="btn btn-primary" style={{flex:1}} disabled={carrinhoItens.length===0} onClick={()=>{setScannerAtivo(false); setCarrinhoRevisao(true);}}>
                       <i className="fa-solid fa-flag-checkered"/> Finalizar leitura
