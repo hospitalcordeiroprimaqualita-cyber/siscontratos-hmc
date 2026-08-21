@@ -2649,25 +2649,39 @@ function App() {
   };
 
   // ─── MODAL CONTENTS ────────────────────────────────────────────────────────
-  const FG = ({ label, children, full }) => <div className={`form-group${full?' full':''}`}><label>{label}</label>{children}</div>;
-  // Inputs não controlados — o formulário inteiro remonta (via key) quando troca
-  // de contrato/registro, então o valor inicial já nasce certo. Sem useEffect
-  // de resincronização a cada render (isso é o que causava o campo ser apagado
-  // durante a digitação, quando qualquer re-render acontecia no momento errado).
-  const FI = ({ k, disabled, type, placeholder, style }) => {
-    return <input defaultValue={fv(k)||''} onBlur={e=>sf(k,e.target.value)} onChange={e=>sf(k,e.target.value)} disabled={disabled} type={type} placeholder={placeholder} style={style} />;
-  };
-  const FS = ({ k, opts, disabled }) => {
-    return <select defaultValue={fv(k)||''} onChange={e=>sf(k,e.target.value)} disabled={disabled}>{opts.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}</select>;
-  };
-  const FT = ({ k, disabled, placeholder }) => {
-    return <textarea defaultValue={fv(k)||''} onBlur={e=>sf(k,e.target.value)} onChange={e=>sf(k,e.target.value)} disabled={disabled} placeholder={placeholder} />;
-  };
-
-  // Campo de data não controlado
-  const FD = ({ k, disabled }) => {
-    return <input defaultValue={fromISO(fv(k))||''} onChange={e=>sf(k,e.target.value)} onBlur={e=>sf(k,e.target.value)} placeholder="DD/MM/AAAA" maxLength={10} disabled={disabled} style={{letterSpacing:'0.05em'}} />;
-  };
+  // Componentes de formulário — criados UMA ÚNICA VEZ via useRef, não a cada
+  // render. Antes eles nasciam de novo (const FI = ...) toda vez que o App
+  // renderizava — e como o React identifica o "tipo" de um componente pela
+  // referência da função, cada tecla digitada (que dispara um re-render)
+  // fazia o React achar que era um componente DIFERENTE, desmontando e
+  // recriando o <input> do zero. No celular isso fecha o teclado depois de
+  // cada letra. Usar refs pra fv/sf (sempre atualizados, mas sem recriar os
+  // componentes) resolve sem perder a leitura do valor mais recente do form.
+  const fvRef = useRef(fv); fvRef.current = fv;
+  const sfRef = useRef(sf); sfRef.current = sf;
+  const formComponentsRef = useRef(null);
+  if (!formComponentsRef.current) {
+    const FG = ({ label, children, full }) => <div className={`form-group${full?' full':''}`}><label>{label}</label>{children}</div>;
+    // Inputs não controlados — o formulário inteiro remonta (via key) quando troca
+    // de contrato/registro, então o valor inicial já nasce certo. Sem useEffect
+    // de resincronização a cada render (isso é o que causava o campo ser apagado
+    // durante a digitação, quando qualquer re-render acontecia no momento errado).
+    const FI = ({ k, disabled, type, placeholder, style }) => {
+      return <input defaultValue={fvRef.current(k)||''} onBlur={e=>sfRef.current(k,e.target.value)} onChange={e=>sfRef.current(k,e.target.value)} disabled={disabled} type={type} placeholder={placeholder} style={style} />;
+    };
+    const FS = ({ k, opts, disabled }) => {
+      return <select defaultValue={fvRef.current(k)||''} onChange={e=>sfRef.current(k,e.target.value)} disabled={disabled}>{opts.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}</select>;
+    };
+    const FT = ({ k, disabled, placeholder }) => {
+      return <textarea defaultValue={fvRef.current(k)||''} onBlur={e=>sfRef.current(k,e.target.value)} onChange={e=>sfRef.current(k,e.target.value)} disabled={disabled} placeholder={placeholder} />;
+    };
+    // Campo de data não controlado
+    const FD = ({ k, disabled }) => {
+      return <input defaultValue={fromISO(fvRef.current(k))||''} onChange={e=>sfRef.current(k,e.target.value)} onBlur={e=>sfRef.current(k,e.target.value)} placeholder="DD/MM/AAAA" maxLength={10} disabled={disabled} style={{letterSpacing:'0.05em'}} />;
+    };
+    formComponentsRef.current = { FG, FI, FS, FT, FD };
+  }
+  const { FG, FI, FS, FT, FD } = formComponentsRef.current;
 
   const renderModalContent = () => {
     if (!modal) return null;
@@ -5145,55 +5159,82 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const html5QrCode = new Html5Qrcode('qr-reader');
     html5QrRef.current = html5QrCode;
     let ativo = true;
-    html5QrCode.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: 240 },
-      (decodedText) => {
-        if (!ativo) return;
+    const config = {
+      fps: 10,
+      // qrbox responsivo: um valor fixo (ex: 240) trava a leitura em
+      // celulares cuja câmera entrega um vídeo mais estreito que isso —
+      // problema comum do html5-qrcode em telas menores, e provável causa
+      // de "não lê o QR Code" em alguns aparelhos. Calculando com base no
+      // tamanho real do vídeo, o quadro de leitura sempre cabe na tela.
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+        const tamanho = Math.floor(minEdge * 0.75);
+        return { width: tamanho, height: tamanho };
+      }
+    };
+    const aoDecodificar = (decodedText) => {
+      if (!ativo) return;
 
-        if (scannerModo === 'sequencia') {
-          // Debounce: mesmo código lido repetidas vezes em frames seguidos enquanto
-          // o item está parado na frente da câmera não pode virar várias "bipadas".
-          // Só conta de novo se passar 1.2s — tempo suficiente pra afastar e reapresentar
-          // o item de propósito, caso queira somar mais uma unidade.
-          const agora = Date.now();
-          if (decodedText === ultimoLidoCodeRef.current.code && agora - ultimoLidoCodeRef.current.ts < 1200) return;
-          ultimoLidoCodeRef.current = { code: decodedText, ts: agora };
+      if (scannerModo === 'sequencia') {
+        // Debounce: mesmo código lido repetidas vezes em frames seguidos enquanto
+        // o item está parado na frente da câmera não pode virar várias "bipadas".
+        // Só conta de novo se passar 1.2s — tempo suficiente pra afastar e reapresentar
+        // o item de propósito, caso queira somar mais uma unidade.
+        const agora = Date.now();
+        if (decodedText === ultimoLidoCodeRef.current.code && agora - ultimoLidoCodeRef.current.ts < 1200) return;
+        ultimoLidoCodeRef.current = { code: decodedText, ts: agora };
 
-          const item = buscarItemPorQR(decodedText);
-          if (!item) {
-            setUltimoLido({ ok:false, texto:'QR não reconhecido ou item não controla estoque' });
-            setTimeout(() => setUltimoLido(null), 1400);
-            return;
-          }
-          tocarBeep();
-          setCarrinhoItens(prev => {
-            const idx = prev.findIndex(x => x.itemId === item.id);
-            if (idx >= 0) {
-              const copy = [...prev];
-              copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + 1 };
-              return copy;
-            }
-            return [...prev, { itemId: item.id, item: item.item, unit: item.unit, qtd: 1, saldoAtual: item.saldo_atual||0 }];
-          });
-          setUltimoLido({ ok:true, nome: item.item });
-          setTimeout(() => setUltimoLido(null), 1200);
+        const item = buscarItemPorQR(decodedText);
+        if (!item) {
+          setUltimoLido({ ok:false, texto:'QR não reconhecido ou item não controla estoque' });
+          setTimeout(() => setUltimoLido(null), 1400);
           return;
         }
+        tocarBeep();
+        setCarrinhoItens(prev => {
+          const idx = prev.findIndex(x => x.itemId === item.id);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + 1 };
+            return copy;
+          }
+          return [...prev, { itemId: item.id, item: item.item, unit: item.unit, qtd: 1, saldoAtual: item.saldo_atual||0 }];
+        });
+        setUltimoLido({ ok:true, nome: item.item });
+        setTimeout(() => setUltimoLido(null), 1200);
+        return;
+      }
 
-        // modo 'unico' — comportamento original: para a câmera e pede os detalhes
-        const item = buscarItemPorQR(decodedText);
-        if (item) {
-          ativo = false;
-          html5QrCode.pause(true);
-          setItemEscaneado(item);
-          setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs('');
-        }
-      },
-      () => {} // erro de leitura por frame — ignora, é esperado até o QR entrar no quadro
-    ).catch(err => {
-      alert('Não foi possível acessar a câmera: ' + err + '. Verifique se o navegador tem permissão de câmera e se a página está em HTTPS.');
-      setScannerAtivo(false);
+      // modo 'unico' — comportamento original: para a câmera e pede os detalhes
+      const item = buscarItemPorQR(decodedText);
+      if (item) {
+        ativo = false;
+        html5QrCode.pause(true);
+        setItemEscaneado(item);
+        setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs('');
+      }
+    };
+    const aoErrarFrame = () => {}; // erro de leitura por frame — ignora, é esperado até o QR entrar no quadro
+
+    // Tenta primeiro pela constraint padrão (câmera traseira). Se o navegador
+    // não aceitar bem essa forma — comum em WebViews de apps (WhatsApp,
+    // Instagram etc.) e alguns Android mais antigos, e provável causa de
+    // "não lê o QR Code" em certos aparelhos — cai pra segunda tentativa:
+    // lista as câmeras do aparelho e escolhe uma manualmente pelo ID.
+    html5QrCode.start({ facingMode: 'environment' }, config, aoDecodificar, aoErrarFrame).catch(async (err1) => {
+      try {
+        const cameras = await Html5Qrcode.getCameras();
+        if (!cameras || cameras.length === 0) throw err1;
+        // Prefere uma câmera com "traseira/back/rear" no nome; se não achar,
+        // usa a última da lista (convenção comum: a frontal costuma vir
+        // primeiro nessa lista, a traseira por último).
+        const traseira = cameras.find(c => /back|tras|rear|environment/i.test(c.label || '')) || cameras[cameras.length - 1];
+        if (!ativo) return;
+        await html5QrCode.start(traseira.id, config, aoDecodificar, aoErrarFrame);
+      } catch (err2) {
+        alert('Não foi possível acessar a câmera: ' + (err2?.message || err2 || err1) + '. Verifique se o navegador tem permissão de câmera e se a página está em HTTPS.');
+        setScannerAtivo(false);
+      }
     });
     return () => {
       ativo = false;
