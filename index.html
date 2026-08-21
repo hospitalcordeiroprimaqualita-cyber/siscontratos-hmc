@@ -927,10 +927,19 @@ function App() {
   // Payload do QR: prefixo fixo + id do item, pra não confundir com QR de outra coisa
   // caso o celular leia algo diferente por engano.
   const qrPayload = (itemId) => `HMC-ALMOX:${itemId}`;
+  // Retorna diagnóstico completo, não só o item — importante pra diferenciar
+  // "esse código não corresponde a item nenhum" (etiqueta de item já excluído/
+  // recriado, ou de outro contrato) de "o item existe, mas o controle de
+  // estoque dele está desligado" (alguém desativou o controle depois de a
+  // etiqueta já ter sido impressa). São dois problemas bem diferentes e a
+  // pessoa que está bipando precisa saber qual dos dois é, pra corrigir.
   const buscarItemPorQR = (texto) => {
     const m = /^HMC-ALMOX:(.+)$/.exec((texto||'').trim());
     const itemId = m ? m[1] : (texto||'').trim();
-    return itens.find(i => i.id === itemId && i.controla_estoque) || null;
+    const item = itens.find(i => i.id === itemId);
+    if (!item) return { ok:false, motivo:'nao_encontrado', item:null, codigoLido: itemId };
+    if (!item.controla_estoque) return { ok:false, motivo:'sem_controle', item, codigoLido: itemId };
+    return { ok:true, motivo:null, item, codigoLido: itemId };
   };
 
   // REGISTRAR EXECUCAO
@@ -5184,12 +5193,16 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         if (decodedText === ultimoLidoCodeRef.current.code && agora - ultimoLidoCodeRef.current.ts < 1200) return;
         ultimoLidoCodeRef.current = { code: decodedText, ts: agora };
 
-        const item = buscarItemPorQR(decodedText);
-        if (!item) {
-          setUltimoLido({ ok:false, texto:'QR não reconhecido ou item não controla estoque' });
-          setTimeout(() => setUltimoLido(null), 1400);
+        const r = buscarItemPorQR(decodedText);
+        if (!r.ok) {
+          const texto = r.motivo === 'sem_controle'
+            ? `"${r.item.item.substring(0,28)}" está sem controle de estoque ativo`
+            : `Código não corresponde a nenhum item (lido: "${r.codigoLido.substring(0,24)}")`;
+          setUltimoLido({ ok:false, texto });
+          setTimeout(() => setUltimoLido(null), 2200);
           return;
         }
+        const item = r.item;
         tocarBeep();
         setCarrinhoItens(prev => {
           const idx = prev.findIndex(x => x.itemId === item.id);
@@ -5205,14 +5218,26 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         return;
       }
 
-      // modo 'unico' — comportamento original: para a câmera e pede os detalhes
-      const item = buscarItemPorQR(decodedText);
-      if (item) {
-        ativo = false;
-        html5QrCode.pause(true);
-        setItemEscaneado(item);
-        setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs('');
+      // modo 'unico' — comportamento original: para a câmera e pede os detalhes.
+      // Antes, se o item não fosse encontrado, a câmera simplesmente continuava
+      // lendo em silêncio, sem avisar nada — parecia que "não lia o QR Code",
+      // quando na verdade lia, só não encontrava o item correspondente.
+      const agora = Date.now();
+      if (decodedText === ultimoLidoCodeRef.current.code && agora - ultimoLidoCodeRef.current.ts < 1500) return;
+      ultimoLidoCodeRef.current = { code: decodedText, ts: agora };
+      const r = buscarItemPorQR(decodedText);
+      if (!r.ok) {
+        const texto = r.motivo === 'sem_controle'
+          ? `"${r.item.item.substring(0,28)}" está sem controle de estoque ativo`
+          : `Código não corresponde a nenhum item (lido: "${r.codigoLido.substring(0,24)}")`;
+        setUltimoLido({ ok:false, texto });
+        setTimeout(() => setUltimoLido(null), 2200);
+        return;
       }
+      ativo = false;
+      html5QrCode.pause(true);
+      setItemEscaneado(r.item);
+      setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs('');
     };
     const aoErrarFrame = () => {}; // erro de leitura por frame — ignora, é esperado até o QR entrar no quadro
 
@@ -5527,7 +5552,10 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
               {scannerModo === 'unico' && scannerAtivo && !itemEscaneado && (
                 <>
                   <div id="qr-reader" style={{width:'100%',maxWidth:420,margin:'0 auto'}}></div>
-                  <div style={{textAlign:'center',marginTop:12,fontSize:12,color:'var(--text2)'}}>Aponte a câmera para o QR Code do item...</div>
+                  <div style={{textAlign:'center',marginTop:10,minHeight:20,fontSize:12.5,fontWeight:700}}>
+                    {ultimoLido && !ultimoLido.ok && <span style={{color:'#b91c1c'}}><i className="fa-solid fa-triangle-exclamation"/> {ultimoLido.texto}</span>}
+                    {!ultimoLido && <span style={{color:'var(--text2)',fontWeight:400}}>Aponte a câmera para o QR Code do item...</span>}
+                  </div>
                   <div style={{textAlign:'center',marginTop:10}}>
                     <button className="btn btn-secondary btn-sm" onClick={()=>setScannerAtivo(false)}><i className="fa-solid fa-stop"/> Parar leitura</button>
                   </div>
