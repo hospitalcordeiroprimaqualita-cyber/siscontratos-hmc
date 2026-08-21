@@ -2124,10 +2124,13 @@ function App() {
           itemSobra: escolhido.item,
           valor: escolhido.valor,   // valor CHEIO do item de sobra — inteiro, nunca fracionado
           qtdSobra: escolhido.dif,  // quantidade CHEIA (excedente inteiro) suprimida do item de sobra
-          // Math.ceil (nunca Math.round/floor): a quantidade suplementada
-          // precisa cobrir, no mínimo, o valor cheio do item suprimido. Pode
-          // sobrar valor a mais (arredondar pra cima), nunca faltar.
-          qtdFalta: d.item.vlr_unitario > 0 ? Math.ceil(escolhido.valor / d.item.vlr_unitario) : escolhido.dif,
+          // Math.floor (nunca Math.ceil/round): o valor suplementado NUNCA
+          // pode ultrapassar o valor suprimido daquele item — senão o
+          // remanejamento estaria aumentando o valor do contrato "de graça"
+          // por causa do arredondamento. É melhor sobrar um pequeno resíduo
+          // de valor suprimido sem uso (fica registrado como diferença) do
+          // que suplementar a mais do que foi tirado.
+          qtdFalta: d.item.vlr_unitario > 0 ? Math.floor(escolhido.valor / d.item.vlr_unitario) : escolhido.dif,
         });
         valorNecessario -= escolhido.valor;
       }
@@ -2281,7 +2284,7 @@ function App() {
         <div class="total-geral" style="flex:1;text-align:center">VALOR TOTAL SUPRIMIDO<br/><span style="font-size:14px">R$ ${totalRealocado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
         <div class="total-geral" style="flex:1;text-align:center">VALOR TOTAL SUPLEMENTADO<br/><span style="font-size:14px">R$ ${totalSuplementado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
       </div>
-      <div class="obs">Pequena diferença entre os dois totais (quando houver) decorre do arredondamento da quantidade suplementada — o item de sobra é sempre remanejado por inteiro (sem fracionar valor ou quantidade), e a quantidade do item em risco é calculada com o preço unitário dele mesmo, não com o do item suprimido.</div>
+      <div class="obs">Pequena diferença entre os dois totais (quando houver) decorre do arredondamento da quantidade suplementada — o item de sobra é sempre remanejado por inteiro (sem fracionar valor ou quantidade), e a quantidade do item em risco é calculada com o preço unitário dele mesmo, arredondada sempre para baixo, de forma que o valor suplementado nunca ultrapasse o valor suprimido.</div>
       <div class="grupo-titulo">QUADRO 1 — COMO ERA O CONTRATO (ANTES DO REMANEJAMENTO)</div>
       <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. contratada</th><th>Valor unitário</th><th>Valor total</th></tr></thead>
       <tbody>${linhasAntes}</tbody></table>
