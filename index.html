@@ -2135,6 +2135,7 @@ function App() {
   const gerarPedidoReequilibrio = (contrato, deficit, superavit) => {
     const alocacoes = alocarReequilibrio(deficit, superavit);
     const totalRealocado = alocacoes.reduce((acc,a)=>acc+a.valor,0);
+    const totalSuplementado = alocacoes.reduce((acc,a)=>acc + a.qtdFalta*(a.itemFalta.vlr_unitario||0), 0);
     const itensSemCobertura = deficit.filter(d => (d.faltaCobrir ?? 0) > 0.01);
     const totalSemCobertura = itensSemCobertura.reduce((acc,d)=>acc+(d.faltaCobrir??0),0);
     const hoje = new Date();
@@ -2188,7 +2189,14 @@ function App() {
       <td class="val" style="font-weight:${x.delta?'bold':'normal'}">R$ ${x.valorDepois.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
     </tr>`).join('');
 
-    const linhas = alocacoes.map(a => `<tr style="page-break-inside:avoid;break-inside:avoid;">
+    const linhas = alocacoes.map(a => {
+      // O valor do lado SUPRIMIR é o valor cheio do item de sobra (a.valor).
+      // O valor do lado SUPLEMENTAR precisa ser calculado com o preço do
+      // PRÓPRIO item suplementado (qtd × valor unitário dele) — não pode
+      // repetir o valor do item suprimido, mesmo que os dois lados fechem em
+      // valor total agregado no fim do remanejamento.
+      const valorSuplementado = a.qtdFalta * (a.itemFalta.vlr_unitario || 0);
+      return `<tr style="page-break-inside:avoid;break-inside:avoid;">
       <td class="num">${a.itemSobra.ordem??'—'}</td>
       <td class="desc">${a.itemSobra.item}</td>
       <td class="num">${a.qtdSobra}</td>
@@ -2197,8 +2205,9 @@ function App() {
       <td class="num">${a.itemFalta.ordem??'—'}</td>
       <td class="desc">${a.itemFalta.item}</td>
       <td class="num">${a.qtdFalta}</td>
-      <td class="val">R$ ${a.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
-    </tr>`).join('');
+      <td class="val">R$ ${valorSuplementado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+    </tr>`;
+    }).join('');
 
     const linhasResumo = resumoAnalitico.map(({it,a}) => {
       const isFalta = idsFalta.has(it.id);
@@ -2265,7 +2274,11 @@ function App() {
       <table><thead><tr><th colspan="4">SUPRIMIR (item com excedente)</th><th></th><th colspan="4">SUPLEMENTAR (item em risco)</th></tr>
       <tr><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th><th></th><th>Item</th><th>Descrição</th><th>Qtd</th><th>Valor</th></tr></thead>
       <tbody>${linhas}</tbody></table>
-      <div class="total-geral">VALOR TOTAL REMANEJADO &nbsp;&nbsp; R$ ${totalRealocado.toLocaleString('pt-BR',{minimumFractionDigits:2})} &nbsp;&nbsp; (suprimido = suplementado, sem impacto no valor do contrato)</div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <div class="total-geral" style="flex:1;text-align:center">VALOR TOTAL SUPRIMIDO<br/><span style="font-size:14px">R$ ${totalRealocado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+        <div class="total-geral" style="flex:1;text-align:center">VALOR TOTAL SUPLEMENTADO<br/><span style="font-size:14px">R$ ${totalSuplementado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+      </div>
+      <div class="obs">Pequena diferença entre os dois totais (quando houver) decorre do arredondamento da quantidade suplementada — o item de sobra é sempre remanejado por inteiro (sem fracionar valor ou quantidade), e a quantidade do item em risco é calculada com o preço unitário dele mesmo, não com o do item suprimido.</div>
       <div class="grupo-titulo">QUADRO 1 — COMO ERA O CONTRATO (ANTES DO REMANEJAMENTO)</div>
       <table><thead><tr><th>Item</th><th>Descrição</th><th>Qtd. contratada</th><th>Valor unitário</th><th>Valor total</th></tr></thead>
       <tbody>${linhasAntes}</tbody></table>
