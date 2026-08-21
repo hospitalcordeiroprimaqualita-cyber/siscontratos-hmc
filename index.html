@@ -2124,7 +2124,10 @@ function App() {
           itemSobra: escolhido.item,
           valor: escolhido.valor,   // valor CHEIO do item de sobra — inteiro, nunca fracionado
           qtdSobra: escolhido.dif,  // quantidade CHEIA (excedente inteiro) suprimida do item de sobra
-          qtdFalta: d.item.vlr_unitario > 0 ? Math.round(escolhido.valor / d.item.vlr_unitario) : escolhido.dif,
+          // Math.ceil (nunca Math.round/floor): a quantidade suplementada
+          // precisa cobrir, no mínimo, o valor cheio do item suprimido. Pode
+          // sobrar valor a mais (arredondar pra cima), nunca faltar.
+          qtdFalta: d.item.vlr_unitario > 0 ? Math.ceil(escolhido.valor / d.item.vlr_unitario) : escolhido.dif,
         });
         valorNecessario -= escolhido.valor;
       }
