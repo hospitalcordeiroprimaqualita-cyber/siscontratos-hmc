@@ -608,6 +608,13 @@ function App() {
   const [pedidosGerados, setPedidosGerados] = useState([]);
   const [pendenciasFornecedor, setPendenciasFornecedor] = useState([]);
   const html5QrRef = useRef(null);
+  // Sempre aponta pra lista de itens MAIS ATUAL — usada na busca por QR Code.
+  // Sem isso, a função de leitura (que roda dentro de um efeito que só reinicia
+  // em raras trocas de estado) ficava presa numa cópia congelada dos itens do
+  // momento em que a câmera foi ligada, e não enxergava itens novos/atualizados
+  // enquanto a leitura continuava rolando.
+  const itensRef = useRef(itens);
+  itensRef.current = itens;
   const formRef = useRef({});
   const [ordemLista, setOrdemLista] = React.useState([]); // ids dos itens na ordem escolhida, usado no modal 'reordenar-itens'
   const [saving, setSaving] = useState(false);
@@ -938,7 +945,7 @@ function App() {
   const buscarItemPorQR = (texto) => {
     const m = /^HMC-ALMOX:(.+)$/.exec((texto||'').trim());
     const itemId = m ? m[1] : (texto||'').trim();
-    const item = itens.find(i => i.id === itemId);
+    const item = itensRef.current.find(i => i.id === itemId);
     if (!item) return { ok:false, motivo:'nao_encontrado', item:null, codigoLido: itemId };
     if (!item.controla_estoque) return { ok:false, motivo:'sem_controle', item, codigoLido: itemId };
     return { ok:true, motivo:null, item, codigoLido: itemId };
