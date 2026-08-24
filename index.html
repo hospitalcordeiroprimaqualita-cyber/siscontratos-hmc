@@ -661,7 +661,7 @@ function App() {
     try {
       const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg, pf] = await Promise.all([
         sb().from('contratos').select('*').order('created_at'),
-        sb().from('itens').select('*').order('created_at'),
+        fetchAllRows('itens', 'created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
         sb().from('medicos').select('*').order('nome'),
         fetchAllRows('medicoes_lancamentos', 'created_at'),
