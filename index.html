@@ -944,9 +944,20 @@ function App() {
   // pessoa que está bipando precisa saber qual dos dois é, pra corrigir.
   const buscarItemPorQR = (texto) => {
     const m = /^HMC-ALMOX:(.+)$/.exec((texto||'').trim());
-    const itemId = m ? m[1] : (texto||'').trim();
-    const item = itensRef.current.find(i => i.id === itemId);
-    if (!item) return { ok:false, motivo:'nao_encontrado', item:null, codigoLido: itemId };
+    const itemId = (m ? m[1] : (texto||'').trim()).trim();
+    // Compara ignorando espaços invisíveis nas pontas do ID salvo no banco —
+    // muito comum em itens que vieram de importação de planilha/Excel, onde
+    // um espaço a mais no final do código (invisível a olho nu) já é
+    // suficiente pra quebrar a comparação exata (===).
+    const item = itensRef.current.find(i => (i.id||'').trim() === itemId);
+    if (!item) {
+      // Pista extra de diagnóstico: se existir um item com o MESMO código
+      // ignorando maiúsculas/minúsculas, é sinal de diferença de capitalização
+      // entre o que foi impresso e o que está salvo — ajuda a identificar a
+      // causa mesmo sem acesso direto ao banco de dados.
+      const parecido = itensRef.current.find(i => (i.id||'').trim().toLowerCase() === itemId.toLowerCase());
+      return { ok:false, motivo:'nao_encontrado', item:null, codigoLido: itemId, parecido };
+    }
     if (!item.controla_estoque) return { ok:false, motivo:'sem_controle', item, codigoLido: itemId };
     return { ok:true, motivo:null, item, codigoLido: itemId };
   };
@@ -5232,9 +5243,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         if (!r.ok) {
           const texto = r.motivo === 'sem_controle'
             ? `"${r.item.item.substring(0,28)}" está sem controle de estoque ativo`
-            : `Código não corresponde a nenhum item (lido: "${r.codigoLido.substring(0,24)}")`;
+            : r.parecido
+              ? `Achei "${r.parecido.item.substring(0,26)}" com código parecido, mas maiúsculas/minúsculas diferentes — verifique a etiqueta`
+              : `Código não corresponde a nenhum item (lido: "${r.codigoLido.substring(0,24)}" — ${itensRef.current.length} itens carregados no sistema)`;
           setUltimoLido({ ok:false, texto });
-          setTimeout(() => setUltimoLido(null), 2200);
+          setTimeout(() => setUltimoLido(null), 5000);
           return;
         }
         const item = r.item;
@@ -5264,9 +5277,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       if (!r.ok) {
         const texto = r.motivo === 'sem_controle'
           ? `"${r.item.item.substring(0,28)}" está sem controle de estoque ativo`
-          : `Código não corresponde a nenhum item (lido: "${r.codigoLido.substring(0,24)}")`;
+          : r.parecido
+            ? `Achei "${r.parecido.item.substring(0,26)}" com código parecido, mas maiúsculas/minúsculas diferentes — verifique a etiqueta`
+            : `Código não corresponde a nenhum item (lido: "${r.codigoLido.substring(0,24)}" — ${itensRef.current.length} itens carregados no sistema)`;
         setUltimoLido({ ok:false, texto });
-        setTimeout(() => setUltimoLido(null), 2200);
+        setTimeout(() => setUltimoLido(null), 5000);
         return;
       }
       ativo = false;
