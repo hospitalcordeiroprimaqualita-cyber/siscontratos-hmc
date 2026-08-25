@@ -660,7 +660,16 @@ function App() {
   const loadAll = async () => {
     setSyncStatus('loading');
     try {
-      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg, pf] = await Promise.all([
+      // Timeout de segurança: se a URL/chave configurada estiver errada de um
+      // jeito que trava a conexão em vez de dar erro na hora (ex: URL que não
+      // existe, servidor que nunca responde), a tela ficava presa em
+      // "Sincronizando..." pra sempre, sem nenhum aviso. Depois de 15s sem
+      // resposta, desiste e cai no fluxo de erro normal (com nova tentativa).
+      const comTimeout = (promessa) => Promise.race([
+        promessa,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Tempo esgotado (15s) — verifique a URL do Supabase configurada')), 15000))
+      ]);
+      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg, pf] = await comTimeout(Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         fetchAllRows('itens', 'created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
@@ -674,7 +683,7 @@ function App() {
         fetchAllRows('estoque_movimentacoes', 'created_at', false),
         sb().from('pedidos_gerados').select('*').order('gerado_em', {ascending:false}),
         sb().from('pendencias_fornecedor').select('*').order('created_at', {ascending:false})
-      ]);
+      ]));
       if (c.error || i.error || a.error) {
         const detalhe = [
           c.error && `contratos: ${c.error.message}`,
