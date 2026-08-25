@@ -6034,6 +6034,18 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
               {syncStatus==='err' && <i className="fa-solid fa-cloud-xmark" />}
               {syncStatus==='loading'?'Sincronizando...':syncStatus==='ok'?'Sincronizado':'Erro de conexão'}
             </div>
+            {syncStatus==='err' && (
+              <button className="btn btn-secondary btn-sm" title="Corrigir a URL/chave do Supabase salva neste aparelho"
+                onClick={()=>{
+                  if (confirm('Isso limpa a URL e a chave do Supabase salvas NESTE aparelho e pede pra você digitar de novo. Confirma?')) {
+                    localStorage.removeItem(STORAGE_KEYS.url);
+                    localStorage.removeItem(STORAGE_KEYS.key);
+                    window.location.reload();
+                  }
+                }}>
+                <i className="fa-solid fa-key" /> Reconfigurar conexão
+              </button>
+            )}
             <button className="btn btn-secondary btn-sm" onClick={loadAll}><i className="fa-solid fa-rotate" /> Atualizar</button>
             <button className="btn btn-primary" onClick={() => openModal('novo')}><i className="fa-solid fa-plus" /> Novo contrato</button>
           </div>
