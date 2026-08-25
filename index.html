@@ -561,6 +561,7 @@ function App() {
 
   const [section, setSection] = useState('inicio');
   const [syncStatus, setSyncStatus] = useState('ok'); // ok | loading | err
+  const [syncErrorDetail, setSyncErrorDetail] = useState('');
   const [contratos, setContratos] = useState([]);
   const [itens, setItens] = useState([]);
   const [aditivos, setAditivos] = useState([]);
@@ -674,7 +675,14 @@ function App() {
         sb().from('pedidos_gerados').select('*').order('gerado_em', {ascending:false}),
         sb().from('pendencias_fornecedor').select('*').order('created_at', {ascending:false})
       ]);
-      if (c.error || i.error || a.error) throw new Error('Erro ao carregar');
+      if (c.error || i.error || a.error) {
+        const detalhe = [
+          c.error && `contratos: ${c.error.message}`,
+          i.error && `itens: ${i.error.message}`,
+          a.error && `aditivos: ${a.error.message}`,
+        ].filter(Boolean).join(' | ');
+        throw new Error(detalhe || 'Erro ao carregar');
+      }
       setContratos(c.data || []);
       setItens((i.data || []).slice().sort((a,b) => (a.ordem||999) - (b.ordem||999)));
       setAditivos(a.data || []);
@@ -697,8 +705,10 @@ function App() {
       if (pf.error) console.error('Tabela "pendencias_fornecedor":', pf.error.message);
       setPendenciasFornecedor(pf.data || []);
       setSyncStatus('ok');
+      setSyncErrorDetail('');
     } catch(e) {
       setSyncStatus('err');
+      setSyncErrorDetail(e?.message || String(e));
       console.error(e);
       // Nova tentativa automática — falhas de conexão costumam ser momentâneas
       // (uma oscilação de rede no celular, por exemplo). Sem isso, o app ficava
@@ -5642,6 +5652,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                 <AlertBox cls="vermelho" icon="fa-triangle-exclamation">
                   <strong>{syncStatus === 'err' ? 'Erro de conexão' : 'Carregando dados...'}</strong> — a lista de itens do sistema ainda não carregou.
                   {syncStatus === 'err' ? ' Verifique sua internet e toque em "Atualizar" no topo da tela antes de escanear — senão nenhuma etiqueta vai ser reconhecida.' : ' Aguarde alguns segundos.'}
+                  {syncStatus === 'err' && syncErrorDetail && <div style={{marginTop:6,fontSize:11,opacity:.8}}>Detalhe técnico: {syncErrorDetail}</div>}
                 </AlertBox>
               )}
               {!scannerModo && (
@@ -6017,7 +6028,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         <div className="topbar">
           <div><h1>{sectionTitles[section]}</h1><p>{UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº {UNIDADE_CONFIG.contratoGestao}</p></div>
           <div className="topbar-right">
-            <div className={`sync-indicator ${syncStatus}`}>
+            <div className={`sync-indicator ${syncStatus}`} onClick={()=>{ if(syncStatus==='err') alert('Detalhe do erro de conexão:\n\n' + (syncErrorDetail||'(sem detalhe)')); }} style={syncStatus==='err'?{cursor:'pointer'}:undefined} title={syncStatus==='err'?'Toque pra ver o detalhe do erro':undefined}>
               {syncStatus==='loading' && <i className="fa-solid fa-rotate spin" />}
               {syncStatus==='ok' && <i className="fa-solid fa-cloud" />}
               {syncStatus==='err' && <i className="fa-solid fa-cloud-xmark" />}
