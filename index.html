@@ -700,6 +700,13 @@ function App() {
     } catch(e) {
       setSyncStatus('err');
       console.error(e);
+      // Nova tentativa automática — falhas de conexão costumam ser momentâneas
+      // (uma oscilação de rede no celular, por exemplo). Sem isso, o app ficava
+      // com a lista de itens vazia até a pessoa notar o selo "Erro de conexão"
+      // no topo e clicar em "Atualizar" manualmente — e enquanto isso, dava pra
+      // entrar no scanner e ele "não achar" absolutamente nenhum item, mesmo
+      // com etiquetas corretas.
+      setTimeout(() => { loadAll(); }, 4000);
     }
   };
 
@@ -5176,6 +5183,20 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     } catch(e) {}
   };
 
+  // Só libera a câmera se os dados já tiverem carregado do banco. Sem essa
+  // checagem, uma falha de conexão silenciosa deixava a lista de itens vazia
+  // e a pessoa conseguia escanear "no vazio" — toda etiqueta, mesmo correta,
+  // dava "não corresponde a nenhum item" sem nenhuma pista do motivo real.
+  const iniciarLeituraSeDadosOk = () => {
+    if (itens.length === 0) {
+      alert(syncStatus === 'err'
+        ? 'Os dados do sistema não carregaram (erro de conexão). Verifique sua internet e toque em "Atualizar" no topo da tela antes de escanear.'
+        : 'Os dados ainda estão carregando. Aguarde alguns segundos e tente de novo.');
+      return;
+    }
+    setScannerAtivo(true);
+  };
+
   const resetScanner = () => {
     setScannerAtivo(false); setScannerModo(null); setItemEscaneado(null);
     setCarrinhoItens([]); setCarrinhoRevisao(false); setUltimoLido(null);
@@ -5617,6 +5638,12 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             <div className="panel-body">
 
               {/* ── ESCOLHA DO MODO ─────────────────────────────────────────── */}
+              {itens.length === 0 && (
+                <AlertBox cls="vermelho" icon="fa-triangle-exclamation">
+                  <strong>{syncStatus === 'err' ? 'Erro de conexão' : 'Carregando dados...'}</strong> — a lista de itens do sistema ainda não carregou.
+                  {syncStatus === 'err' ? ' Verifique sua internet e toque em "Atualizar" no topo da tela antes de escanear — senão nenhuma etiqueta vai ser reconhecida.' : ' Aguarde alguns segundos.'}
+                </AlertBox>
+              )}
               {!scannerModo && (
                 <div style={{display:'flex',gap:14,flexWrap:'wrap'}}>
                   <div style={{flex:'1 1 260px',border:'1px solid var(--border)',borderRadius:10,padding:18,cursor:'pointer'}} onClick={()=>setScannerModo('unico')}>
@@ -5638,7 +5665,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                   <div style={{fontSize:12,color:'var(--text2)',marginBottom:14}}>
                     Aponte a câmera pro QR Code colado no item e registre a entrada ou saída na hora.
                   </div>
-                  <button className="btn btn-primary" onClick={()=>setScannerAtivo(true)}><i className="fa-solid fa-camera"/> Iniciar leitura pela câmera</button>
+                  <button className="btn btn-primary" onClick={iniciarLeituraSeDadosOk}><i className="fa-solid fa-camera"/> Iniciar leitura pela câmera</button>
                 </>
               )}
               {scannerModo === 'unico' && scannerAtivo && !itemEscaneado && (
@@ -5705,7 +5732,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                     {movTipo === 'entrada' && <FG label="Nota fiscal" full><input type="text" value={movNota} onChange={e=>setMovNota(e.target.value)} placeholder="Nº da nota fiscal" /></FG>}
                     <FG label="Observação" full><input type="text" value={movObs} onChange={e=>setMovObs(e.target.value)} placeholder="Opcional, vale pra todo o lote" /></FG>
                   </div>
-                  <button className="btn btn-primary" style={{width:'100%',marginTop:8}} onClick={()=>setScannerAtivo(true)}><i className="fa-solid fa-camera"/> Iniciar leitura em sequência</button>
+                  <button className="btn btn-primary" style={{width:'100%',marginTop:8}} onClick={iniciarLeituraSeDadosOk}><i className="fa-solid fa-camera"/> Iniciar leitura em sequência</button>
                 </div>
               )}
 
