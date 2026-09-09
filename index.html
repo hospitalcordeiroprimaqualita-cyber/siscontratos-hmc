@@ -3146,11 +3146,12 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     let totalGeralTabela = 0;
     if (temLotes) {
       const grupos = [...new Set(itensOrdenados.map(it => nomeGrupo(it) || 'Itens sem lote'))];
-      // Só separa por página quando os grupos realmente correspondem a rubricas
-      // orçamentárias diferentes (ex: A4PM, MLX) — quando é só organização por
-      // lote dentro da MESMA rubrica (ex: CEDI), mantém tudo num documento só.
-      const rubricasDistintas = new Set(itensOrdenados.map(it => it.rubrica).filter(Boolean));
-      const separarPorPagina = rubricasDistintas.size > 1;
+      // Cada lote sempre vai para sua própria página no PDF da medição — mesmo
+      // que os lotes compartilhem a mesma rubrica orçamentária (ex: A4PM, com
+      // "SISTEMA E CONECTIVIDADE" e "EQUIPAMENTOS"). Documento de medição
+      // formal costuma ser conferido/assinado lote a lote, então misturar
+      // lotes diferentes na mesma folha atrapalha essa conferência.
+      const separarPorPagina = grupos.length > 1;
       corpoTabela = grupos.map((grupoNome, idx) => {
         const itensLote = itensOrdenados.filter(it => (nomeGrupo(it) || 'Itens sem lote') === grupoNome);
         let totalLote = 0;
