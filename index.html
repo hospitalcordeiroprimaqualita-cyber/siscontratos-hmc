@@ -3745,7 +3745,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                   setMedicaoItens(preload);
                 }}>
                   <option value="">— Selecione —</option>
-                  {contratos.map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
+                  {contratos.filter(c=>c.status!=='arquivado').map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
                 </select>
               </div>
               <div className="form-group">
