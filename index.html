@@ -1114,20 +1114,30 @@ function App() {
   };
 
   // ─── RENDER SECTIONS ───────────────────────────────────────────────────────
+  // Quantos meses de um contrato já têm medição REGISTRADA (com valor real ou
+  // marcados como "sem medição" justificada) — não quantos meses de calendário
+  // já passaram desde o início. Medição atrasada faz o calendário correr mais
+  // rápido do que o que foi de fato lançado no sistema; usar calendário puro
+  // faria a média de consumo cair artificialmente (dividindo o acumulado real
+  // por meses que ainda nem foram medidos, como se o item não tivesse sido
+  // usado neles). O que importa pra aditivo/supressão é: dos 12 meses de
+  // vigência, quantos já sei o quanto foi consumido, e quantos ainda preciso medir.
+  const mesesMedidosContrato = (c) => {
+    const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
+    const medidos = execucoes.filter(e => e.contrato_id === c.id).length;
+    return Math.max(1, Math.min(mesesTot, medidos));
+  };
+
   // Calcula análise preditiva de UM item (usado tanto no painel quanto na quantidade)
   const calcAnaliseItem = (c, it) => {
     if (!c.inicio || !c.fim) return null;
-    const hoje = new Date();
-    const fimC = new Date(c.fim);
-    const inicioC = new Date(c.inicio);
     // vigencia_meses é a fonte confiável (evita o erro de contar 11 meses em contratos
     // tipo 16/08 a 15/08 do ano seguinte, que por conta de data pura arredonda errado).
     const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
-    // mesesDec e mesesRest são calculados a partir de datas de forma independente e,
-    // sozinhos, podem somar 11 em vez dos 12 de vigencia_meses (perde 1 mês no
-    // arredondamento). Por isso mesesRest é sempre derivado de mesesTot − mesesDec,
-    // garantindo que a soma bata exatamente com a vigência real do contrato.
-    const mesesDec = Math.max(1, Math.min(mesesTot, mesesCalendario(c.inicio, hoje.toISOString())));
+    // mesesDec = meses já medidos (ver mesesMedidosContrato acima). mesesRest é
+    // sempre mesesTot − mesesDec, garantindo que a soma bata exatamente com a
+    // vigência real do contrato: meses já medidos + meses que ainda faltam medir.
+    const mesesDec = mesesMedidosContrato(c);
     const mesesRest = Math.max(0, mesesTot - mesesDec);
     const media = it.qtd_acum/mesesDec;
     const proj = Math.round(media*mesesRest);
@@ -1865,11 +1875,8 @@ function App() {
     // Análise preditiva por item do contrato
     const analiseContrato = () => {
       if (!contrato || !contrato.inicio || !contrato.fim || !lista.length) return null;
-      const hoje = new Date();
-      const fimC = new Date(contrato.fim);
-      const inicioC = new Date(contrato.inicio);
       const mesesTot = contrato.vigencia_meses || mesesCalendario(contrato.inicio, contrato.fim);
-      const mesesDec = Math.max(1, Math.min(mesesTot, mesesCalendario(contrato.inicio, hoje.toISOString())));
+      const mesesDec = mesesMedidosContrato(contrato);
       const mesesRest = Math.max(0, mesesTot - mesesDec);
       const analise = lista.map(it => {
         const media = it.qtd_acum/mesesDec;
@@ -1899,7 +1906,7 @@ function App() {
           </div>
           <div className="panel-body" style={{paddingBottom:6}}>
             <div style={{fontSize:11.5,color:'var(--text2)',marginBottom:10,padding:'8px 10px',background:'var(--gray)',borderRadius:6}}>
-              <strong style={{color:'var(--text)'}}>Base do cálculo:</strong> média real de {mesesDec} meses decorridos · {mesesRest} meses restantes até {fmtD(contrato.fim)} · total contratual calculado por item
+              <strong style={{color:'var(--text)'}}>Base do cálculo:</strong> média real de {mesesDec} meses já medidos · {mesesRest} meses ainda por medir até {fmtD(contrato.fim)} · total contratual calculado por item
             </div>
             <div className="tbl-wrap">
               <table>
@@ -2318,7 +2325,7 @@ function App() {
       <div class="info">
         <strong>Contrato:</strong> ${contrato.numero} &nbsp;&nbsp; <strong>Data:</strong> ${hoje.toLocaleDateString('pt-BR')}<br/>
         <strong>Empresa:</strong> ${contrato.empresa}<br/>
-        <strong>Vigência:</strong> ${contrato.inicio?new Date(contrato.inicio+'T00:00:00').toLocaleDateString('pt-BR'):'—'} a ${contrato.fim?new Date(contrato.fim+'T00:00:00').toLocaleDateString('pt-BR'):'—'}${mesesTotContrato?` (${mesesTotContrato} meses — ${mesesDecContrato} decorridos, ${mesesRestContrato} restantes)`:''}<br/>
+        <strong>Vigência:</strong> ${contrato.inicio?new Date(contrato.inicio+'T00:00:00').toLocaleDateString('pt-BR'):'—'} a ${contrato.fim?new Date(contrato.fim+'T00:00:00').toLocaleDateString('pt-BR'):'—'}${mesesTotContrato?` (${mesesTotContrato} meses — ${mesesDecContrato} já medidos, ${mesesRestContrato} ainda por medir)`:''}<br/>
         <strong>Fiscal do contrato:</strong> ${contrato.fiscal || UNIDADE_CONFIG.fiscalPadrao} &nbsp;&nbsp; <strong>Gestor do contrato:</strong> ${contrato.gestor || UNIDADE_CONFIG.gestorPadrao}
       </div>
       <div class="obs">
@@ -3005,11 +3012,17 @@ function App() {
     setRadiocomRows(prev => ({ ...prev, [itemId]: (prev[itemId]||[]).filter(r => r.uid !== rowUid) }));
   };
 
+  const numeroBase = (numero) => {
+    const m = (numero||'').match(/^(.*?)(?:\s+\d+º\s*TA)?$/i);
+    return (m && m[1] ? m[1] : numero || '').trim();
+  };
+
   const tipoContrato = (numero) => {
-    if(['019/2024'].includes(numero)) return 'exames_lote';
-    if(['008/2024','008/2024 2º TA'].includes(numero)) return 'esterilizacao';
-    if(['002/2024','002/2024 1º TA'].includes(numero)) return 'medicos';
-    if(['016/2024','016/2024 1º TA'].includes(numero)) return 'medicos';
+    const base = numeroBase(numero);
+    if(['019/2024'].includes(base)) return 'exames_lote';
+    if(['008/2024'].includes(base)) return 'esterilizacao';
+    if(['002/2024'].includes(base)) return 'medicos';
+    if(['016/2024'].includes(base)) return 'medicos';
     return 'fixo'; // A4PM, Labtec, LS Toledo e demais
   };
 
@@ -3824,8 +3837,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
     const analiseItens = itensC.map(it => ({ it, a: calcAnaliseItem(c, it) })).filter(x => x.a);
     const mesesTot = analiseItens[0]?.a.mesesTot || c.vigencia_meses || 12;
-    const mesesDec = analiseItens[0]?.a.mesesDec || 1;
-    const mesesRest = analiseItens[0]?.a.mesesRest ?? Math.max(0, mesesTot-mesesDec);
+    // Aqui (diferente do cálculo de aditivo/supressão) o que importa pro financeiro
+    // é o calendário de verdade — quantos meses de vigência já passaram e quantos
+    // ainda restam até o contrato acabar, não quantos meses já foram medidos.
+    const mesesDec = c.inicio ? Math.max(1, Math.min(mesesTot, mesesCalendario(c.inicio, new Date().toISOString()))) : 1;
+    const mesesRest = Math.max(0, mesesTot - mesesDec);
 
     const valorTotal = c.vlr_total || 0;
     const valorExecAcum = c.consumo_acum || 0;
@@ -5906,14 +5922,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
   // ─── ANÁLISE PREDITIVA ──────────────────────────────────────────────────
   const renderPreditiva = () => {
-    const hoje = new Date();
     const analise = [];
     contratos.forEach(c => {
       if(!c.inicio||!c.fim) return;
-      const fimC = new Date(c.fim);
-      const inicioC = new Date(c.inicio);
       const mesesTot = c.vigencia_meses || mesesCalendario(c.inicio, c.fim);
-      const mesesDec = Math.max(1, Math.min(mesesTot, mesesCalendario(c.inicio, hoje.toISOString())));
+      const mesesDec = mesesMedidosContrato(c);
       const mesesRest = Math.max(0, mesesTot - mesesDec);
       itens.filter(i=>i.contrato_id===c.id).forEach(it=>{
         const media = it.qtd_acum/mesesDec;
