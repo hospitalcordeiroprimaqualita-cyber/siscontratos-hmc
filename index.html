@@ -2749,7 +2749,7 @@ function App() {
     if (!modal) return null;
     const { tipo, id } = modal;
     const ro = tipo === 'ver';
-    const cOpts = contratos.map(c => ({ v: c.id, l: `${c.numero} · ${c.empresa.substring(0,26)}` }));
+    const cOpts = contratos.slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c => ({ v: c.id, l: `${c.numero} · ${c.empresa.substring(0,26)}` }));
 
     if (tipo === 'novo' || tipo === 'editar' || tipo === 'ver') return (
       <>
@@ -2913,7 +2913,7 @@ function App() {
             <FG label="Contrato *" full>
               <select defaultValue={fv('contrato_id')} onChange={e=>sf('contrato_id',e.target.value)} disabled={!!modal.id}>
                 <option value="">— Selecione —</option>
-                {contratos.map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,40)}</option>)}
+                {contratos.slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,40)}</option>)}
               </select>
             </FG>
             <FG label="Mês de referência *"><FI k="mes_referencia" type="month" /></FG>
@@ -3745,7 +3745,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                   setMedicaoItens(preload);
                 }}>
                   <option value="">— Selecione —</option>
-                  {contratos.filter(c=>c.status!=='arquivado').map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
+                  {contratos.filter(c=>c.status!=='arquivado').slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -4066,7 +4066,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           <div className="panel-body">
             <select className="sel-contract" style={{margin:0}} value={historicoContrato} onChange={e=>{ setHistoricoContrato(e.target.value); setMesExpandido(null); }}>
               <option value="">— Todos os contratos —</option>
-              {contratos.map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,34)}</option>)}
+              {contratos.slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,34)}</option>)}
             </select>
           </div>
         </div>
@@ -5082,7 +5082,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                 <label>Contrato de fornecimento</label>
                 <select className="sel-contract" style={{margin:0}} value={pedidoContrato} onChange={e=>setPedidoContrato(e.target.value)}>
                   <option value="">— Selecione —</option>
-                  {contratos.map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
+                  {contratos.slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -6083,7 +6083,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             <>
               <select className="sel-contract" value={selFin} onChange={e => setSelFin(e.target.value)}>
                 <option value="">— Selecione um contrato —</option>
-                {contratos.map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa.substring(0,34)}</option>)}
+                {contratos.slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa.substring(0,34)}</option>)}
               </select>
               {selFin && renderFinanceiro()}
             </>
@@ -6092,7 +6092,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             <>
               <select className="sel-contract" value={selQtd} onChange={e => setSelQtd(e.target.value)}>
                 <option value="">— Selecione um contrato —</option>
-                {contratos.map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa.substring(0,34)}</option>)}
+                {contratos.slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c => <option key={c.id} value={c.id}>{c.numero} · {c.empresa.substring(0,34)}</option>)}
               </select>
               {selQtd && renderQuantidade()}
             </>
