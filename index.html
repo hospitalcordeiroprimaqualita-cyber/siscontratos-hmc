@@ -669,7 +669,7 @@ function App() {
         promessa,
         new Promise((_, reject) => setTimeout(() => reject(new Error('Tempo esgotado (15s) — verifique a URL do Supabase configurada')), 15000))
       ]);
-      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg, pf] = await comTimeout(Promise.all([
+      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg, pf, pci, pce] = await comTimeout(Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         fetchAllRows('itens', 'created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
@@ -682,7 +682,9 @@ function App() {
         sb().from('investimento_pagamentos').select('*').order('data'),
         fetchAllRows('estoque_movimentacoes', 'created_at', false),
         sb().from('pedidos_gerados').select('*').order('gerado_em', {ascending:false}),
-        sb().from('pendencias_fornecedor').select('*').order('created_at', {ascending:false})
+        sb().from('pendencias_fornecedor').select('*').order('created_at', {ascending:false}),
+        sb().from('pedidos_compra_itens').select('*'),
+        sb().from('pedidos_compra_eventos').select('*').order('created_at')
       ]));
       if (c.error || i.error || a.error) {
         const detalhe = [
@@ -713,6 +715,10 @@ function App() {
       setPedidosGerados(pg.data || []);
       if (pf.error) console.error('Tabela "pendencias_fornecedor":', pf.error.message);
       setPendenciasFornecedor(pf.data || []);
+      if (pci.error) console.error('Tabela "pedidos_compra_itens":', pci.error.message);
+      setPedidosCompraItens(pci.data || []);
+      if (pce.error) console.error('Tabela "pedidos_compra_eventos":', pce.error.message);
+      setPedidosCompraEventos(pce.data || []);
       setSyncStatus('ok');
       setSyncErrorDetail('');
     } catch(e) {
@@ -1113,6 +1119,60 @@ function App() {
     await loadAll();
   };
 
+  // ─── ACOMPANHAMENTO DE PEDIDOS DE COMPRA (linha do tempo de entrega) ────
+  // Status é sempre CALCULADO a partir das quantidades entregues — nunca fica
+  // dessincronizado de um campo "status" solto que alguém esqueceu de atualizar.
+  const statusPedidoCompra = (pedidoId) => {
+    const p = pedidosGerados.find(x => x.id === pedidoId);
+    if (p?.cancelado) return 'cancelado';
+    const its = pedidosCompraItens.filter(i => i.pedido_id === pedidoId);
+    if (!its.length) return 'aberto';
+    const totalSolicitado = its.reduce((a,i)=>a+(parseFloat(i.qtd_solicitada)||0),0);
+    const totalEntregue = its.reduce((a,i)=>a+Math.min(parseFloat(i.qtd_entregue)||0, parseFloat(i.qtd_solicitada)||0),0);
+    if (totalEntregue <= 0) return 'aberto';
+    if (totalEntregue >= totalSolicitado) return 'concluido';
+    return 'parcial';
+  };
+
+  const STATUS_PEDIDO_INFO = {
+    aberto:    { label:'Aguardando entrega', cor:'#8A96A3', icon:'fa-clock' },
+    parcial:   { label:'Entrega parcial', cor:'#f59e0b', icon:'fa-truck-ramp-box' },
+    concluido: { label:'Concluído', cor:'#22c55e', icon:'fa-circle-check' },
+    cancelado: { label:'Cancelado', cor:'#ef4444', icon:'fa-ban' },
+  };
+
+  const registrarEventoPedido = async (pedidoId, tipo, descricao) => {
+    const { error } = await sb().from('pedidos_compra_eventos').insert({
+      id: uid('PCE'), pedido_id: pedidoId, tipo, descricao, created_at: new Date().toISOString()
+    });
+    if (error) { alert('Erro ao registrar evento: ' + error.message); return; }
+    await loadAll();
+  };
+
+  const confirmarEntregaItem = async (pedidoId, itemPedido, novaQtd) => {
+    const qtd = parseFloat(novaQtd);
+    if (isNaN(qtd) || qtd < 0) { alert('Quantidade inválida.'); return; }
+    setSaving(true);
+    const { error } = await sb().from('pedidos_compra_itens').update({ qtd_entregue: qtd }).eq('id', itemPedido.id);
+    if (error) { setSaving(false); alert('Erro ao registrar entrega: ' + error.message); return; }
+    const solicitado = parseFloat(itemPedido.qtd_solicitada||0);
+    const completo = qtd >= solicitado;
+    await sb().from('pedidos_compra_eventos').insert({
+      id: uid('PCE'), pedido_id: pedidoId, tipo: completo ? 'entrega_total' : 'entrega_parcial',
+      descricao: `${itemPedido.item_nome}: ${qtd} de ${solicitado} ${itemPedido.unidade||''} entregue${completo ? '' : ' — falta ' + (solicitado - qtd)}`,
+      created_at: new Date().toISOString()
+    });
+    setSaving(false);
+    await loadAll();
+  };
+
+  const cancelarPedidoCompra = async (pedidoId) => {
+    if (!confirm('Cancelar este pedido? Ele sai da lista de pendências da Início.')) return;
+    const { error } = await sb().from('pedidos_gerados').update({ cancelado: true }).eq('id', pedidoId);
+    if (error) { alert('Erro: ' + error.message); return; }
+    await registrarEventoPedido(pedidoId, 'cancelado', 'Pedido cancelado.');
+  };
+
   // ─── RENDER SECTIONS ───────────────────────────────────────────────────────
   // Quantos meses de um contrato já têm medição REGISTRADA (com valor real ou
   // marcados como "sem medição" justificada) — não quantos meses de calendário
@@ -1267,6 +1327,21 @@ function App() {
         titulo:`Repor estoque no almoxarifado`, subtitulo:`${itensBaixo.length} ${itensBaixo.length===1?'item':'itens'} no mínimo ou abaixo`,
         onClick:()=>{ setSection('almoxarifado'); setAlmoxTab('reposicao'); } });
     }
+
+    // 6) Pedidos de compra ainda não totalmente entregues (aguardando ou com entrega parcial há 3+ dias)
+    pedidosGerados.filter(p => !p.cancelado).forEach(p => {
+      const status = statusPedidoCompra(p.id);
+      if (status !== 'aberto' && status !== 'parcial') return;
+      const diasPedido = Math.max(0, Math.floor((Date.now() - new Date(p.gerado_em).getTime()) / 86400000));
+      if (diasPedido < 3) return;
+      const cp = contratos.find(x => x.id === p.contrato_id);
+      const its = pedidosCompraItens.filter(i => i.pedido_id === p.id);
+      const entregues = its.filter(i => parseFloat(i.qtd_entregue||0) >= parseFloat(i.qtd_solicitada||0)).length;
+      tarefas.push({ id:'pedido_'+p.id, prioridade: diasPedido>=10?'urgente':'atencao', icon:'fa-truck-fast',
+        titulo:`Acompanhar pedido de compra — ${cp?.numero||''}`,
+        subtitulo:`${(cp?.empresa||'').substring(0,40)} · ${its.length?`${entregues} de ${its.length} itens entregues`:'aguardando entrega'} · há ${diasPedido} dias`,
+        onClick:()=>{ setSection('pedido'); openModal('acompanhar-pedido', p.id); } });
+    });
 
     const ordem = { urgente:0, atencao:1, info:2 };
     return tarefas.sort((a,b) => ordem[a.prioridade]-ordem[b.prioridade]);
@@ -2751,6 +2826,82 @@ function App() {
     const ro = tipo === 'ver';
     const cOpts = contratos.slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c => ({ v: c.id, l: `${c.numero} · ${c.empresa.substring(0,26)}` }));
 
+    if (tipo === 'acompanhar-pedido') {
+      const p = pedidosGerados.find(x => x.id === id);
+      if (!p) return <div className="empty">Pedido não encontrado.</div>;
+      const cp = contratos.find(x => x.id === p.contrato_id);
+      const itensPedido = pedidosCompraItens.filter(i => i.pedido_id === id);
+      const eventos = pedidosCompraEventos.filter(e => e.pedido_id === id).slice().sort((a,b)=> new Date(a.created_at)-new Date(b.created_at));
+      const status = statusPedidoCompra(id);
+      const info = STATUS_PEDIDO_INFO[status];
+      const bloqueado = status === 'cancelado';
+
+      return (
+        <>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:14}}>{cp?.numero||'—'} · {cp?.empresa||''}</div>
+              <div style={{fontSize:12,color:'var(--text2)'}}>Gerado em {fmtD(p.gerado_em)} · {mesToPT(p.mes_referencia)} · Total estimado {brl(p.total_estimado||0)}</div>
+            </div>
+            <span className="badge" style={{background:info.cor+'18',color:info.cor,fontWeight:700,whiteSpace:'nowrap'}}><i className={`fa-solid ${info.icon}`}/> {info.label}</span>
+          </div>
+
+          <div className="sec-label" style={{marginBottom:8}}>Itens do pedido</div>
+          <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>
+            {itensPedido.length === 0 && <div className="empty">Nenhum item registrado para este pedido.</div>}
+            {itensPedido.map(it => {
+              const completo = parseFloat(it.qtd_entregue||0) >= parseFloat(it.qtd_solicitada||0);
+              return (
+                <div key={it.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 11px',border:'1px solid var(--gray-b)',borderRadius:8,background: completo?'#F0FBF4':'#fff'}}>
+                  <i className={`fa-solid ${completo?'fa-circle-check':'fa-circle-dashed'}`} style={{color: completo?'#22c55e':'var(--text3)',fontSize:15}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12.5,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item_nome}</div>
+                    <div style={{fontSize:11,color:'var(--text2)'}}>Solicitado: {it.qtd_solicitada} {it.unidade||''} · Entregue: {it.qtd_entregue||0} {it.unidade||''}</div>
+                  </div>
+                  <input type="number" min="0" defaultValue={it.qtd_entregue||0} id={`ent_${it.id}`} disabled={bloqueado}
+                    style={{width:76,padding:'5px 6px',border:'1px solid var(--gray-b)',borderRadius:4,fontSize:12,textAlign:'center'}} />
+                  <button className="btn btn-secondary btn-sm" disabled={bloqueado||saving}
+                    onClick={()=>{ const v = document.getElementById(`ent_${it.id}`).value; confirmarEntregaItem(id, it, v); }}>
+                    Registrar
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="sec-label" style={{marginBottom:10}}>Linha do tempo</div>
+          <div style={{display:'flex',flexDirection:'column',marginBottom:bloqueado?4:16}}>
+            {eventos.length === 0 && <div className="empty">Sem eventos registrados.</div>}
+            {eventos.map((ev,i) => (
+              <div key={ev.id} style={{display:'flex',gap:12}}>
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',width:10}}>
+                  <div style={{width:10,height:10,borderRadius:'50%',background:'var(--teal)',marginTop:4,flexShrink:0}}/>
+                  {i < eventos.length-1 && <div style={{width:2,flex:1,background:'var(--gray-b)'}}/>}
+                </div>
+                <div style={{paddingBottom:16}}>
+                  <div style={{fontSize:12.5,fontWeight:600}}>{ev.descricao}</div>
+                  <div style={{fontSize:11,color:'var(--text2)'}}>{new Date(ev.created_at).toLocaleString('pt-BR')}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {!bloqueado && status !== 'concluido' && (
+            <div style={{display:'flex',gap:8,marginTop:4}}>
+              <input id="obs-pedido-livre" placeholder="Anotar uma pendência (ex: fornecedor sem previsão de entrega)" style={{flex:1,padding:'7px 10px',border:'1px solid var(--gray-b)',borderRadius:6,fontSize:12.5}} />
+              <button className="btn btn-secondary btn-sm" onClick={()=>{
+                const v = document.getElementById('obs-pedido-livre').value;
+                if (!v.trim()) return;
+                registrarEventoPedido(id, 'pendencia', v.trim());
+                document.getElementById('obs-pedido-livre').value = '';
+              }}>Anotar</button>
+              <button className="btn btn-secondary btn-sm" style={{color:'#ef4444'}} onClick={()=>cancelarPedidoCompra(id)}>Cancelar pedido</button>
+            </div>
+          )}
+        </>
+      );
+    }
+
     if (tipo === 'novo' || tipo === 'editar' || tipo === 'ver') return (
       <>
         <div className="form-row"><div className="sec-label">Identificação</div></div>
@@ -2971,6 +3122,7 @@ function App() {
     'reordenar-itens': { title:'Reordenar itens do contrato', icon:'fa-arrow-down-up-across-line', onSave: salvarOrdemItens },
     pendencia: { title:'Novo recado — pendência com fornecedor', icon:'fa-note-sticky', onSave: salvarPendencia },
     'editar-pendencia': { title:'Editar recado', icon:'fa-note-sticky', onSave: salvarPendencia },
+    'acompanhar-pedido': { title:'Acompanhamento do pedido', icon:'fa-truck-fast', onSave: null },
   };
 
   // ─── MEDIÇÕES MENSAIS ────────────────────────────────────────────────────
@@ -4311,6 +4463,9 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   const [pedidoQtds, setPedidoQtds] = React.useState({}); // { [item_id]: quantidade a pedir }
   const [pedidoBase, setPedidoBase] = React.useState('media'); // 'media' | 'contratado'
   const [enviandoPedidoWhats, setEnviandoPedidoWhats] = React.useState(false);
+  // ─── ACOMPANHAMENTO DE PEDIDOS DE COMPRA (linha do tempo de entrega) ────
+  const [pedidosCompraItens, setPedidosCompraItens] = React.useState([]);
+  const [pedidosCompraEventos, setPedidosCompraEventos] = React.useState([]);
 
   useEffect(() => {
     if (!pedidoContrato) { setPedidoQtds({}); return; }
@@ -4968,10 +5123,27 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     setTimeout(() => { janela.focus(); janela.print(); }, 400);
 
     const mesRef = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+    const pedidoId = uid('PED');
+    const itensComQtd = itensDoContrato.filter(it => parseFloat(pedidoQtds[it.id]||0) > 0);
     sb().from('pedidos_gerados').insert({
-      id: uid('PED'), contrato_id: pedidoContrato, mes_referencia: mesRef,
+      id: pedidoId, contrato_id: pedidoContrato, mes_referencia: mesRef,
       total_estimado: totalGeral, gerado_em: new Date().toISOString()
-    }).then(({error}) => { if (!error) loadAll(); });
+    }).then(async ({error}) => {
+      if (error) return;
+      if (itensComQtd.length) {
+        await sb().from('pedidos_compra_itens').insert(itensComQtd.map(it => ({
+          id: uid('PCI'), pedido_id: pedidoId, item_id: it.id, item_nome: it.item,
+          unidade: it.unit, qtd_solicitada: parseFloat(pedidoQtds[it.id]||0), qtd_entregue: 0,
+          created_at: new Date().toISOString()
+        })));
+      }
+      await sb().from('pedidos_compra_eventos').insert({
+        id: uid('PCE'), pedido_id: pedidoId, tipo: 'gerado',
+        descricao: `Pedido gerado e enviado ao fornecedor (${itensComQtd.length} ${itensComQtd.length===1?'item':'itens'}).`,
+        created_at: new Date().toISOString()
+      });
+      loadAll();
+    });
 
     // Pré-preenche a medição deste mês com as mesmas quantidades sugeridas no pedido,
     // pra você só conferir e salvar em vez de digitar tudo de novo. Só entra em contratos
@@ -5170,6 +5342,42 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             <div className="empty"><i className="fa-solid fa-cart-shopping" style={{color:'var(--teal)'}}/>Selecione um contrato acima para montar o pedido de compra.</div>
           </div></div>
         )}
+
+        {(() => {
+          const lista = pedidosGerados.slice().sort((a,b)=> new Date(b.gerado_em)-new Date(a.gerado_em));
+          return (
+            <div className="panel" style={{marginTop:20}}>
+              <div className="panel-head"><h2><i className="fa-solid fa-truck-fast"/> Acompanhamento de pedidos</h2></div>
+              <div className="panel-body">
+                {lista.length === 0 ? (
+                  <div className="empty"><i className="fa-solid fa-truck-fast"/>Nenhum pedido gerado ainda.</div>
+                ) : (
+                  <div className="tbl-wrap">
+                    <table>
+                      <thead><tr><th>Contrato</th><th>Gerado em</th><th>Itens entregues</th><th>Status</th><th></th></tr></thead>
+                      <tbody>{lista.map(p => {
+                        const cp = contratos.find(x => x.id === p.contrato_id);
+                        const its = pedidosCompraItens.filter(i => i.pedido_id === p.id);
+                        const entregues = its.filter(i => parseFloat(i.qtd_entregue||0) >= parseFloat(i.qtd_solicitada||0)).length;
+                        const status = statusPedidoCompra(p.id);
+                        const info = STATUS_PEDIDO_INFO[status];
+                        return (
+                          <tr key={p.id} style={{cursor:'pointer'}} onClick={()=>openModal('acompanhar-pedido', p.id)}>
+                            <td>{cp?.numero||'—'} <span className="cell-m">· {(cp?.empresa||'').substring(0,28)}</span></td>
+                            <td className="cell-m">{fmtD(p.gerado_em)}</td>
+                            <td className="cell-m">{its.length ? `${entregues} de ${its.length}` : '—'}</td>
+                            <td><span className="badge" style={{background:info.cor+'18',color:info.cor,fontWeight:700}}><i className={`fa-solid ${info.icon}`}/> {info.label}</span></td>
+                            <td><ActBtn icon="fa-eye" onClick={()=>openModal('acompanhar-pedido', p.id)} title="Ver linha do tempo" /></td>
+                          </tr>
+                        );
+                      })}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </>
     );
   };
@@ -6137,7 +6345,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
       {modal && (
         <Modal
-          title={modal.tipo==='editar'?`Editar — ${contratos.find(x=>x.id===modal.id)?.numero||''}`:modalConfig[modal.tipo]?.title}
+          title={
+            modal.tipo==='editar' ? `Editar — ${contratos.find(x=>x.id===modal.id)?.numero||''}` :
+            modal.tipo==='acompanhar-pedido' ? `Acompanhamento — ${contratos.find(x=>x.id===pedidosGerados.find(p=>p.id===modal.id)?.contrato_id)?.numero||''}` :
+            modalConfig[modal.tipo]?.title
+          }
           icon={modalConfig[modal.tipo]?.icon||'fa-file'}
           onClose={closeModal}
           footer={
