@@ -3156,17 +3156,6 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     };
     const headerLinha = `<tr><th>ITEM</th><th>DESCRIÇÃO</th><th>UNID.</th><th>QTD CONTRATADA/MÊS</th><th>VALOR UNITÁRIO</th><th>QUANTIDADE MÊS</th><th>TOTAL MÊS</th></tr>`;
 
-    // Cabeçalho leve pra continuação nas páginas dos lotes seguintes — evita
-    // repetir logo grande + caixa de título + bloco de info inteiro a cada
-    // lote novo, que é o que deixava a paginação pesada em contratos com
-    // vários lotes.
-    const cabecalhoContinuacao = (numMedicao) => `
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0F6E56;padding-bottom:8px;margin-bottom:12px;font-size:10px;color:#333;">
-        <strong style="font-size:11px;color:#000;">${c.numero} · ${c.empresa}</strong>
-        <span>${numMedicao}ª Medição — ${mesRef} (continuação)</span>
-      </div>
-    `;
-
     let totalGeralTabela = 0;
     if (temLotes) {
       const grupos = [...new Set(itensOrdenados.map(it => nomeGrupo(it) || 'Itens sem lote'))];
@@ -3183,7 +3172,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         const linhas = itensLote.map(it => { const r = linhaItem(it); totalLote += r.total; return r.html; }).join('');
         totalGeralTabela += totalLote;
         totaisPorLote.push({ nome: grupoNome, total: totalLote });
-        const quebraDePagina = (separarPorPagina && idx > 0) ? `<div style="page-break-before: always; break-before: page;"></div>${cabecalhoContinuacao(medicaoNumMedicao||'__')}` : '';
+        const quebraDePagina = (separarPorPagina && idx > 0) ? `<div style="page-break-before: always; break-before: page;"></div>${cabecalho(medicaoNumMedicao||'__')}` : '';
         return `${quebraDePagina}
           <div class="lote-titulo">${grupoNome}</div>
           <table><thead>${headerLinha}</thead><tbody>${linhas}
