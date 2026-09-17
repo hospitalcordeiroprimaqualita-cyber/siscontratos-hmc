@@ -12,6 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1179,6 +1180,181 @@ function App() {
     const { error } = await sb().from('pedidos_gerados').update({ cancelado: true }).eq('id', pedidoId);
     if (error) { alert('Erro: ' + error.message); return; }
     await registrarEventoPedido(pedidoId, 'cancelado', 'Pedido cancelado.');
+  };
+
+  // ─── IMPORTAÇÃO DE HISTÓRICO DE PEDIDOS A PARTIR DE PLANILHA EXCEL ──────
+  // Cada aba da planilha (modelo real: uma aba por mês/pedido, com um
+  // cabeçalho ITEM/CÓD/DESCRIÇÃO/UNID/MARCA/V.UNIT./PEDIDO/VALOR seguido das
+  // linhas de item e terminando em "VALOR TOTAL") é tratada como UM pedido
+  // histórico. Abas que não têm exatamente UMA coluna começando com "PEDIDO"
+  // são ignoradas de propósito — cobre tanto abas de catálogo/controle (0
+  // colunas de pedido) quanto planilhas "mestre" com um pedido por par de
+  // colunas (várias colunas de pedido), que são mais arriscadas de separar
+  // automaticamente do que vale a pena — melhor importar pelas abas
+  // individuais de cada pedido, que são bem mais confiáveis de ler.
+  const normTxt = (s) => (s==null?'':String(s)).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+
+  const scoreParecido = (a, b) => {
+    const wa = normTxt(a).split(/[^a-z0-9]+/).filter(w=>w.length>2);
+    const wb = new Set(normTxt(b).split(/[^a-z0-9]+/).filter(w=>w.length>2));
+    if (!wa.length || !wb.size) return 0;
+    const bateu = wa.filter(w=>wb.has(w)).length;
+    return bateu / wa.length;
+  };
+
+  const melhorItemCorrespondente = (descPlanilha) => {
+    let melhor = null, melhorScore = 0;
+    itensDoContratoImport.forEach(it => {
+      const s = scoreParecido(descPlanilha, it.item);
+      if (s > melhorScore) { melhorScore = s; melhor = it; }
+    });
+    return melhorScore >= 0.4 ? melhor : null;
+  };
+
+  // Guardado à parte (fora da função de parse) pra melhorItemCorrespondente
+  // conseguir acessar os itens do contrato selecionado no momento da leitura.
+  let itensDoContratoImport = [];
+
+  const extrairDataDoLabel = (label) => {
+    // Prioriza um INTERVALO (pega a data final) — comum nas abas de "MEDIÇÃO":
+    // "01/03/2026 Á 31/03/2026" → 31/03/2026. O separador do meio usa [^\d]
+    // (não "."), senão o regex greedy pode "roubar" um dígito da segunda data
+    // (ex: ler 30/04 como dia "0" em vez de "30").
+    const intervalo = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})[^\d]{1,8}(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(label);
+    if (intervalo) {
+      const [,,,,d,m,a] = intervalo;
+      const ano = a.length===2 ? '20'+a : a;
+      return `${ano}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    }
+    const unica = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(label);
+    if (unica) {
+      const [,d,m,a] = unica;
+      const ano = a.length===2 ? '20'+a : a;
+      return `${ano}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    }
+    return ''; // dia/mês sem ano, ou nenhuma data — fica em branco pra revisão manual
+  };
+
+  const processarPlanilhaImportacao = async (file) => {
+    if (!pedidoContrato) { alert('Selecione um contrato antes de importar.'); return; }
+    itensDoContratoImport = itens.filter(i => i.contrato_id === pedidoContrato);
+    setImportProcessando(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      const detectados = [];
+      const ignoradas = [];
+
+      wb.SheetNames.forEach(sheetName => {
+        const ws = wb.Sheets[sheetName];
+        const linhas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+
+        let headerIdx = -1;
+        for (let r = 0; r < linhas.length; r++) {
+          if ((linhas[r]||[]).some(cel => normTxt(cel) === 'descricao')) { headerIdx = r; break; }
+        }
+        if (headerIdx === -1) { ignoradas.push({ aba: sheetName, motivo: 'não encontrei uma tabela de itens (coluna "DESCRIÇÃO")' }); return; }
+
+        const header = linhas[headerIdx];
+        const idxDe = (pred) => header.findIndex(c => pred(normTxt(c)));
+        const descIdx = idxDe(c => c === 'descricao');
+        const unidIdx = idxDe(c => c === 'unid' || c === 'unidade');
+        const vUnitIdx = idxDe(c => c.includes('unit'));
+        const pedidoIdxs = header.map((c,i)=>({c:normTxt(c),i})).filter(x=>x.c.startsWith('pedido')).map(x=>x.i);
+        if (pedidoIdxs.length !== 1) {
+          ignoradas.push({ aba: sheetName, motivo: pedidoIdxs.length===0 ? 'não encontrei coluna de quantidade pedida ("PEDIDO")' : 'parece uma planilha-mestre com vários pedidos na mesma aba — importe pelas abas individuais de cada pedido' });
+          return;
+        }
+        const pedidoIdx = pedidoIdxs[0];
+        let valorIdx = header.findIndex((c,i) => i>pedidoIdx && (normTxt(c).startsWith('valor') || normTxt(c)==='v.total'));
+        if (valorIdx === -1) valorIdx = pedidoIdx+1;
+
+        // Label do pedido: primeira linha de texto não-vazia acima do cabeçalho
+        // que não seja Contrato/Empresa/CNPJ/Representante/Processo interno.
+        let label = sheetName;
+        for (let r = headerIdx-1; r >= Math.max(0, headerIdx-8); r--) {
+          const v = (linhas[r]||[]).find(c => c!=null && String(c).trim()!=='');
+          if (v && !/contrato:|empresa:|cnpj:|representante|processo interno/i.test(String(v))) { label = String(v).trim(); break; }
+        }
+        const dataPedido = extrairDataDoLabel(label);
+
+        const itensPedido = [];
+        for (let r = headerIdx+1; r < linhas.length; r++) {
+          const row = linhas[r] || [];
+          const desc = row[descIdx];
+          if (desc == null || String(desc).trim()==='') continue;
+          if (normTxt(desc) === 'valor total' || normTxt(desc) === 'total') break;
+          const qtd = parseFloat(row[pedidoIdx]);
+          if (!qtd || qtd <= 0) continue;
+          const vUnit = parseFloat(row[vUnitIdx]) || 0;
+          const valorCel = parseFloat(row[valorIdx]);
+          const valor = isNaN(valorCel) ? qtd*vUnit : valorCel;
+          const match = melhorItemCorrespondente(desc);
+          itensPedido.push({
+            key: uid('IMPIT'), descPlanilha: String(desc).trim(),
+            unidadePlanilha: unidIdx>=0 ? (row[unidIdx]||'') : '',
+            qtd, vUnit, valor, itemId: match ? match.id : '', incluir: true
+          });
+        }
+        if (!itensPedido.length) { ignoradas.push({ aba: sheetName, motivo: 'nenhum item com quantidade pedida > 0 nesta aba' }); return; }
+
+        detectados.push({
+          key: uid('IMPPED'), aba: sheetName, label, dataPedido, incluir: true,
+          totalPlanilha: itensPedido.reduce((s,i)=>s+i.valor,0), itens: itensPedido
+        });
+      });
+
+      setImportPedidos(detectados);
+      setImportIgnoradas(ignoradas);
+      setImportProcessando(false);
+      if (!detectados.length) alert('Não encontrei nenhuma aba com o formato de pedido esperado (cabeçalho com ITEM/DESCRIÇÃO/UNID/PEDIDO/VALOR).');
+    } catch (e) {
+      setImportProcessando(false);
+      alert('Erro ao ler a planilha: ' + e.message);
+    }
+  };
+
+  const confirmarImportacaoHistorico = async () => {
+    const selecionados = importPedidos.filter(p => p.incluir);
+    if (!selecionados.length) { alert('Nenhum pedido selecionado pra importar.'); return; }
+    const semData = selecionados.find(p => !p.dataPedido);
+    if (semData) { alert(`O pedido "${semData.label}" está sem data definida — preencha a data antes de importar.`); return; }
+    setImportando(true);
+    try {
+      for (const p of selecionados) {
+        const itensIncluidos = p.itens.filter(i => i.incluir && i.itemId);
+        const pedidoId = uid('PED');
+        const mesRef = p.dataPedido.substring(0,7);
+        const total = itensIncluidos.reduce((s,i)=>s+i.valor,0);
+        const { error: errP } = await sb().from('pedidos_gerados').insert({
+          id: pedidoId, contrato_id: pedidoContrato, mes_referencia: mesRef,
+          total_estimado: total, gerado_em: p.dataPedido+'T12:00:00.000Z'
+        });
+        if (errP) throw new Error(`Pedido "${p.label}": ${errP.message}`);
+        if (itensIncluidos.length) {
+          const { error: errI } = await sb().from('pedidos_compra_itens').insert(itensIncluidos.map(i => ({
+            id: uid('PCI'), pedido_id: pedidoId, item_id: i.itemId,
+            item_nome: itens.find(x=>x.id===i.itemId)?.item || i.descPlanilha,
+            unidade: itens.find(x=>x.id===i.itemId)?.unit || i.unidadePlanilha,
+            qtd_solicitada: i.qtd, qtd_entregue: importMarcarEntregue ? i.qtd : 0,
+            created_at: p.dataPedido+'T12:00:00.000Z'
+          })));
+          if (errI) throw new Error(`Itens do pedido "${p.label}": ${errI.message}`);
+        }
+        await sb().from('pedidos_compra_eventos').insert({
+          id: uid('PCE'), pedido_id: pedidoId, tipo: 'gerado',
+          descricao: `Pedido importado do histórico (aba "${p.aba}" da planilha)${importMarcarEntregue ? ' — marcado como já entregue' : ''}.`,
+          created_at: p.dataPedido+'T12:00:00.000Z'
+        });
+      }
+      setImportando(false);
+      setImportAberto(false); setImportPedidos([]); setImportIgnoradas([]);
+      await loadAll();
+      alert(`${selecionados.length} pedido(s) do histórico importado(s) com sucesso.`);
+    } catch (e) {
+      setImportando(false);
+      alert('Erro ao importar: ' + e.message + '\n\nOs pedidos já confirmados antes do erro foram salvos — revise o Acompanhamento de pedidos antes de tentar de novo.');
+    }
   };
 
   // ─── RENDER SECTIONS ───────────────────────────────────────────────────────
@@ -4474,6 +4650,13 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
   // ─── ACOMPANHAMENTO DE PEDIDOS DE COMPRA (linha do tempo de entrega) ────
   const [pedidosCompraItens, setPedidosCompraItens] = React.useState([]);
   const [pedidosCompraEventos, setPedidosCompraEventos] = React.useState([]);
+  // ─── IMPORTAÇÃO DE HISTÓRICO DE PEDIDOS (planilha Excel) ────────────────
+  const [importAberto, setImportAberto] = React.useState(false);
+  const [importProcessando, setImportProcessando] = React.useState(false);
+  const [importPedidos, setImportPedidos] = React.useState([]); // pedidos detectados na planilha, pendentes de revisão
+  const [importIgnoradas, setImportIgnoradas] = React.useState([]); // abas da planilha que não foram reconhecidas como pedido
+  const [importMarcarEntregue, setImportMarcarEntregue] = React.useState(true);
+  const [importando, setImportando] = React.useState(false);
 
   useEffect(() => {
     if (!pedidoContrato) { setPedidoQtds({}); return; }
@@ -5287,6 +5470,93 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             </div>
           </div>
         </div>
+
+        {c && (
+          <div className="panel">
+            <div className="panel-head">
+              <h2><i className="fa-solid fa-file-import"/> Importar histórico de pedidos</h2>
+              {importPedidos.length > 0 && (
+                <button className="btn btn-secondary btn-sm" onClick={()=>{setImportPedidos([]); setImportIgnoradas([]);}}>
+                  <i className="fa-solid fa-xmark"/> Descartar leitura
+                </button>
+              )}
+            </div>
+            <div className="panel-body">
+              {importPedidos.length === 0 ? (
+                <>
+                  <div style={{fontSize:12,color:'var(--text2)',marginBottom:12}}>
+                    Suba a planilha Excel de pedidos deste contrato (uma aba por pedido, com colunas ITEM/DESCRIÇÃO/UNID/PEDIDO/VALOR). O sistema lê cada aba, tenta casar os itens com os já cadastrados em <strong>{c.numero}</strong> e mostra tudo pra você revisar antes de gravar.
+                  </div>
+                  <input type="file" accept=".xlsx,.xls" disabled={importProcessando}
+                    onChange={e=>{ const f=e.target.files[0]; if (f) processarPlanilhaImportacao(f); e.target.value=''; }} />
+                  {importProcessando && <div style={{marginTop:10,fontSize:12.5,color:'var(--text2)'}}><i className="fa-solid fa-spinner fa-spin"/> Lendo planilha...</div>}
+                  {importIgnoradas.length > 0 && (
+                    <div style={{marginTop:14}}>
+                      <div style={{fontSize:11.5,fontWeight:700,color:'var(--text2)',marginBottom:4}}>Abas ignoradas na última leitura:</div>
+                      {importIgnoradas.map((ig,i) => <div key={i} style={{fontSize:11,color:'var(--text3)'}}>• {ig.aba} — {ig.motivo}</div>)}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <AlertBox cls="azul" icon="fa-circle-info">
+                    Encontrei <strong>{importPedidos.length}</strong> pedido(s) nesta planilha. Revise a data, o pedido e a correspondência de cada item antes de confirmar — itens sem correspondência ficam marcados em vermelho e não são importados até você escolher um item do sistema (ou pode deixar "ignorar este item").
+                  </AlertBox>
+                  <div style={{margin:'10px 0',display:'flex',alignItems:'center',gap:8,fontSize:12.5}}>
+                    <input type="checkbox" checked={importMarcarEntregue} onChange={e=>setImportMarcarEntregue(e.target.checked)} id="chk-import-entregue" />
+                    <label htmlFor="chk-import-entregue" style={{margin:0}}>Marcar os itens importados como já entregues (recomendado para pedidos antigos/já concluídos)</label>
+                  </div>
+
+                  {importPedidos.map((p, pi) => {
+                    const semMatch = p.itens.filter(i => i.incluir && !i.itemId).length;
+                    return (
+                      <div key={p.key} style={{border:'1px solid var(--gray-b)',borderRadius:8,marginBottom:14,overflow:'hidden'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'var(--bg2)'}}>
+                          <input type="checkbox" checked={p.incluir} onChange={e=>setImportPedidos(prev=>prev.map((x,i)=>i===pi?{...x,incluir:e.target.checked}:x))} />
+                          <div style={{flex:1}}>
+                            <input type="text" value={p.label} onChange={e=>setImportPedidos(prev=>prev.map((x,i)=>i===pi?{...x,label:e.target.value}:x))}
+                              style={{fontWeight:700,fontSize:12.5,border:'none',background:'transparent',width:'100%',padding:'2px 4px'}} />
+                            <div style={{fontSize:11,color:'var(--text2)'}}>Aba: {p.aba} · {p.itens.length} item(ns) · {brl(p.totalPlanilha)}</div>
+                          </div>
+                          <div>
+                            <label style={{fontSize:10.5,color:'var(--text2)',display:'block'}}>Data do pedido *</label>
+                            <input type="date" value={p.dataPedido} onChange={e=>setImportPedidos(prev=>prev.map((x,i)=>i===pi?{...x,dataPedido:e.target.value}:x))}
+                              style={{padding:'4px 6px',border:`1px solid ${p.dataPedido?'var(--gray-b)':'#ef4444'}`,borderRadius:4,fontSize:12}} />
+                          </div>
+                          {semMatch > 0 && <span className="badge vermelho">{semMatch} sem item</span>}
+                        </div>
+                        <div className="tbl-wrap">
+                          <table>
+                            <thead><tr><th></th><th>Descrição na planilha</th><th>Item do sistema</th><th>Qtd</th><th>Valor</th></tr></thead>
+                            <tbody>{p.itens.map((it,ii) => (
+                              <tr key={it.key} style={{opacity:it.incluir?1:.45}}>
+                                <td><input type="checkbox" checked={it.incluir} onChange={e=>setImportPedidos(prev=>prev.map((x,i)=>i===pi?{...x,itens:x.itens.map((y,j)=>j===ii?{...y,incluir:e.target.checked}:y)}:x))} /></td>
+                                <td style={{maxWidth:240,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontSize:11.5}} title={it.descPlanilha}>{it.descPlanilha}</td>
+                                <td style={{minWidth:200}}>
+                                  <select value={it.itemId} style={{border: it.incluir && !it.itemId ? '1px solid #ef4444' : undefined}}
+                                    onChange={e=>setImportPedidos(prev=>prev.map((x,i)=>i===pi?{...x,itens:x.itens.map((y,j)=>j===ii?{...y,itemId:e.target.value}:y)}:x))}>
+                                    <option value="">— ignorar este item —</option>
+                                    {itensDoContrato.map(sysIt => <option key={sysIt.id} value={sysIt.id}>{sysIt.item.substring(0,60)}</option>)}
+                                  </select>
+                                </td>
+                                <td className="cell-m" style={{textAlign:'center'}}>{it.qtd} {it.unidadePlanilha}</td>
+                                <td className="cell-m" style={{textAlign:'center'}}>{brl(it.valor)}</td>
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <button className="btn btn-primary" disabled={importando} onClick={confirmarImportacaoHistorico}>
+                    {importando ? <><i className="fa-solid fa-spinner fa-spin"/> Importando...</> : <><i className="fa-solid fa-check-double"/> Importar {importPedidos.filter(p=>p.incluir).length} pedido(s) selecionado(s)</>}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {c && itensDoContrato.length > 0 && (
           <div className="panel">
