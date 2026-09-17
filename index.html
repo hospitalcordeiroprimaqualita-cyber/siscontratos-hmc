@@ -609,6 +609,14 @@ function App() {
   const [pedidosGerados, setPedidosGerados] = useState([]);
   const [pendenciasFornecedor, setPendenciasFornecedor] = useState([]);
   const html5QrRef = useRef(null);
+  // Flag de "a câmera pode processar a próxima leitura" — precisa ser um ref (não
+  // uma variável local dentro do useEffect do scanner) porque tanto o efeito quanto
+  // confirmarMovimentacaoScanner/cancelarLeituraAtual (fora do efeito) precisam
+  // ler e escrever o mesmo valor. Antes era "let ativo" só dentro do efeito: no
+  // modo único, ao ler o 1º item ela virava false e NUNCA voltava a true depois
+  // de confirmar/cancelar — resume() reativava a câmera visualmente, mas toda
+  // leitura seguinte era ignorada em silêncio (parecia "câmera travou" pro usuário).
+  const scannerLeituraAtivaRef = useRef(true);
   // Sempre aponta pra lista de itens MAIS ATUAL — usada na busca por QR Code.
   // Sem isso, a função de leitura (que roda dentro de um efeito que só reinicia
   // em raras trocas de estado) ficava presa numa cópia congelada dos itens do
@@ -5464,7 +5472,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     if (typeof Html5Qrcode === 'undefined') { alert('Biblioteca de leitura de QR não carregou. Verifique a conexão.'); setScannerAtivo(false); return; }
     const html5QrCode = new Html5Qrcode('qr-reader');
     html5QrRef.current = html5QrCode;
-    let ativo = true;
+    scannerLeituraAtivaRef.current = true;
     const config = {
       fps: 10,
       // qrbox responsivo: um valor fixo (ex: 240) trava a leitura em
@@ -5492,7 +5500,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
       experimentalFeatures: { useBarCodeDetectorIfSupported: true }
     };
     const aoDecodificar = (decodedText) => {
-      if (!ativo) return;
+      if (!scannerLeituraAtivaRef.current) return;
       try {
         aoDecodificarInterno(decodedText);
       } catch (e) {
@@ -5560,7 +5568,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         setTimeout(() => setUltimoLido(null), 5000);
         return;
       }
-      ativo = false;
+      scannerLeituraAtivaRef.current = false;
       html5QrCode.pause(true);
       setItemEscaneado(r.item);
       setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs('');
@@ -5588,7 +5596,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             : cams;
         }
         const cams = camerasListRef.current;
-        if (!ativo) return;
+        if (!scannerLeituraAtivaRef.current) return;
         if (cams && cams.length > 0) {
           const idx = ((cameraIndex % cams.length) + cams.length) % cams.length;
           await html5QrCode.start(cams[idx].id, config, aoDecodificar, aoErrarFrame);
@@ -5599,7 +5607,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         // Plano B: se listar câmeras falhar (ex: permissão ainda não concedida
         // nesse momento), tenta pela constraint genérica.
         try {
-          if (!ativo) return;
+          if (!scannerLeituraAtivaRef.current) return;
           await html5QrCode.start({ facingMode: 'environment' }, config, aoDecodificar, aoErrarFrame);
         } catch (err2) {
           alert('Não foi possível acessar a câmera: ' + (err2?.message || err2 || err1) + '. Verifique se o navegador tem permissão de câmera e se a página está em HTTPS.');
@@ -5610,7 +5618,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     iniciar();
 
     return () => {
-      ativo = false;
+      scannerLeituraAtivaRef.current = false;
       if (html5QrRef.current) {
         html5QrRef.current.stop().then(() => html5QrRef.current.clear()).catch(()=>{});
         html5QrRef.current = null;
@@ -5628,12 +5636,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     });
     if (ok) {
       setItemEscaneado(null);
+      scannerLeituraAtivaRef.current = true; // reabre a leitura — sem isso, a câmera reativava visualmente mas ignorava toda leitura seguinte
       if (html5QrRef.current) html5QrRef.current.resume();
     }
   };
 
   const cancelarLeituraAtual = () => {
     setItemEscaneado(null);
+    scannerLeituraAtivaRef.current = true; // mesmo motivo do confirmar — sem isso, cancelar também travava a leitura seguinte
     if (html5QrRef.current) html5QrRef.current.resume();
   };
 
@@ -5675,11 +5685,22 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     const { error: errMov } = await sb().from('estoque_movimentacoes').insert(inserts);
     if (errMov) { setSaving(false); alert('Erro ao registrar movimentações: ' + errMov.message); return; }
 
+    // Antes, erros aqui eram ignorados em silêncio: a movimentação já tinha sido
+    // gravada no histórico (acima), mas se a atualização do saldo do item falhasse
+    // (rede, RLS etc.) ninguém era avisado — o saldo_atual ficava desatualizado
+    // sem nenhum sinal disso na tela, gerando divergência entre o histórico e o
+    // saldo real do item.
+    const falhas = [];
     for (const u of atualizacoesSaldo) {
-      await sb().from('itens').update({ saldo_atual: u.saldo_atual }).eq('id', u.id);
+      const { error } = await sb().from('itens').update({ saldo_atual: u.saldo_atual }).eq('id', u.id);
+      if (error) falhas.push({ id: u.id, error });
     }
 
     setSaving(false);
+    if (falhas.length) {
+      const nomes = falhas.map(f => itens.find(i=>i.id===f.id)?.item || f.id).join(', ');
+      alert(`As movimentações foram registradas, mas o saldo NÃO pôde ser atualizado para: ${nomes}. Verifique a conexão e corrija o saldo desses itens manualmente se necessário.`);
+    }
     const totalItens = carrinhoItens.length;
     const totalUnidades = carrinhoItens.reduce((s,ci) => s + ci.qtd, 0);
     await loadAll();
