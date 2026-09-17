@@ -5273,7 +5273,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                 <label>Contrato de fornecimento</label>
                 <select className="sel-contract" style={{margin:0}} value={pedidoContrato} onChange={e=>setPedidoContrato(e.target.value)}>
                   <option value="">— Selecione —</option>
-                  {contratos.slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa?.substring(0,35)}</option>)}
+                  {contratos.slice().sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true})).map(c=><option key={c.id} value={c.id}>{c.numero} · {c.empresa}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -5304,11 +5304,14 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             <div className="panel-body">
               <div className="tbl-wrap">
                 <table>
-                  <thead><tr><th>Item</th><th>Unidade</th><th>Saldo almoxarifado</th><th>Qtd contratada/mês</th><th>Qtd sugerida</th><th>Valor unitário</th><th>Total estimado</th></tr></thead>
+                  <thead><tr><th>Item</th><th>Unidade</th><th>Saldo almoxarifado</th><th>Qtd contratada/mês</th><th>Saldo contratual</th><th>Ainda posso gastar</th><th>Qtd sugerida</th><th>Valor unitário</th><th>Total estimado</th></tr></thead>
                   <tbody>{itensDoContrato.map(it => {
                     const qtd = parseFloat(pedidoQtds[it.id]||0);
                     const total = qtd * (it.vlr_unitario||0);
                     const baixo = it.controla_estoque && (it.saldo_atual||0) <= (it.estoque_minimo||0);
+                    const analise = calcAnaliseItem(c, it);
+                    const saldoQtd = analise ? analise.saldo : Math.round((it.qtd_total_contratada || (it.qtd_mensal||0)*12) - (it.qtd_acum||0));
+                    const saldoValor = saldoQtd * (it.vlr_unitario||0);
                     return (
                       <tr key={it.id}>
                         <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.item}</td>
@@ -5319,6 +5322,8 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                             : <span style={{color:'var(--text3)',fontSize:11}}>não monitorado</span>}
                         </td>
                         <td className="cell-m" style={{textAlign:'center'}}>{it.qtd_mensal||0}</td>
+                        <td style={{textAlign:'center',fontWeight:600,color:saldoQtd<0?'#b91c1c':'var(--text)'}}>{saldoQtd} {it.unit||''}</td>
+                        <td style={{textAlign:'center',fontWeight:700,color:saldoValor<0?'#b91c1c':'var(--teal-d)'}}>{brl(saldoValor)}</td>
                         <td style={{width:90}}>
                           <input type="number" min="0" value={pedidoQtds[it.id]||''}
                             onChange={e=>setPedidoQtds(prev=>({...prev,[it.id]:e.target.value}))}
@@ -5338,6 +5343,43 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
             </div>
           </div>
         )}
+
+        {c && (() => {
+          const historico = pedidosGerados.filter(p => p.contrato_id === c.id).slice().sort((a,b)=> new Date(b.gerado_em)-new Date(a.gerado_em));
+          return (
+            <div className="panel">
+              <div className="panel-head"><h2><i className="fa-solid fa-clock-rotate-left"/> Série histórica de pedidos — {c.numero}</h2></div>
+              <div className="panel-body">
+                {historico.length === 0 ? (
+                  <div className="empty"><i className="fa-solid fa-clock-rotate-left"/>Nenhum pedido gerado ainda para este contrato.</div>
+                ) : (
+                  <div className="tbl-wrap">
+                    <table>
+                      <thead><tr><th>Mês de referência</th><th>Gerado em</th><th>Itens entregues</th><th>Status</th><th>Total estimado</th><th></th></tr></thead>
+                      <tbody>{historico.map(p => {
+                        const its = pedidosCompraItens.filter(i => i.pedido_id === p.id);
+                        const entregues = its.filter(i => parseFloat(i.qtd_entregue||0) >= parseFloat(i.qtd_solicitada||0)).length;
+                        const status = statusPedidoCompra(p.id);
+                        const info = STATUS_PEDIDO_INFO[status];
+                        return (
+                          <tr key={p.id} style={{cursor:'pointer'}} onClick={()=>openModal('acompanhar-pedido', p.id)}>
+                            <td className="cell-m">{mesToPT(p.mes_referencia)}</td>
+                            <td className="cell-m">{fmtD(p.gerado_em)}</td>
+                            <td className="cell-m">{its.length ? `${entregues} de ${its.length}` : '—'}</td>
+                            <td><span className="badge" style={{background:info.cor+'18',color:info.cor,fontWeight:700}}><i className={`fa-solid ${info.icon}`}/> {info.label}</span></td>
+                            <td style={{fontWeight:700,color:'var(--teal-d)'}}>{brl(p.total_estimado||0)}</td>
+                            <td><ActBtn icon="fa-eye" onClick={()=>openModal('acompanhar-pedido', p.id)} title="Ver linha do tempo" /></td>
+                          </tr>
+                        );
+                      })}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
 
         {c && itensDoContrato.length === 0 && (
           <div className="panel"><div className="panel-body">
@@ -5371,7 +5413,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                         const info = STATUS_PEDIDO_INFO[status];
                         return (
                           <tr key={p.id} style={{cursor:'pointer'}} onClick={()=>openModal('acompanhar-pedido', p.id)}>
-                            <td>{cp?.numero||'—'} <span className="cell-m">· {(cp?.empresa||'').substring(0,28)}</span></td>
+                            <td>{cp?.numero||'—'} <span className="cell-m">· {cp?.empresa||''}</span></td>
                             <td className="cell-m">{fmtD(p.gerado_em)}</td>
                             <td className="cell-m">{its.length ? `${entregues} de ${its.length}` : '—'}</td>
                             <td><span className="badge" style={{background:info.cor+'18',color:info.cor,fontWeight:700}}><i className={`fa-solid ${info.icon}`}/> {info.label}</span></td>
@@ -6368,7 +6410,11 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         <Modal
           title={
             modal.tipo==='editar' ? `Editar — ${contratos.find(x=>x.id===modal.id)?.numero||''}` :
-            modal.tipo==='acompanhar-pedido' ? `Acompanhamento — ${contratos.find(x=>x.id===pedidosGerados.find(p=>p.id===modal.id)?.contrato_id)?.numero||''}` :
+            modal.tipo==='acompanhar-pedido' ? (() => {
+              const pInfo = pedidosGerados.find(p=>p.id===modal.id);
+              const cInfo = contratos.find(x=>x.id===pInfo?.contrato_id);
+              return `Acompanhamento — ${cInfo?.numero||''} · ${cInfo?.empresa||''}`;
+            })() :
             modalConfig[modal.tipo]?.title
           }
           icon={modalConfig[modal.tipo]?.icon||'fa-file'}
