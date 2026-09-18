@@ -1261,47 +1261,83 @@ function App() {
         const unidIdx = idxDe(c => c === 'unid' || c === 'unidade');
         const vUnitIdx = idxDe(c => c.includes('unit'));
         const pedidoIdxs = header.map((c,i)=>({c:normTxt(c),i})).filter(x=>x.c.startsWith('pedido')).map(x=>x.i);
-        if (pedidoIdxs.length !== 1) {
-          ignoradas.push({ aba: sheetName, motivo: pedidoIdxs.length===0 ? 'não encontrei coluna de quantidade pedida ("PEDIDO")' : 'parece uma planilha-mestre com vários pedidos na mesma aba — importe pelas abas individuais de cada pedido' });
+        if (pedidoIdxs.length === 0) {
+          ignoradas.push({ aba: sheetName, motivo: 'não encontrei coluna de quantidade pedida ("PEDIDO")' });
           return;
         }
-        const pedidoIdx = pedidoIdxs[0];
-        let valorIdx = header.findIndex((c,i) => i>pedidoIdx && (normTxt(c).startsWith('valor') || normTxt(c)==='v.total'));
-        if (valorIdx === -1) valorIdx = pedidoIdx+1;
 
-        // Label do pedido: primeira linha de texto não-vazia acima do cabeçalho
-        // que não seja Contrato/Empresa/CNPJ/Representante/Processo interno.
-        let label = sheetName;
-        for (let r = headerIdx-1; r >= Math.max(0, headerIdx-8); r--) {
-          const v = (linhas[r]||[]).find(c => c!=null && String(c).trim()!=='');
-          if (v && !/contrato:|empresa:|cnpj:|representante|processo interno/i.test(String(v))) { label = String(v).trim(); break; }
-        }
-        const dataPedido = extrairDataDoLabel(label);
+        // Extrai os itens de UMA coluna "PEDIDO" específica (com sua coluna
+        // "VALOR" correspondente, procurada só até a próxima coluna de pedido
+        // — importante na aba-mestre, onde há vários pares PEDIDO/VALOR
+        // seguidos, senão a busca "achar o primeiro VALOR depois" vazaria
+        // pro par de outro mês).
+        const extrairItens = (pedidoIdx, valorIdx) => {
+          const lista = [];
+          for (let r = headerIdx+1; r < linhas.length; r++) {
+            const row = linhas[r] || [];
+            const desc = row[descIdx];
+            if (desc == null || String(desc).trim()==='') continue;
+            if (normTxt(desc) === 'valor total' || normTxt(desc) === 'total') break;
+            const qtd = parseFloat(row[pedidoIdx]);
+            if (!qtd || qtd <= 0) continue;
+            const vUnit = parseFloat(row[vUnitIdx]) || 0;
+            const valorCel = parseFloat(row[valorIdx]);
+            const valor = isNaN(valorCel) ? qtd*vUnit : valorCel;
+            const match = melhorItemCorrespondente(desc);
+            lista.push({
+              key: uid('IMPIT'), descPlanilha: String(desc).trim(),
+              unidadePlanilha: unidIdx>=0 ? (row[unidIdx]||'') : '',
+              qtd, vUnit, valor, itemId: match ? match.id : '', incluir: true
+            });
+          }
+          return lista;
+        };
 
-        const itensPedido = [];
-        for (let r = headerIdx+1; r < linhas.length; r++) {
-          const row = linhas[r] || [];
-          const desc = row[descIdx];
-          if (desc == null || String(desc).trim()==='') continue;
-          if (normTxt(desc) === 'valor total' || normTxt(desc) === 'total') break;
-          const qtd = parseFloat(row[pedidoIdx]);
-          if (!qtd || qtd <= 0) continue;
-          const vUnit = parseFloat(row[vUnitIdx]) || 0;
-          const valorCel = parseFloat(row[valorIdx]);
-          const valor = isNaN(valorCel) ? qtd*vUnit : valorCel;
-          const match = melhorItemCorrespondente(desc);
-          itensPedido.push({
-            key: uid('IMPIT'), descPlanilha: String(desc).trim(),
-            unidadePlanilha: unidIdx>=0 ? (row[unidIdx]||'') : '',
-            qtd, vUnit, valor, itemId: match ? match.id : '', incluir: true
+        const formatarDataCelula = (cel) => {
+          if (cel instanceof Date && !isNaN(cel)) {
+            const y=cel.getFullYear(), m=String(cel.getMonth()+1).padStart(2,'0'), d=String(cel.getDate()).padStart(2,'0');
+            return `${y}-${m}-${d}`;
+          }
+          if (typeof cel === 'string') return extrairDataDoLabel(cel);
+          return '';
+        };
+
+        if (pedidoIdxs.length === 1) {
+          // Aba de UM pedido só (formato mais comum): o rótulo é a primeira
+          // linha de texto não-vazia acima do cabeçalho que não seja
+          // Contrato/Empresa/CNPJ/Representante/Processo interno.
+          const pedidoIdx = pedidoIdxs[0];
+          let valorIdx = header.findIndex((c,i) => i>pedidoIdx && (normTxt(c).startsWith('valor') || normTxt(c)==='v.total'));
+          if (valorIdx === -1) valorIdx = pedidoIdx+1;
+          let label = sheetName;
+          for (let r = headerIdx-1; r >= Math.max(0, headerIdx-8); r--) {
+            const v = (linhas[r]||[]).find(c => c!=null && String(c).trim()!=='');
+            if (v && !/contrato:|empresa:|cnpj:|representante|processo interno/i.test(String(v))) { label = String(v).trim(); break; }
+          }
+          const dataPedido = extrairDataDoLabel(label);
+          const itensPedido = extrairItens(pedidoIdx, valorIdx);
+          if (!itensPedido.length) { ignoradas.push({ aba: sheetName, motivo: 'nenhum item com quantidade pedida > 0 nesta aba' }); return; }
+          detectados.push({ key: uid('IMPPED'), aba: sheetName, label, dataPedido, incluir: true, totalPlanilha: itensPedido.reduce((s,i)=>s+i.valor,0), itens: itensPedido });
+        } else {
+          // Aba-mestre com um pedido por PAR de colunas (ex: aba "PEDIDO" com
+          // um par PEDIDO/VALOR por mês). A data de cada pedido fica na linha
+          // imediatamente acima do cabeçalho, na MESMA coluna do "PEDIDO".
+          const linhaData = linhas[headerIdx-1] || [];
+          pedidoIdxs.forEach(pedidoIdx => {
+            const proximoPedidoIdx = pedidoIdxs.find(x => x > pedidoIdx);
+            const limite = proximoPedidoIdx || header.length;
+            let valorIdx = -1;
+            for (let k = pedidoIdx+1; k < limite; k++) { if (normTxt(header[k]).startsWith('valor') || normTxt(header[k])==='v.total') { valorIdx = k; break; } }
+            if (valorIdx === -1) valorIdx = pedidoIdx+1;
+            const celData = linhaData[pedidoIdx];
+            const dataPedido = formatarDataCelula(celData);
+            const rotuloCol = String(header[pedidoIdx]||'').trim() || `coluna ${XLSX.utils.encode_col(pedidoIdx)}`;
+            const label = celData && typeof celData === 'string' && !dataPedido ? `${rotuloCol} (${celData.trim()})` : rotuloCol;
+            const itensPedido = extrairItens(pedidoIdx, valorIdx);
+            if (!itensPedido.length) { ignoradas.push({ aba: `${sheetName} — ${rotuloCol}`, motivo: 'nenhum item com quantidade pedida > 0 nesta coluna' }); return; }
+            detectados.push({ key: uid('IMPPED'), aba: `${sheetName} — ${rotuloCol}`, label, dataPedido, incluir: true, totalPlanilha: itensPedido.reduce((s,i)=>s+i.valor,0), itens: itensPedido });
           });
         }
-        if (!itensPedido.length) { ignoradas.push({ aba: sheetName, motivo: 'nenhum item com quantidade pedida > 0 nesta aba' }); return; }
-
-        detectados.push({
-          key: uid('IMPPED'), aba: sheetName, label, dataPedido, incluir: true,
-          totalPlanilha: itensPedido.reduce((s,i)=>s+i.valor,0), itens: itensPedido
-        });
       });
 
       setImportPedidos(detectados);
@@ -5509,6 +5545,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
 
                   {importPedidos.map((p, pi) => {
                     const semMatch = p.itens.filter(i => i.incluir && !i.itemId).length;
+                    const duplicata = p.dataPedido && importPedidos.some((x,xi) => xi!==pi && x.dataPedido===p.dataPedido);
                     return (
                       <div key={p.key} style={{border:'1px solid var(--gray-b)',borderRadius:8,marginBottom:14,overflow:'hidden'}}>
                         <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:'var(--bg2)'}}>
@@ -5523,11 +5560,13 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                             <input type="date" value={p.dataPedido} onChange={e=>setImportPedidos(prev=>prev.map((x,i)=>i===pi?{...x,dataPedido:e.target.value}:x))}
                               style={{padding:'4px 6px',border:`1px solid ${p.dataPedido?'var(--gray-b)':'#ef4444'}`,borderRadius:4,fontSize:12}} />
                           </div>
+                          {duplicata && <span className="badge amarelo" title="Outro pedido detectado tem a mesma data — pode ser a mesma informação vinda de duas abas diferentes (ex: aba do mês e aba-mestre). Confira antes de importar os dois.">possível duplicata</span>}
                           {semMatch > 0 && <span className="badge vermelho">{semMatch} sem item</span>}
                         </div>
                         <div className="tbl-wrap">
                           <table>
                             <thead><tr><th></th><th>Descrição na planilha</th><th>Item do sistema</th><th>Qtd</th><th>Valor</th></tr></thead>
+
                             <tbody>{p.itens.map((it,ii) => (
                               <tr key={it.key} style={{opacity:it.incluir?1:.45}}>
                                 <td><input type="checkbox" checked={it.incluir} onChange={e=>setImportPedidos(prev=>prev.map((x,i)=>i===pi?{...x,itens:x.itens.map((y,j)=>j===ii?{...y,incluir:e.target.checked}:y)}:x))} /></td>
@@ -6257,51 +6296,65 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
                   <button className="btn btn-primary" onClick={iniciarLeituraSeDadosOk}><i className="fa-solid fa-camera"/> Iniciar leitura pela câmera</button>
                 </>
               )}
-              {scannerModo === 'unico' && scannerAtivo && !itemEscaneado && (
+              {scannerModo === 'unico' && scannerAtivo && (
                 <>
-                  <div id="qr-reader" style={{width:'100%',maxWidth:420,margin:'0 auto'}}></div>
-                  <div style={{textAlign:'center',marginTop:10,minHeight:20,fontSize:12.5,fontWeight:700}}>
-                    {ultimoLido && !ultimoLido.ok && <span style={{color:'#b91c1c'}}><i className="fa-solid fa-triangle-exclamation"/> {ultimoLido.texto}</span>}
-                    {!ultimoLido && <span style={{color:'var(--text2)',fontWeight:400}}>Aponte a câmera para o QR Code do item...</span>}
-                  </div>
-                  <div style={{textAlign:'center',marginTop:10,display:'flex',gap:8,justifyContent:'center'}}>
-                    <button className="btn btn-secondary btn-sm" onClick={()=>setCameraIndex(i=>i+1)} title="Se a câmera não estiver focando o QR, tente trocar de lente"><i className="fa-solid fa-camera-rotate"/> Trocar câmera</button>
-                    <button className="btn btn-secondary btn-sm" onClick={()=>setScannerAtivo(false)}><i className="fa-solid fa-stop"/> Parar leitura</button>
-                  </div>
-                  <div style={{marginTop:14,maxWidth:340,marginLeft:'auto',marginRight:'auto'}}>
-                    <div style={{fontSize:11,color:'var(--text2)',textAlign:'center',marginBottom:6}}>Etiqueta não bateu com nenhum item? Selecione manualmente:</div>
-                    <select value="" onChange={e=>{ if(!e.target.value) return; const item = itens.find(i=>i.id===e.target.value); if(item){ setItemEscaneado(item); setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs(''); } }}>
-                      <option value="">— Selecionar item do almoxarifado —</option>
-                      {itens.filter(i=>i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||'')).map(i => <option key={i.id} value={i.id}>{i.item}</option>)}
-                    </select>
-                  </div>
+                  {/* O container da câmera fica SEMPRE montado enquanto a leitura está
+                      ativa — some visualmente (display:none) quando um item é
+                      encontrado, mas nunca é removido da árvore. Antes, esse div
+                      desaparecia (deixava de ser renderizado) assim que um item era
+                      escaneado, e o React destruía o elemento de vídeo que a
+                      biblioteca html5-qrcode tinha anexado dentro dele — resultado:
+                      mesmo com o pause()/resume() corretos, resume() não tinha mais
+                      um vídeo de verdade pra reativar, e a leitura ficava travada
+                      pra sempre depois do primeiro item, mesmo confirmando ou
+                      cancelando. Esse era o bug raiz — o do "ativo" era só parte dele. */}
+                  <div id="qr-reader" style={{width:'100%',maxWidth:420,margin:'0 auto',display:itemEscaneado?'none':'block'}}></div>
+                  {!itemEscaneado && (
+                    <>
+                      <div style={{textAlign:'center',marginTop:10,minHeight:20,fontSize:12.5,fontWeight:700}}>
+                        {ultimoLido && !ultimoLido.ok && <span style={{color:'#b91c1c'}}><i className="fa-solid fa-triangle-exclamation"/> {ultimoLido.texto}</span>}
+                        {!ultimoLido && <span style={{color:'var(--text2)',fontWeight:400}}>Aponte a câmera para o QR Code do item...</span>}
+                      </div>
+                      <div style={{textAlign:'center',marginTop:10,display:'flex',gap:8,justifyContent:'center'}}>
+                        <button className="btn btn-secondary btn-sm" onClick={()=>setCameraIndex(i=>i+1)} title="Se a câmera não estiver focando o QR, tente trocar de lente"><i className="fa-solid fa-camera-rotate"/> Trocar câmera</button>
+                        <button className="btn btn-secondary btn-sm" onClick={()=>setScannerAtivo(false)}><i className="fa-solid fa-stop"/> Parar leitura</button>
+                      </div>
+                      <div style={{marginTop:14,maxWidth:340,marginLeft:'auto',marginRight:'auto'}}>
+                        <div style={{fontSize:11,color:'var(--text2)',textAlign:'center',marginBottom:6}}>Etiqueta não bateu com nenhum item? Selecione manualmente:</div>
+                        <select value="" onChange={e=>{ if(!e.target.value) return; const item = itens.find(i=>i.id===e.target.value); if(item){ setItemEscaneado(item); setMovQtd(''); setMovSetor(''); setMovNota(''); setMovObs(''); } }}>
+                          <option value="">— Selecionar item do almoxarifado —</option>
+                          {itens.filter(i=>i.controla_estoque).slice().sort((a,b)=>(a.item||'').localeCompare(b.item||'')).map(i => <option key={i.id} value={i.id}>{i.item}</option>)}
+                        </select>
+                      </div>
+                    </>
+                  )}
+                  {itemEscaneado && (
+                    <div style={{maxWidth:420,margin:'0 auto'}}>
+                      <AlertBox cls="azul" icon="fa-box-open">
+                        <strong>{itemEscaneado.item}</strong><br/>
+                        Saldo atual: <strong>{itemEscaneado.saldo_atual||0} {itemEscaneado.unit||''}</strong>
+                      </AlertBox>
+                      <div className="form-row" style={{marginTop:12}}>
+                        <FG label="Tipo de movimentação" full>
+                          <select value={movTipo} onChange={e=>setMovTipo(e.target.value)}>
+                            <option value="saida">Saída (consumo / retirada)</option>
+                            <option value="entrada">Entrada (recebimento)</option>
+                          </select>
+                        </FG>
+                        <FG label="Quantidade *" full><input type="number" min="0" step="any" autoFocus value={movQtd} onChange={e=>setMovQtd(e.target.value)} placeholder="0" /></FG>
+                        {movTipo === 'saida' && <FG label="Setor de destino" full><input type="text" value={movSetor} onChange={e=>setMovSetor(e.target.value)} placeholder="Ex: Enfermaria, CME, Pronto Socorro" /></FG>}
+                        {movTipo === 'entrada' && <FG label="Nota fiscal" full><input type="text" value={movNota} onChange={e=>setMovNota(e.target.value)} placeholder="Nº da nota fiscal" /></FG>}
+                        <FG label="Observação" full><input type="text" value={movObs} onChange={e=>setMovObs(e.target.value)} placeholder="Opcional" /></FG>
+                      </div>
+                      <div style={{display:'flex',gap:8,marginTop:12}}>
+                        <button className="btn btn-secondary" style={{flex:1}} onClick={cancelarLeituraAtual}>Cancelar</button>
+                        <button className="btn btn-primary" style={{flex:1}} disabled={saving} onClick={confirmarMovimentacaoScanner}>
+                          {saving ? <><i className="fa-solid fa-rotate spin"/> Salvando...</> : <><i className="fa-solid fa-check"/> Confirmar</>}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </>
-              )}
-              {itemEscaneado && (
-                <div style={{maxWidth:420,margin:'0 auto'}}>
-                  <AlertBox cls="azul" icon="fa-box-open">
-                    <strong>{itemEscaneado.item}</strong><br/>
-                    Saldo atual: <strong>{itemEscaneado.saldo_atual||0} {itemEscaneado.unit||''}</strong>
-                  </AlertBox>
-                  <div className="form-row" style={{marginTop:12}}>
-                    <FG label="Tipo de movimentação" full>
-                      <select value={movTipo} onChange={e=>setMovTipo(e.target.value)}>
-                        <option value="saida">Saída (consumo / retirada)</option>
-                        <option value="entrada">Entrada (recebimento)</option>
-                      </select>
-                    </FG>
-                    <FG label="Quantidade *" full><input type="number" min="0" step="any" autoFocus value={movQtd} onChange={e=>setMovQtd(e.target.value)} placeholder="0" /></FG>
-                    {movTipo === 'saida' && <FG label="Setor de destino" full><input type="text" value={movSetor} onChange={e=>setMovSetor(e.target.value)} placeholder="Ex: Enfermaria, CME, Pronto Socorro" /></FG>}
-                    {movTipo === 'entrada' && <FG label="Nota fiscal" full><input type="text" value={movNota} onChange={e=>setMovNota(e.target.value)} placeholder="Nº da nota fiscal" /></FG>}
-                    <FG label="Observação" full><input type="text" value={movObs} onChange={e=>setMovObs(e.target.value)} placeholder="Opcional" /></FG>
-                  </div>
-                  <div style={{display:'flex',gap:8,marginTop:12}}>
-                    <button className="btn btn-secondary" style={{flex:1}} onClick={cancelarLeituraAtual}>Cancelar</button>
-                    <button className="btn btn-primary" style={{flex:1}} disabled={saving} onClick={confirmarMovimentacaoScanner}>
-                      {saving ? <><i className="fa-solid fa-rotate spin"/> Salvando...</> : <><i className="fa-solid fa-check"/> Confirmar</>}
-                    </button>
-                  </div>
-                </div>
               )}
 
               {/* ── MODO SEQUÊNCIA — configuração do lote antes de começar ─────── */}
