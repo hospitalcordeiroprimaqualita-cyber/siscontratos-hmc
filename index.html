@@ -609,6 +609,7 @@ function App() {
   const [buscaAlmox, setBuscaAlmox] = useState('');
   const [pedidosGerados, setPedidosGerados] = useState([]);
   const [pendenciasFornecedor, setPendenciasFornecedor] = useState([]);
+  const [solicitacoesLicitacao, setSolicitacoesLicitacao] = useState([]);
   const html5QrRef = useRef(null);
   // Flag de "a câmera pode processar a próxima leitura" — precisa ser um ref (não
   // uma variável local dentro do useEffect do scanner) porque tanto o efeito quanto
@@ -678,7 +679,7 @@ function App() {
         promessa,
         new Promise((_, reject) => setTimeout(() => reject(new Error('Tempo esgotado (15s) — verifique a URL do Supabase configurada')), 15000))
       ]);
-      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg, pf, pci, pce] = await comTimeout(Promise.all([
+      const [c, i, a, m, l, ex, mi, ti, ri, pi, mv, pg, pf, pci, pce, slc] = await comTimeout(Promise.all([
         sb().from('contratos').select('*').order('created_at'),
         fetchAllRows('itens', 'created_at'),
         sb().from('aditivos').select('*').order('created_at', {ascending:false}),
@@ -693,7 +694,8 @@ function App() {
         sb().from('pedidos_gerados').select('*').order('gerado_em', {ascending:false}),
         sb().from('pendencias_fornecedor').select('*').order('created_at', {ascending:false}),
         sb().from('pedidos_compra_itens').select('*'),
-        sb().from('pedidos_compra_eventos').select('*').order('created_at')
+        sb().from('pedidos_compra_eventos').select('*').order('created_at'),
+        sb().from('solicitacoes_licitacao').select('*').order('gerado_em', {ascending:false})
       ]));
       if (c.error || i.error || a.error) {
         const detalhe = [
@@ -728,6 +730,8 @@ function App() {
       setPedidosCompraItens(pci.data || []);
       if (pce.error) console.error('Tabela "pedidos_compra_eventos":', pce.error.message);
       setPedidosCompraEventos(pce.data || []);
+      if (slc.error) console.error('Tabela "solicitacoes_licitacao":', slc.error.message);
+      setSolicitacoesLicitacao(slc.data || []);
       setSyncStatus('ok');
       setSyncErrorDetail('');
     } catch(e) {
@@ -802,6 +806,7 @@ function App() {
       vlr_mensal: parseFloat(fv('vlr_mensal')) || 0,
       vlr_total: parseFloat(fv('vlr_total')) || 0,
       tipo: fv('tipo'), medicao: fv('medicao'), status: fv('status'),
+      registro_preco: !!fv('registro_preco'),
       consumo_acum: parseFloat(fv('consumo_acum')) || 0,
       vigencia_meses: parseInt(fv('vigencia_meses')) || null,
       updated_at: new Date().toISOString()
@@ -819,6 +824,79 @@ function App() {
 
     setSaving(false);
     await loadAll(); closeModal();
+  };
+
+  // ─── PEDIDO DE ABERTURA DE PROCESSO LICITATÓRIO (contratos em Registro de Preços) ──
+  const gerarPedidoAberturaLicitacao = async (contratoId) => {
+    const c = contratos.find(x => x.id === contratoId);
+    if (!c) return;
+    const hoje = new Date();
+    const diasRestantes = dias(c.fim);
+    const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
+
+    const estilos = `
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 20px; display:flex; flex-direction:column; min-height:100vh; }
+        .header { text-align: center; margin-bottom: 16px; }
+        .header img { width: 100%; height: auto; margin-bottom: 8px; }
+        .titulo-box { border: 1px solid #000; padding: 10px; text-align: center; margin-bottom: 16px; }
+        .titulo-box h2 { font-size: 14px; font-weight: bold; }
+        .info { margin-bottom: 14px; line-height: 1.8; font-size: 11px; }
+        .info strong { font-weight: bold; }
+        .alerta-box { background:#fee2e2; border:1px solid #b91c1c; color:#991b1b; text-align:center; padding:8px; font-weight:bold; font-size:12px; margin-bottom:14px; }
+        .corpo { font-size: 12px; line-height: 2; text-align: justify; margin-bottom: 20px; }
+        .assinaturas { margin-top: 60px; display: flex; gap: 40px; }
+        .assinatura-box { flex: 1; text-align: center; }
+        .assinatura-box .linha { border-top: 1px solid #000; margin-bottom: 4px; }
+        .assinatura-box p { font-size: 10px; line-height: 1.5; }
+        .rodape-sistema { margin-top: auto; padding-top: 20px; padding-bottom: 10px; border-top: 2px solid #1D9E75; text-align: center; font-size: 8.5px; color: #667; letter-spacing: .02em; background: #fff; }
+        .rodape-sistema strong { color: #0F6E56; }
+        @media print { body { padding: 10px; } }
+      </style>
+    `;
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Pedido de Abertura de Processo Licitatório - ${c.numero}</title>${estilos}</head><body>
+      <div class="header">${logoImg}</div>
+      <div class="titulo-box">
+        <h2>PEDIDO DE ABERTURA DE PROCESSO LICITATÓRIO</h2>
+        <div style="font-size:11px;margin-top:4px">Contrato em regime de Registro de Preços com vigência próxima do encerramento</div>
+      </div>
+      <div class="info">
+        <strong>Contrato atual:</strong> ${c.numero} &nbsp;&nbsp; <strong>Data:</strong> ${hoje.toLocaleDateString('pt-BR')}<br/>
+        <strong>Empresa detentora da Ata:</strong> ${c.empresa}<br/>
+        <strong>Objeto:</strong> ${c.objeto || '—'}<br/>
+        <strong>Vigência atual:</strong> ${fmtD(c.inicio)} a ${fmtD(c.fim)}<br/>
+        <strong>Fiscal do contrato:</strong> ${c.fiscal || UNIDADE_CONFIG.fiscalPadrao} &nbsp;&nbsp; <strong>Gestor do contrato:</strong> ${c.gestor || UNIDADE_CONFIG.gestorPadrao}
+      </div>
+      <div class="alerta-box">
+        ${diasRestantes >= 0 ? `Vigência encerra em ${diasRestantes} dia(s) — ${fmtD(c.fim)}` : `Contrato já vencido há ${Math.abs(diasRestantes)} dia(s) — ${fmtD(c.fim)}`}
+      </div>
+      <div class="corpo">
+        Prezados(as),<br/><br/>
+        Em razão da proximidade do término de vigência do contrato acima identificado — firmado sob a modalidade de <strong>Registro de Preços</strong> —, solicito a abertura de novo processo licitatório para o objeto em referência, de forma a garantir a continuidade do abastecimento/prestação do serviço no ${UNIDADE_CONFIG.nomeUnidade} sem interrupção.<br/><br/>
+        Solicito as providências cabíveis para a instrução do processo, incluindo pesquisa de preços, elaboração de termo de referência/edital e demais atos necessários à abertura tempestiva do certame, considerando o prazo remanescente informado acima.
+      </div>
+      <div class="assinaturas">
+        <div class="assinatura-box"><div class="linha"></div>${c.fiscal || UNIDADE_CONFIG.fiscalPadrao}<br/>Fiscal do Contrato</div>
+        <div class="assinatura-box"><div class="linha"></div>${c.gestor || UNIDADE_CONFIG.gestorPadrao}<br/>Gestor do Contrato</div>
+      </div>
+      <div class="rodape-sistema">
+        Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · ${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
+        Gerado em ${hoje.toLocaleDateString('pt-BR')} às ${hoje.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+      </div>
+    </body></html>`;
+
+    const janela = window.open('', '_blank');
+    janela.document.write(html);
+    janela.document.close();
+    setTimeout(() => { janela.focus(); janela.print(); }, 400);
+
+    const { error } = await sb().from('solicitacoes_licitacao').insert({
+      id: uid('SLIC'), contrato_id: contratoId, gerado_em: new Date().toISOString(), vencimento_contrato: c.fim
+    });
+    if (error) console.error('Erro ao registrar solicitação de licitação:', error.message);
+    await loadAll();
   };
 
   // SALVAR ADITIVO
@@ -1563,6 +1641,19 @@ function App() {
         onClick:()=>{ setSection('pedido'); openModal('acompanhar-pedido', p.id); } });
     });
 
+    // 7) Contratos em Registro de Preços vencendo em até 30 dias — abrir novo processo licitatório a tempo
+    contratos.filter(c => c.registro_preco && c.status !== 'arquivado').forEach(c => {
+      const diasRestantes = dias(c.fim);
+      if (diasRestantes > 30) return;
+      const ultimaSolicitacao = solicitacoesLicitacao
+        .filter(s => s.contrato_id === c.id)
+        .sort((a,b)=> new Date(b.gerado_em)-new Date(a.gerado_em))[0];
+      tarefas.push({ id:'licitacao_'+c.id, prioridade: diasRestantes<=10?'urgente':'atencao', icon:'fa-gavel',
+        titulo:`Abrir processo licitatório — ${c.numero}`,
+        subtitulo:`${(c.empresa||'').substring(0,40)} · Registro de Preços · ${diasRestantes>=0?`vence em ${diasRestantes} dias`:`vencido há ${Math.abs(diasRestantes)} dias`}${ultimaSolicitacao?` · último pedido gerado em ${fmtD(ultimaSolicitacao.gerado_em)}`:''}`,
+        onClick:()=>{ gerarPedidoAberturaLicitacao(c.id); } });
+    });
+
     const ordem = { urgente:0, atencao:1, info:2 };
     return tarefas.sort((a,b) => ordem[a.prioridade]-ordem[b.prioridade]);
   };
@@ -2085,7 +2176,7 @@ function App() {
         <table><thead><tr><th>Nº</th><th>Empresa</th><th>Objeto</th><th>Setor</th><th>Início</th><th>Vencimento</th><th>Vlr mensal</th><th>Vlr total</th><th>Consumo</th><th>Status</th><th></th></tr></thead>
         <tbody>{listaAtual.map(c => (
           <tr key={c.id}>
-            <td className="mono"><strong>{c.numero}</strong></td>
+            <td className="mono"><strong>{c.numero}</strong>{c.registro_preco && <span className="badge" style={{marginLeft:6,fontSize:9.5,background:'#eef6ff',color:'#1d4ed8'}} title="Registro de Preços">RP</span>}</td>
             <td style={{maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.empresa}</td>
             <td className="cell-m" style={{maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.objeto}</td>
             <td className="cell-m">{c.setor}</td>
@@ -2098,6 +2189,9 @@ function App() {
             <td>
               <ActBtn icon="fa-eye" onClick={() => openModal('ver', c.id)} title="Ver" />
               <ActBtn icon="fa-pen" onClick={() => openModal('editar', c.id)} title="Editar" />
+              {c.registro_preco && (
+                <ActBtn icon="fa-gavel" onClick={() => gerarPedidoAberturaLicitacao(c.id)} title="Gerar pedido de abertura de processo licitatório" />
+              )}
               {abaContratos==='ativos' ? (
                 <>
                   <ActBtn icon="fa-calendar-plus" onClick={() => openModal('prorrog', c.id)} title="Prorrogar prazo (novo Termo Aditivo)" />
@@ -3135,6 +3229,15 @@ function App() {
           <FG label="Objeto do contrato *" full><FI k="objeto" placeholder="Descrição do objeto" disabled={ro} /></FG>
           <FG label="Segmento"><FI k="segmento" placeholder="Ex: Diagnóstico por imagem" disabled={ro} /></FG>
           <FG label="Setor responsável"><FI k="setor" placeholder="Ex: CME, Laboratório" disabled={ro} /></FG>
+          <FG label="É registro de preço?" full>
+            <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0'}}>
+              <input type="checkbox" id="chk-registro-preco" checked={!!formData.registro_preco} disabled={ro}
+                onChange={e=>setForm(prev=>({...prev,registro_preco:e.target.checked}))} />
+              <label htmlFor="chk-registro-preco" style={{margin:0,fontSize:12.5,color:'var(--text2)'}}>
+                Sim — ao marcar, o sistema avisa automaticamente 30 dias antes do vencimento pra dar tempo de abrir novo processo licitatório
+              </label>
+            </div>
+          </FG>
         </div>
         <div className="form-row"><div className="sec-label">Responsáveis</div></div>
         <div className="form-row">
