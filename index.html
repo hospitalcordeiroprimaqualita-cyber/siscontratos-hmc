@@ -899,6 +899,111 @@ function App() {
     await loadAll();
   };
 
+  // ─── ANEXO I — TERMO DE REFERÊNCIA (estimativa de consumo p/ nova licitação) ──
+  // Gerado como .doc (HTML com namespaces do Word) em vez de PDF de propósito:
+  // ela pediu explicitamente pra conseguir editar depois, e um HTML servido com
+  // mimetype do Word abre direto no Word/LibreOffice como documento editável
+  // normal — sem precisar montar um .docx binário de verdade.
+  const gerarTermoReferenciaAnexo = (contratoId) => {
+    const c = contratos.find(x => x.id === contratoId);
+    if (!c) return;
+    const itensContrato = itens.filter(i => i.contrato_id === contratoId).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
+    if (!itensContrato.length) { alert('Este contrato não tem itens cadastrados — não há o que sugerir.'); return; }
+
+    const mesesDec = mesesMedidosContrato(c);
+    const fmtNum = v => (v||0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtQtd = v => (v||0).toLocaleString('pt-BR', { minimumFractionDigits: (v%1!==0) ? 2 : 0, maximumFractionDigits: 2 });
+
+    const linhas = itensContrato.map((it, idx) => {
+      const media = mesesDec > 0 ? (it.qtd_acum||0) / mesesDec : 0;
+      // Sem medição ainda registrada: cai pra quantidade mensal contratual original
+      // (não dá pra sugerir com base em consumo real que ainda não existe).
+      const qtdMensal = media > 0 ? Math.round(media*100)/100 : (it.qtd_mensal||0);
+      const qtdAnual = Math.round(qtdMensal*12*100)/100;
+      const vUnit = it.vlr_unitario||0;
+      const valorAnual = qtdAnual*vUnit;
+      return { idx: idx+1, item: it.item, unidade: it.unit||'', qtdMensal, qtdAnual, vUnit, valorAnual };
+    });
+    const totalAnual = linhas.reduce((s,l)=>s+l.valorAnual,0);
+    const totalMensal = totalAnual/12;
+    const semMedicao = mesesDec === 0;
+
+    const linhasHtml = linhas.map(l => `
+      <tr>
+        <td style="border:1px solid #000;padding:5px;text-align:center">${l.idx}</td>
+        <td style="border:1px solid #000;padding:5px">${l.item}</td>
+        <td style="border:1px solid #000;padding:5px;text-align:center">${l.unidade}</td>
+        <td style="border:1px solid #000;padding:5px;text-align:center">${fmtQtd(l.qtdMensal)}</td>
+        <td style="border:1px solid #000;padding:5px;text-align:center">${fmtQtd(l.qtdAnual)}</td>
+        <td style="border:1px solid #000;padding:5px;text-align:right">R$ ${fmtNum(l.vUnit)}</td>
+        <td style="border:1px solid #000;padding:5px;text-align:right">R$ ${fmtNum(l.valorAnual)}</td>
+      </tr>`).join('');
+
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <title>Termo de Referência - ${c.numero}</title>
+      <!--[if gte mso 9]>
+      <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml>
+      <![endif]-->
+      <style>
+        body { font-family: Arial, sans-serif; font-size: 11pt; }
+        h1 { font-size: 14pt; text-align:center; margin-bottom:2px; }
+        h2 { font-size: 11pt; text-align:center; font-weight:normal; margin-top:0; color:#333; }
+        table { border-collapse: collapse; width:100%; margin-top:14px; }
+        th { background:#d0d0d0; border:1px solid #000; padding:5px; font-size:10pt; }
+        td { font-size:10pt; }
+        .info { margin-top:14px; line-height:1.8; font-size:11pt; }
+        .total td { font-weight:bold; }
+        .obs { margin-top:14px; font-size:9.5pt; color:#333; text-align:justify; }
+        .assinatura { margin-top:60px; }
+      </style>
+    </head>
+    <body>
+      <h1>TERMO DE REFERÊNCIA — ANEXO I</h1>
+      <h2>Estimativa de consumo para novo processo licitatório (Registro de Preços — 12 meses)</h2>
+      <div class="info">
+        <strong>Contrato de referência:</strong> ${c.numero}<br/>
+        <strong>Empresa atual detentora da Ata:</strong> ${c.empresa}<br/>
+        <strong>Objeto:</strong> ${c.objeto||'—'}<br/>
+        <strong>Órgão:</strong> ${UNIDADE_CONFIG.nomeUnidade} — Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
+        <strong>Base de cálculo:</strong> ${semMedicao ? 'quantidade mensal contratual original (ainda não há medições registradas neste contrato)' : `média real de consumo medido ao longo de ${mesesDec} mês(es) de execução do contrato vigente`}
+      </div>
+      <table>
+        <thead><tr><th>Item</th><th>Descrição</th><th>Unidade</th><th>Qtd. mensal estimada</th><th>Qtd. anual estimada<br/>(12 meses)</th><th>Valor unitário de referência</th><th>Valor total anual estimado</th></tr></thead>
+        <tbody>
+          ${linhasHtml}
+          <tr class="total">
+            <td colspan="6" style="border:1px solid #000;padding:6px;text-align:right">TOTAL GERAL ANUAL ESTIMADO</td>
+            <td style="border:1px solid #000;padding:6px;text-align:right">R$ ${fmtNum(totalAnual)}</td>
+          </tr>
+          <tr class="total">
+            <td colspan="6" style="border:1px solid #000;padding:6px;text-align:right">TOTAL GERAL MENSAL ESTIMADO</td>
+            <td style="border:1px solid #000;padding:6px;text-align:right">R$ ${fmtNum(totalMensal)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="obs">
+        As quantidades acima foram estimadas com base no consumo médio real apurado nas medições do contrato vigente (${c.numero}), servindo como referência inicial para a elaboração do Termo de Referência do novo processo licitatório. Os valores e quantidades devem ser revisados e ajustados pela equipe técnica conforme necessidade da unidade antes da publicação do edital.
+        ${semMedicao ? '<br/><br/><strong>Atenção:</strong> este contrato ainda não possui medições registradas no sistema — as quantidades mensais acima refletem a quantidade contratual mensal original, não um consumo real apurado. Revise item a item antes de utilizar este anexo.' : ''}
+      </div>
+      <div class="assinatura">
+        <div style="border-top:1px solid #000;width:260px;margin-bottom:4px"></div>
+        ${c.fiscal || UNIDADE_CONFIG.fiscalPadrao}<br/>Fiscal do Contrato
+      </div>
+    </body></html>`;
+
+    const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Termo_Referencia_Anexo_${(c.numero||'contrato').replace(/[\/\\]/g,'-')}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
   // SALVAR ADITIVO
   const salvarAditivo = async () => {
     if (!fv('contrato_id') || !fv('justificativa')) { alert('Selecione o contrato e informe a justificativa.'); return; }
@@ -1651,7 +1756,7 @@ function App() {
       tarefas.push({ id:'licitacao_'+c.id, prioridade: diasRestantes<=10?'urgente':'atencao', icon:'fa-gavel',
         titulo:`Abrir processo licitatório — ${c.numero}`,
         subtitulo:`${(c.empresa||'').substring(0,40)} · Registro de Preços · ${diasRestantes>=0?`vence em ${diasRestantes} dias`:`vencido há ${Math.abs(diasRestantes)} dias`}${ultimaSolicitacao?` · último pedido gerado em ${fmtD(ultimaSolicitacao.gerado_em)}`:''}`,
-        onClick:()=>{ gerarPedidoAberturaLicitacao(c.id); } });
+        onClick:()=>{ setSection('contratos'); } });
     });
 
     const ordem = { urgente:0, atencao:1, info:2 };
@@ -2190,7 +2295,10 @@ function App() {
               <ActBtn icon="fa-eye" onClick={() => openModal('ver', c.id)} title="Ver" />
               <ActBtn icon="fa-pen" onClick={() => openModal('editar', c.id)} title="Editar" />
               {c.registro_preco && (
-                <ActBtn icon="fa-gavel" onClick={() => gerarPedidoAberturaLicitacao(c.id)} title="Gerar pedido de abertura de processo licitatório" />
+                <>
+                  <ActBtn icon="fa-gavel" onClick={() => gerarPedidoAberturaLicitacao(c.id)} title="Gerar pedido de abertura de processo licitatório" />
+                  <ActBtn icon="fa-file-word" onClick={() => gerarTermoReferenciaAnexo(c.id)} title="Gerar Anexo I — Termo de Referência (estimativa de consumo, editável)" />
+                </>
               )}
               {abaContratos==='ativos' ? (
                 <>
