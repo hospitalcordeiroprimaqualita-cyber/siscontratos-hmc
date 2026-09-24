@@ -956,29 +956,31 @@ function App() {
           mso-footer: f1;
         }
         div.Section1 { page: Section1; }
-        body { font-family: Arial, sans-serif; font-size: 11pt; }
-        h1.titulo { font-size: 14pt; text-align:center; margin-bottom:2px; }
-        h2.subtitulo { font-size: 11pt; text-align:center; font-weight:normal; margin-top:0; color:#333; }
-        table { border-collapse: collapse; width:100%; margin-top:14px; }
-        th { background:#d0d0d0; border:1px solid #000; padding:5px; font-size:10pt; }
-        td { font-size:10pt; }
-        .info { margin-top:14px; line-height:1.8; font-size:11pt; }
-        .obs { margin-top:14px; font-size:9.5pt; color:#333; text-align:justify; }
+        body { font-family: "Calibri Light", Calibri, Arial, sans-serif; font-size: 12pt; }
+        h1.titulo { font-family: "Calibri Light", Calibri, Arial, sans-serif; font-size: 16pt; font-weight:bold; text-align:center; margin-bottom:2px; }
+        h2.subtitulo { font-family: "Calibri Light", Calibri, Arial, sans-serif; font-size: 12pt; text-align:center; font-weight:normal; margin-top:0; }
+        table { border-collapse: collapse; width:100%; margin-top:14px; font-family: "Calibri Light", Calibri, Arial, sans-serif; }
+        th { background:#d0d0d0; border:1px solid #000; padding:5px; font-size:10.5pt; }
+        td { font-size:10.5pt; }
+        .info { margin-top:14px; line-height:1.8; font-size:12pt; }
+        .obs { margin-top:14px; font-size:10pt; text-align:justify; }
         .assinatura { margin-top:60px; }
         .rodape-sistema { margin-top: 30px; padding-top: 8px; border-top: 1px solid #ccc; text-align: center; font-size: 8pt; color: #667; }
       </style>
     </head>
     <body>
       <!-- Cabeçalho e rodapé abaixo se repetem em TODAS as páginas — é o papel
-           timbrado oficial (Papel_timbrado_PQS_Padrão), embutido como imagem
-           base64 pra não depender de arquivo externo. O Word reconhece
-           mso-element:header/footer e trata isso como cabeçalho/rodapé de
-           verdade, não como conteúdo da primeira página só. -->
+           timbrado oficial (Papel_timbrado_PQS_Padrão). As imagens usam cid:
+           (referência MIME) em vez de data:base64 direto — em teste real, o
+           Word não renderiza <img src="data:..."> dentro de mso-element:header
+           de forma confiável (aparece como ícone de imagem quebrada); cid: é
+           o mesmo mecanismo que o próprio Word usa ao "Salvar como Página da
+           Web de Arquivo Único" (MHTML), por isso funciona de verdade. -->
       <div style="mso-element:header" id="h1">
-        <p style="margin:0"><img src="data:image/png;base64,${LOGO_TIMBRADO_TOPO_B64}" style="width:100%;display:block;"></p>
+        <p style="margin:0"><img src="cid:topo_logo" style="width:100%;display:block;"></p>
       </div>
       <div style="mso-element:footer" id="f1">
-        <img src="data:image/png;base64,${LOGO_TIMBRADO_ONDA_B64}" style="width:100%;display:block;margin-bottom:4px;">
+        <img src="cid:onda_logo" style="width:100%;display:block;margin-bottom:4px;">
         <p style="margin:0;text-align:center;font-family:Arial,sans-serif;font-weight:bold;font-size:8pt;color:#073763;">www.primaqualitasaude.org</p>
         <p style="margin:0;text-align:center;font-family:Arial,sans-serif;font-size:8pt;color:#073763;line-height:1.4;">
           Travessa do Ouvidor, 21 - Sala 503 · Centro - Rio de Janeiro/RJ - Cep: 20.040-040 · Telefone: 21 20424250 · CNPJ: 40.289.134/0001-99
@@ -1012,7 +1014,37 @@ function App() {
       </div>
     </body></html>`;
 
-    const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+    // Monta o arquivo como MHTML (multipart/related) — é literalmente o
+    // formato que o Word gera ao "Salvar como Página da Web de Arquivo
+    // Único" (.mht), só que com extensão .doc. As imagens do cabeçalho e
+    // rodapé vão como partes MIME separadas, referenciadas por cid: no HTML
+    // acima — esse é o jeito confiável de embutir imagem em cabeçalho/rodapé
+    // reconhecido pelo Word, diferente de <img src="data:...">.
+    const boundary = '----=_NextPart_SisContratosHMC_' + uid('').replace(/[^A-Za-z0-9]/g,'');
+    const wrapB64 = s => (s.match(/.{1,76}/g) || []).join('\r\n');
+    const mhtml =
+      `MIME-Version: 1.0\r\n` +
+      `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"\r\n\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Type: text/html; charset="utf-8"\r\n` +
+      `Content-Transfer-Encoding: 8bit\r\n` +
+      `Content-Location: file:///termo_referencia.html\r\n\r\n` +
+      `${html}\r\n\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Type: image/png\r\n` +
+      `Content-Transfer-Encoding: base64\r\n` +
+      `Content-Location: file:///topo_logo.png\r\n` +
+      `Content-ID: <topo_logo>\r\n\r\n` +
+      `${wrapB64(LOGO_TIMBRADO_TOPO_B64)}\r\n\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Type: image/png\r\n` +
+      `Content-Transfer-Encoding: base64\r\n` +
+      `Content-Location: file:///onda_logo.png\r\n` +
+      `Content-ID: <onda_logo>\r\n\r\n` +
+      `${wrapB64(LOGO_TIMBRADO_ONDA_B64)}\r\n\r\n` +
+      `--${boundary}--\r\n`;
+
+    const blob = new Blob([mhtml], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
