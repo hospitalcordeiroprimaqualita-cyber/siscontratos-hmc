@@ -5561,33 +5561,29 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     return { html, totalGeral, hoje };
   };
 
-  const gerarPedidoCompra = () => {
+  const gerarPedidoCompra = async () => {
     const c = contratos.find(x => x.id === pedidoContrato);
     if (!c) { alert('Selecione um contrato.'); return; }
     const itensDoContrato = itens.filter(i => i.contrato_id === pedidoContrato).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999));
     const { html, totalGeral, hoje } = montarConteudoPedido(c, itensDoContrato);
 
-    const janela = window.open('', '_blank');
-    janela.document.write(html);
-    janela.document.close();
-    // Documentos grandes (muitas linhas/páginas) precisam de um instante pra
-    // o navegador terminar o layout antes de paginar a impressão — chamar
-    // print() na sequência podia pegar o conteúdo ainda montando e sair
-    // cortado nas últimas páginas.
-    setTimeout(() => { janela.focus(); janela.print(); }, 400);
-
+    // Salva PRIMEIRO, imprime DEPOIS — antes era o contrário, e como
+    // window.open() pra impressão tira o foco da aba principal, o alert()
+    // de erro que rodava depois ficava SUPRIMIDO pelo navegador sem avisar
+    // nada (o Chrome bloqueia alert/confirm de aba que não está em foco).
+    // Salvando antes, a aba principal ainda está em foco quando o aviso
+    // aparece, então dá pra garantir que ele realmente vai ser visto.
     const mesRef = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
     const pedidoId = uid('PED');
     const itensComQtd = itensDoContrato.filter(it => parseFloat(pedidoQtds[it.id]||0) > 0);
-    sb().from('pedidos_gerados').insert({
+
+    const { error } = await sb().from('pedidos_gerados').insert({
       id: pedidoId, contrato_id: pedidoContrato, mes_referencia: mesRef,
       total_estimado: totalGeral, gerado_em: new Date().toISOString()
-    }).then(async ({error}) => {
-      // Antes, um erro aqui era ignorado em silêncio: o PDF imprimia normal,
-      // mas o pedido nunca era salvo — e como não entrava em pedidos_gerados,
-      // também nunca aparecia na Série histórica/Acompanhamento, sem nenhum
-      // aviso explicando o motivo.
-      if (error) { alert('O PDF foi gerado, mas o pedido NÃO foi salvo no histórico — ele não vai aparecer no Acompanhamento.\n\nErro: ' + error.message); return; }
+    });
+    if (error) {
+      alert('O pedido NÃO foi salvo no histórico — ele não vai aparecer no Acompanhamento.\n\nErro: ' + error.message + '\n\nProvável causa: a tabela "pedidos_gerados" está sem permissão de gravação (RLS) no Supabase — rode o script supabase_fix_pedidos_gerados_rls.sql.\n\nMesmo assim, vou abrir a tela de impressão do PDF.');
+    } else {
       let falhaItens = null, falhaEvento = null;
       if (itensComQtd.length) {
         const { error: errItens } = await sb().from('pedidos_compra_itens').insert(itensComQtd.map(it => ({
@@ -5612,7 +5608,16 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
         );
       }
       loadAll();
-    });
+    }
+
+    const janela = window.open('', '_blank');
+    janela.document.write(html);
+    janela.document.close();
+    // Documentos grandes (muitas linhas/páginas) precisam de um instante pra
+    // o navegador terminar o layout antes de paginar a impressão — chamar
+    // print() na sequência podia pegar o conteúdo ainda montando e sair
+    // cortado nas últimas páginas.
+    setTimeout(() => { janela.focus(); janela.print(); }, 400);
 
     // Pré-preenche a medição deste mês com as mesmas quantidades sugeridas no pedido,
     // pra você só conferir e salvar em vez de digitar tudo de novo. Só entra em contratos
