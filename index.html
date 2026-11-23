@@ -584,6 +584,10 @@ function App() {
   const [confirmarExclusaoChave, setConfirmarExclusaoChave] = useState(null);
   const [filtroAditivoContrato, setFiltroAditivoContrato] = useState('');
   const [filtroEmpresaEnvio, setFiltroEmpresaEnvio] = useState('');
+  const [consultaContrato, setConsultaContrato] = useState('');
+  const [consultaBusca, setConsultaBusca] = useState('');
+  const [docViewer, setDocViewer] = useState(null); // { url, nome, tipo }
+  const [carregandoDoc, setCarregandoDoc] = useState(false);
   const [buscaAditivo, setBuscaAditivo] = useState('');
   const [abaContratos, setAbaContratos] = useState('ativos'); // 'ativos' | 'arquivados'
   const [formData, setFormData] = useState({});
@@ -6220,8 +6224,165 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     </>;
   };
 
+  // ─── CONSULTA DE CONTRATOS (ficha + documento na íntegra dentro do sistema) ─────
+  const visualizarDocumento = async (doc) => {
+    setCarregandoDoc(true); setDocViewer(null);
+    const { data, error } = await sb().storage.from(BUCKET_DOCS).createSignedUrl(doc.path, 3600);
+    setCarregandoDoc(false);
+    if (error || !data) { alert('Não consegui abrir o documento: ' + (error?.message || 'erro desconhecido')); return; }
+    const ext = ((doc.arquivo || doc.path || '').split('.').pop() || '').toLowerCase();
+    setDocViewer({ url: data.signedUrl, nome: doc.nome, tipo: ext === 'pdf' ? 'pdf' : ['png','jpg','jpeg'].includes(ext) ? 'img' : 'outro' });
+  };
+
+  const renderConsulta = () => {
+    const termo = consultaBusca.toLowerCase().trim();
+    const lista = contratos.slice()
+      .sort((a,b)=>(a.numero||'').localeCompare(b.numero||'','pt-BR',{numeric:true}))
+      .filter(c => !termo || [c.numero,c.empresa,c.objeto,c.processo,c.cnpj].some(v => (v||'').toLowerCase().includes(termo)));
+    const c = contratos.find(x => x.id === consultaContrato);
+    const docs = c?.documentos || [];
+    const itensC = c ? itens.filter(i => i.contrato_id === c.id).slice().sort((a,b)=>(a.ordem||999)-(b.ordem||999)) : [];
+    const aditivosC = c ? aditivos.filter(a => a.contrato_id === c.id) : [];
+    const campo = (rotulo, valor) => (
+      <div><div className="s-label" style={{fontSize:10.5}}>{rotulo}</div><div style={{fontSize:12.5,fontWeight:600}}>{valor || '—'}</div></div>
+    );
+    return (
+      <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:14,alignItems:'start'}}>
+        <div className="panel" style={{margin:0}}>
+          <div className="panel-body">
+            <input type="text" placeholder="Buscar nº, empresa, objeto, CNPJ..." value={consultaBusca} onChange={e=>setConsultaBusca(e.target.value)} />
+          </div>
+          <div style={{maxHeight:'72vh',overflowY:'auto',borderTop:'1px solid var(--gray-b)'}}>
+            {lista.length === 0 && <div className="empty" style={{padding:20}}>Nenhum contrato encontrado.</div>}
+            {lista.map(x => (
+              <div key={x.id} onClick={()=>{ setConsultaContrato(x.id); setDocViewer(null); }}
+                style={{padding:'10px 14px',cursor:'pointer',borderBottom:'1px solid var(--gray-b)',background:x.id===consultaContrato?'var(--teal-l)':'#fff'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:6}}>
+                  <strong className="mono">{x.numero}</strong>
+                  <span style={{display:'flex',alignItems:'center',gap:6}}>
+                    {x.status==='arquivado' && <span className="badge cinza">Arquivado</span>}
+                    {(x.documentos||[]).length>0 && <span title="Possui documentos anexados" style={{fontSize:11,color:'var(--teal-d)'}}><i className="fa-solid fa-paperclip"/> {(x.documentos||[]).length}</span>}
+                  </span>
+                </div>
+                <div style={{fontSize:12,color:'var(--text2)',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{x.empresa}</div>
+                <div style={{fontSize:11,color:'var(--text3)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{x.objeto}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          {!c && (
+            <div className="panel"><div className="panel-body"><div className="empty"><i className="fa-solid fa-book-open" style={{color:'var(--teal)'}}/>Selecione um contrato na lista para consultar a ficha completa e o documento na íntegra.</div></div></div>
+          )}
+          {c && (
+            <>
+              <div className="panel">
+                <div className="panel-head">
+                  <h2><i className="fa-solid fa-file-contract"/> {c.numero} · {c.empresa}</h2>
+                  <BadgeStatus s={c.status} />
+                </div>
+                <div className="panel-body">
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:14}}>
+                    {campo('Objeto', c.objeto)}
+                    {campo('CNPJ', c.cnpj)}
+                    {campo('Representante legal', c.representante)}
+                    {campo('Processo interno', c.processo)}
+                    {campo('Setor', c.setor)}
+                    {campo('Vigência', `${fmtD(c.inicio)} a ${fmtD(c.fim)}${c.vigencia_meses?` (${c.vigencia_meses} meses)`:''}`)}
+                    {campo('Valor mensal', brl(c.vlr_mensal))}
+                    {campo('Valor total', brl(c.vlr_total))}
+                    {campo('Executado até agora', `${brl(c.consumo_acum)} (${pct(c)}%)`)}
+                    {campo('Fiscal', c.fiscal)}
+                    {campo('Gestor', c.gestor)}
+                    {campo('Forma de medição', c.medicao)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="panel-head">
+                  <h2><i className="fa-solid fa-paperclip"/> Documento do contrato</h2>
+                  <button className="btn btn-secondary btn-sm" onClick={()=>openModal('documentos', c.id)}><i className="fa-solid fa-cloud-arrow-up"/> Anexar / gerenciar</button>
+                </div>
+                <div className="panel-body">
+                  {docs.length === 0 && <div className="empty" style={{padding:'14px 0'}}>Nenhum documento anexado a este contrato. Use "Anexar / gerenciar" para enviar o PDF.</div>}
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:docViewer||carregandoDoc?12:0}}>
+                    {docs.map((d,i) => (
+                      <button key={d.path||i} className={`btn btn-sm ${docViewer && docViewer.nome===d.nome ? 'btn-primary' : 'btn-secondary'}`} onClick={()=>visualizarDocumento(d)}>
+                        <i className="fa-solid fa-file-pdf"/> {d.nome}
+                      </button>
+                    ))}
+                  </div>
+                  {carregandoDoc && <div className="empty" style={{padding:20}}><i className="fa-solid fa-rotate spin"/>Carregando documento...</div>}
+                  {docViewer && (
+                    <>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                        <strong style={{fontSize:12.5}}>{docViewer.nome}</strong>
+                        <span style={{display:'flex',gap:6}}>
+                          <a className="btn btn-secondary btn-sm" href={docViewer.url} target="_blank" rel="noopener noreferrer"><i className="fa-solid fa-up-right-from-square"/> Nova aba</a>
+                          <button className="btn btn-secondary btn-sm" onClick={()=>setDocViewer(null)}><i className="fa-solid fa-xmark"/> Fechar</button>
+                        </span>
+                      </div>
+                      {docViewer.tipo === 'pdf' && <iframe src={docViewer.url} title={docViewer.nome} style={{width:'100%',height:'78vh',border:'1px solid var(--gray-b)',borderRadius:6}} />}
+                      {docViewer.tipo === 'img' && <img src={docViewer.url} alt={docViewer.nome} style={{maxWidth:'100%',border:'1px solid var(--gray-b)',borderRadius:6}} />}
+                      {docViewer.tipo === 'outro' && <div className="empty" style={{padding:20}}>Este tipo de arquivo não pode ser exibido aqui. Use "Nova aba" para baixar/abrir.</div>}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {itensC.length > 0 && (
+                <div className="panel">
+                  <div className="panel-head"><h2><i className="fa-solid fa-list-check"/> Itens do contrato ({itensC.length})</h2></div>
+                  <div className="tbl-wrap">
+                    <table>
+                      <thead><tr><th>Item</th><th>Descrição</th><th>Lote</th><th>Unid.</th><th>Qtd/mês</th><th>Valor unitário</th></tr></thead>
+                      <tbody>{itensC.map(it => (
+                        <tr key={it.id}>
+                          <td className="mono" style={{textAlign:'center'}}>{it.ordem||'—'}</td>
+                          <td>{it.item}</td>
+                          <td className="cell-m">{it.lote||'—'}</td>
+                          <td className="cell-m" style={{textAlign:'center'}}>{it.unit||'—'}</td>
+                          <td style={{textAlign:'center'}}>{it.qtd_mensal ?? '—'}</td>
+                          <td>{brl(it.vlr_unitario||0)}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {aditivosC.length > 0 && (
+                <div className="panel">
+                  <div className="panel-head"><h2><i className="fa-solid fa-file-pen"/> Aditivos registrados ({aditivosC.length})</h2></div>
+                  <div className="tbl-wrap">
+                    <table>
+                      <thead><tr><th>Tipo</th><th>Data</th><th>Acréscimo</th><th>Supressão</th><th>Novo prazo</th><th>Status</th></tr></thead>
+                      <tbody>{aditivosC.map(a => (
+                        <tr key={a.id}>
+                          <td>{a.tipo}</td>
+                          <td className="cell-m">{fmtD(a.data)}</td>
+                          <td>{a.vlr_acrescido>0?brl(a.vlr_acrescido):'—'}</td>
+                          <td>{a.vlr_suprimido>0?brl(a.vlr_suprimido):'—'}</td>
+                          <td className="cell-m">{a.novo_prazo?fmtD(a.novo_prazo):'—'}</td>
+                          <td className="cell-m">{a.status}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const navItems = [
     { sec:'inicio', icon:'fa-compass', label:'Início', group:'main' },
+    { sec:'consulta', icon:'fa-book-open', label:'Consulta de contratos', group:'main' },
     { sec:'impacto', icon:'fa-star', label:'Impacto do projeto', group:'main' },
     { sec:'painel', icon:'fa-gauge-high', label:'Painel executivo', group:'main' },
     { sec:'contratos', icon:'fa-file-contract', label:'Contratos', group:'main' },
@@ -6238,7 +6399,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
     { sec:'pedido', icon:'fa-cart-shopping', label:'Pedido de compra', group:'gestao' },
   ];
 
-  const sectionTitles = { inicio:'Início', impacto:'Impacto do Projeto', painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais', historico:'Histórico de Medições', rubrica:'Consumo por Rubrica', investimentos:'Investimentos', relatorio:'Relatório Mensal', pedido:'Pedido de Compra' };
+  const sectionTitles = { inicio:'Início', consulta:'Consulta de Contratos', impacto:'Impacto do Projeto', painel:'Painel Executivo', contratos:'Contratos', financeiro:'Controle Financeiro', quantidade:'Controle de Quantidade', prazo:'Controle de Prazo', preditiva:'Análise Preditiva', aditivos:'Aditivos e Supressões', medicao:'Medições Mensais', historico:'Histórico de Medições', rubrica:'Consumo por Rubrica', investimentos:'Investimentos', relatorio:'Relatório Mensal', pedido:'Pedido de Compra' };
 
   if (!configured) return (
     <div style={{minHeight:'100vh',background:'#EEF2F6'}}>
@@ -6346,6 +6507,7 @@ const mesesCalendario = (dataInicioStr, dataFimStr) => {
           {section === 'investimentos' && renderInvestimentos()}
           {section === 'relatorio' && renderRelatorio()}
           {section === 'pedido' && renderPedido()}
+          {section === 'consulta' && renderConsulta()}
         </div>
       </div>
 
