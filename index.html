@@ -1607,10 +1607,18 @@ function App() {
     const medidas = lista.filter(s => s.execUltima && !ehSemMedicao(s.execUltima));
     const enviadas = medidas.filter(s => s.execUltima.enviada_financeiro).length;
     const aEnviar = medidas.length - enviadas;
-    const totalAnteriores = lista.reduce((a,s)=>a+s.pendAnteriores,0);
+    // Meses de medição ainda não enviados, por contrato, e recados (post-its) pendentes ligados ao contrato
+    const pendentesDe = (cid) => execucoes
+      .filter(e => e.contrato_id === cid && !ehSemMedicao(e) && !e.enviada_financeiro)
+      .map(e => e.mes_referencia).sort();
+    const recadosDe = (cid) => pendenciasFornecedor.filter(pf => !pf.resolvido && pf.contrato_id === cid);
+    const totalMesesPendentes = lista.reduce((a,s)=>a+pendentesDe(s.contrato.id).length,0);
+    const contratosComObs = lista.filter(s => recadosDe(s.contrato.id).length>0).length;
     const cor = cls => cls==='verde'?'#22c55e':cls==='amarelo'?'#f59e0b':'#ef4444';
     const linhas = lista.map(s => {
       const ex = s.execUltima;
+      const pendMeses = pendentesDe(s.contrato.id);
+      const recados = recadosDe(s.contrato.id);
       let envio;
       if (!ex) envio = '<span style="color:#666">—</span>';
       else if (ehSemMedicao(ex)) envio = '<span style="color:#666">Sem medição no mês</span>';
@@ -1622,7 +1630,8 @@ function App() {
         <td class="num">${s.ultimoMes?mesToPT(s.ultimoMes):'—'}</td>
         <td class="num"><span class="badge-pdf" style="background:${cor(s.cls)}">${s.label}</span></td>
         <td class="num">${envio}</td>
-        <td class="num">${s.pendAnteriores>0?s.pendAnteriores+' mês(es)':'—'}</td>
+        <td class="desc">${pendMeses.length ? pendMeses.map(m=>mesToPT(m)).join('<br/>') : '—'}</td>
+        <td class="desc">${recados.length ? recados.map(r=>`• ${(r.motivo||'').replace(/</g,'&lt;').replace(/\n/g,'<br/>')}${r.created_at?` <span style="color:#666">(desde ${fmtD(r.created_at.substring(0,10))})</span>`:''}`).join('<br/>') : '—'}</td>
       </tr>`;
     }).join('');
     const logoImg = LOGO_PDF_B64 ? `<img src="data:image/png;base64,${LOGO_PDF_B64}" style="width:100%;max-width:100%;display:block;">` : '<strong>PRIMA QUALITÁ SAÚDE</strong>';
@@ -1632,6 +1641,7 @@ function App() {
       .header { text-align:center; margin-bottom:14px; }
       .titulo-box { border:1px solid #000; padding:10px; text-align:center; margin-bottom:16px; }
       .titulo-box h2 { font-size:15px; font-weight:bold; }
+      @page { size: A4 landscape; margin: 10mm; }
       .kpis { display:flex; gap:10px; margin:12px 0 16px; }
       .kpi-card { flex:1; border:1px solid #ccc; border-radius:6px; padding:10px 8px; text-align:center; }
       .kpi-card .val { font-size:17px; font-weight:bold; color:#0F6E56; }
@@ -1655,11 +1665,12 @@ function App() {
         <div class="kpi-card"><div class="val">${lista.length}</div><div class="lbl">CONTRATOS ACOMPANHADOS</div></div>
         <div class="kpi-card"><div class="val">${enviadas}</div><div class="lbl">ÚLTIMA MEDIÇÃO JÁ ENVIADA</div></div>
         <div class="kpi-card"><div class="val">${aEnviar}</div><div class="lbl">ÚLTIMA MEDIÇÃO AINDA A ENVIAR</div></div>
-        <div class="kpi-card"><div class="val">${totalAnteriores}</div><div class="lbl">MEDIÇÕES ANTERIORES PENDENTES DE ENVIO</div></div>
+        <div class="kpi-card"><div class="val">${totalMesesPendentes}</div><div class="lbl">MEDIÇÕES (MESES) PENDENTES DE ENVIO</div></div>
+        <div class="kpi-card"><div class="val">${contratosComObs}</div><div class="lbl">CONTRATOS COM OBSERVAÇÃO DE PENDÊNCIA</div></div>
       </div>
-      <table><thead><tr><th>Empresa</th><th>Contrato</th><th>Última medição</th><th>Status da medição</th><th>Envio ao financeiro</th><th>Anteriores pendentes de envio</th></tr></thead>
+      <table><thead><tr><th>Empresa</th><th>Contrato</th><th>Última medição</th><th>Status da medição</th><th>Envio ao financeiro</th><th>Medições pendentes de envio</th><th>Observações / motivo da pendência</th></tr></thead>
       <tbody>${linhas}</tbody></table>
-      <div class="obs">"Envio ao financeiro" indica se a medição da competência indicada já foi encaminhada à empresa. "Anteriores pendentes" informa quantas medições de meses anteriores ainda constam como não enviadas.</div>
+      <div class="obs">"Envio ao financeiro" indica se a medição da última competência já foi encaminhada à empresa. "Medições pendentes de envio" lista todas as competências medidas e ainda não enviadas. "Observações" traz o motivo registrado pela fiscalização para a pendência, quando houver.</div>
       <div class="rodape-sistema">
         Documento gerado automaticamente pelo <strong>SisContratos HMC</strong> · ${UNIDADE_CONFIG.nomeUnidade} · Contrato de Gestão nº ${UNIDADE_CONFIG.contratoGestao}<br/>
         Gerado em ${hoje.toLocaleDateString('pt-BR')} às ${hoje.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
